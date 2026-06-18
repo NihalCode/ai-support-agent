@@ -103,8 +103,10 @@ export async function executeAction(
     }
 
     case "mcp-call": {
-      // Implemented in Phase 4 via the MCP executor; routed there by the MCP route.
-      throw new Error("MCP execution is handled by the MCP executor route.");
+      const { executeMcpCall } = await import("./mcp/executor");
+      const r = await executeMcpCall(action.server, action.tool, action.args, { approved: true });
+      if (!r.ok) throw new Error(r.error ?? "MCP call failed");
+      return { ok: true, detail: redact(typeof r.content === "string" ? r.content : JSON.stringify(r.content)) };
     }
 
     default: {
