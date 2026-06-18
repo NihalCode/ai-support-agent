@@ -1,6 +1,8 @@
 import type {
   RepoConnector,
   TicketConnector,
+  TicketConnectorCapabilities,
+  JiraCreateDraft,
   RepoRef,
   RepoFile,
   CommitInfo,
@@ -39,6 +41,15 @@ export class MockRepoConnector implements RepoConnector {
 export class MockGitHubTicketConnector implements TicketConnector {
   readonly id = "github-mock";
   readonly isMock = true;
+  readonly capabilities: TicketConnectorCapabilities = {
+    canComment: true,
+    canTransition: false,
+    canLink: false,
+    canCreate: false,
+  };
+  async testConnection() {
+    return { ok: true, detail: "Mock GitHub (demo data — no token)" };
+  }
   async getIssue(ref: string): Promise<NormalizedIssue | null> {
     const num = ref.replace(/[^0-9]/g, "");
     return (
@@ -67,6 +78,15 @@ export class MockGitHubTicketConnector implements TicketConnector {
 export class MockJiraTicketConnector implements TicketConnector {
   readonly id = "jira-mock";
   readonly isMock = true;
+  readonly capabilities: TicketConnectorCapabilities = {
+    canComment: true,
+    canTransition: true,
+    canLink: true,
+    canCreate: true,
+  };
+  async testConnection() {
+    return { ok: true, detail: "Mock Jira (demo data — set JIRA_* to go live)" };
+  }
   async getIssue(ref: string): Promise<NormalizedIssue | null> {
     return MOCK_JIRA_ISSUES.find((i) => i.key === ref || i.id === ref) ?? null;
   }
@@ -80,5 +100,22 @@ export class MockJiraTicketConnector implements TicketConnector {
   }
   async addComment(ref: string, _body: string) {
     return { ok: true, mock: true, url: `https://acme.atlassian.net/browse/${ref}#mock-comment` };
+  }
+  async listTransitions(_ref: string) {
+    return [
+      { id: "11", name: "To Do" },
+      { id: "21", name: "In Progress" },
+      { id: "31", name: "Done" },
+    ];
+  }
+  async transitionIssue(ref: string, _transition: string) {
+    return { ok: true, url: `https://acme.atlassian.net/browse/${ref}` };
+  }
+  async linkIssues(_from: string, _to: string, _linkType: string) {
+    return { ok: true };
+  }
+  async createIssue(draft: JiraCreateDraft) {
+    const key = `${draft.projectKey}-${Math.floor(100 + Math.random() * 900)}`;
+    return { ok: true, key, url: `https://acme.atlassian.net/browse/${key}` };
   }
 }

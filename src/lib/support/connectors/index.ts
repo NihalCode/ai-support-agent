@@ -59,7 +59,12 @@ export function getJiraTickets(): { connector: TicketConnector; mock: boolean } 
   const cfg = getConfig();
   if (hasJira(cfg) && cfg.jira.baseUrl && cfg.jira.email && cfg.jira.apiToken) {
     return {
-      connector: new JiraConnector(cfg.jira.baseUrl, cfg.jira.email, cfg.jira.apiToken),
+      connector: new JiraConnector(
+        cfg.jira.baseUrl,
+        cfg.jira.email,
+        cfg.jira.apiToken,
+        cfg.jira.projectKey
+      ),
       mock: false,
     };
   }

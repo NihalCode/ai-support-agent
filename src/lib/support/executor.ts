@@ -53,36 +53,35 @@ export async function executeAction(
 
     case "jira-transition": {
       const { connector, mock } = getJiraTickets();
-      if (mock || !("transitionIssue" in connector)) {
+      if (mock || !connector.transitionIssue) {
         return mockWrite("jira-transition", `${action.ref} → ${action.transition}`);
       }
-      const r = await (connector as unknown as {
-        transitionIssue(ref: string, t: string): Promise<{ ok: boolean; url?: string }>;
-      }).transitionIssue(action.ref, action.transition);
+      const r = await connector.transitionIssue(action.ref, action.transition);
       await audit({ action: "write:jira-transition", target: action.ref, approved: true, provider: "jira", safetyClass: "WRITE_MEDIUM_RISK", details: `→ ${action.transition}` });
       return { ok: r.ok, detail: `transitioned ${action.ref} → ${action.transition}`, url: r.url };
     }
 
     case "jira-link": {
       const { connector, mock } = getJiraTickets();
-      if (mock || !("linkIssues" in connector)) {
+      if (mock || !connector.linkIssues) {
         return mockWrite("jira-link", `${action.from} ${action.linkType} ${action.to}`);
       }
-      const r = await (connector as unknown as {
-        linkIssues(from: string, to: string, type: string): Promise<{ ok: boolean }>;
-      }).linkIssues(action.from, action.to, action.linkType);
+      const r = await connector.linkIssues(action.from, action.to, action.linkType);
       await audit({ action: "write:jira-link", target: `${action.from}->${action.to}`, approved: true, provider: "jira", safetyClass: "WRITE_HIGH_RISK", details: action.linkType });
       return { ok: r.ok, detail: `linked ${action.from} ${action.linkType} ${action.to}` };
     }
 
     case "jira-create": {
       const { connector, mock } = getJiraTickets();
-      if (mock || !("createIssue" in connector)) {
+      if (mock || !connector.createIssue) {
         return mockWrite("jira-create", `${action.projectKey}: ${action.summary}`);
       }
-      const r = await (connector as unknown as {
-        createIssue(p: { projectKey: string; summary: string; description: string; issueType: string }): Promise<{ ok: boolean; key?: string; url?: string }>;
-      }).createIssue(action);
+      const r = await connector.createIssue({
+        projectKey: action.projectKey,
+        summary: action.summary,
+        description: action.description,
+        issueType: action.issueType,
+      });
       await audit({ action: "write:jira-create", target: r.key ?? action.projectKey, approved: true, provider: "jira", safetyClass: "WRITE_MEDIUM_RISK", details: action.summary });
       return { ok: r.ok, detail: `created ${r.key ?? "issue"}`, url: r.url };
     }

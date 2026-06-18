@@ -3,6 +3,7 @@ import "server-only";
 import type {
   RepoConnector,
   TicketConnector,
+  TicketConnectorCapabilities,
   RepoRef,
   RepoFile,
   CommitInfo,
@@ -49,6 +50,31 @@ export class GitHubConnector implements RepoConnector, TicketConnector {
   private token: string | null;
   constructor(token?: string | null) {
     this.token = token?.trim() || null;
+  }
+
+  get capabilities(): TicketConnectorCapabilities {
+    return {
+      canComment: Boolean(this.token),
+      canTransition: false,
+      canLink: false,
+      canCreate: false,
+    };
+  }
+
+  async testConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      if (!this.token) {
+        const res = await fetch(`${API}/rate_limit`, { headers: ghHeaders(null) });
+        return {
+          ok: res.ok,
+          detail: res.ok ? "Public GitHub read access (no token; writes disabled)" : `GitHub ${res.status}`,
+        };
+      }
+      const me = await this.json<{ login?: string }>("/user");
+      return { ok: true, detail: `Authenticated as ${me.login ?? "user"}` };
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : "connection failed" };
+    }
   }
 
   private async json<T>(path: string): Promise<T> {

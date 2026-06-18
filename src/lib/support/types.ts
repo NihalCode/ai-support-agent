@@ -99,14 +99,40 @@ export interface NormalizedIssue {
   state: string;
   labels: string[];
   assignee?: string;
-  author?: string;
+  author?: string; // reporter
+  priority?: string;
   comments: { author: string; body: string; createdAt?: string }[];
   linkedPRs?: string[];
   linkedCommits?: string[];
+  linkedIssues?: { key: string; type: string; url?: string }[];
   attachments?: { name: string; url: string }[];
+  history?: { field: string; from?: string; to?: string; author?: string; at?: string }[];
   url: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** Optional capabilities a ticket connector advertises (drives UI + executor). */
+export interface TicketConnectorCapabilities {
+  canComment: boolean;
+  canTransition: boolean;
+  canLink: boolean;
+  canCreate: boolean;
+}
+
+export interface JiraCreateDraft {
+  projectKey: string;
+  summary: string;
+  description: string;
+  issueType: string;
+}
+
+/** Suggestions the agent derives from an issue (read-only reasoning, never auto-applied). */
+export interface TicketSuggestions {
+  labels: string[];
+  priority: string;
+  shouldEscalate: boolean;
+  escalationReason: string;
 }
 
 export interface CommitInfo {
@@ -131,6 +157,19 @@ export interface TicketConnector {
     ref: string,
     body: string
   ): Promise<{ ok: boolean; url?: string; mock?: boolean }>;
+
+  /* --- optional production capabilities (Phase 2) --- */
+  readonly capabilities?: TicketConnectorCapabilities;
+  /** Health check; returns ok + a human-readable detail (e.g. account name). */
+  testConnection?(): Promise<{ ok: boolean; detail: string }>;
+  /** Available workflow transitions for an issue. */
+  listTransitions?(ref: string): Promise<{ id: string; name: string }[]>;
+  /** Move an issue to a new status. Approval enforced upstream. */
+  transitionIssue?(ref: string, transition: string): Promise<{ ok: boolean; url?: string }>;
+  /** Link two issues. Approval enforced upstream. */
+  linkIssues?(from: string, to: string, linkType: string): Promise<{ ok: boolean }>;
+  /** Create an issue. Approval enforced upstream. */
+  createIssue?(draft: JiraCreateDraft): Promise<{ ok: boolean; key?: string; url?: string }>;
 }
 
 export interface RepoConnector {
