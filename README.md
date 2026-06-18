@@ -11,6 +11,13 @@ It runs **fully offline with realistic mocks** (no keys required) and upgrades
 to live GitHub, Jira, OpenAI, and Pinecone automatically when credentials are
 present.
 
+Beyond issue triage, it also connects to a **real Jira account**, ingests **any
+API or Postman collection**, talks to **remote MCP servers**, treats **Cyware
+Intel Exchange (CTIX)** as a configurable API provider, and generates **Cyware
+Query Language (CQL)** grounded strictly in the live docs. Every state-changing
+action is classified by a **safety engine** and gated behind an **approval
+queue**.
+
 ---
 
 ## Why it exists
@@ -31,7 +38,9 @@ diagnosis with a recommended fix and a routing decision.
 | Vector DB | Pinecone (SDK-free REST client) with **in-memory cosine fallback** |
 | Embeddings | OpenAI `text-embedding-3-small` (512-dim) with **local hashing-embedding fallback** |
 | Reasoning | OpenAI `gpt-4o-mini` with a **deterministic heuristic fallback** |
-| Connectors | GitHub REST v3 + Jira Cloud REST v3, both with **mock fallbacks** |
+| Connectors | GitHub REST v3 + Jira Cloud REST v3 (production) + Cyware (CTIX) + remote MCP (HTTP/SSE), all with **mock fallbacks** |
+| API import | OpenAPI 3 / Swagger 2 (JSON+YAML) · Postman v2.x · cURL · markdown |
+| Safety | Deterministic action classifier + approval queue + audit, redaction |
 | Tests | Vitest |
 
 Everything that touches a credential is optional. With **zero** env vars the app
@@ -54,7 +63,7 @@ type a problem like *"After upgrading, /api/charge returns 404"*, and click
 ### Validate the build
 
 ```bash
-npm test          # 30 unit + integration tests (offline)
+npm test          # 85 unit + integration tests (offline)
 npm run typecheck # tsc --noEmit
 npm run lint      # eslint (flat config)
 npm run build     # next build
@@ -71,7 +80,8 @@ npm run build     # next build
             └───────────────┬────────────────────────────────────────────────────────────┘
                             │ fetch
       ┌─────────────────────▼───────────────────── API routes (src/app/api/support) ─────┐
-      │ status · ingest · analyze · tickets · comment · patch · write(approval) · test    │
+      │ status · health · ingest · analyze · tickets · comment · patch · write · test      │
+      │ approvals · api-import · mcp · cql · cyware · sources · audit                        │
       └─────────────────────┬─────────────────────────────────────────────────────────────┘
                             │
    ┌────────────────────────▼──────────────────────── Services (src/lib/support) ─────────┐
@@ -113,6 +123,37 @@ npm run build     # next build
 
 ---
 
+## Extended capabilities (multi-connector upgrade)
+
+These build on the triage core; each has a dedicated API route and a UI section
+under the **Integrations & tools** tab. All writes flow through one safety
+classifier → approval queue → executor → audit path.
+
+| Capability | Route | What it does |
+|---|---|---|
+| **Connector health** | `GET /api/support/health` | Live status for OpenAI/Pinecone/GitHub/Jira/Cyware/MCP (masked secrets only) |
+| **Jira (production)** | `analyze`/`write` | Project-scoped JQL search, rich issue read (priority, links, history, attachments), comment, transition, link, create — writes approval-gated |
+| **Universal API import** | `POST /api/support/api-import` | Normalize OpenAPI/Swagger/Postman/cURL/markdown into one schema; optional RAG indexing |
+| **MCP servers** | `GET/POST /api/support/mcp` | Discover tools on remote HTTP/SSE MCP servers; preview (safe) + approve-to-run; write-tool detection |
+| **Cyware CQL** | `POST /api/support/cql` | `{intent:"index"}` ingests live CQL docs; `{query}` generates CQL grounded only in those docs (never invented), with endpoint mapping + read/write classification |
+| **Cyware API provider** | `GET/POST /api/support/cyware` | Cyware as one configurable provider (auth from env); preview/flow-resolve/execute; reads run, writes approval-gated |
+| **RAG source manager** | `GET/POST /api/support/sources` | List/delete indexed namespaces; add past resolutions / runbooks / error logs to the knowledge base |
+| **Approvals** | `GET/POST /api/support/approvals` | Queue of write actions with safety class + redacted preview; approve & run or reject |
+| **Audit** | `GET /api/support/audit` | Recent actions with safety class + provider |
+
+**Safety classes** (from `safety.ts`): `READ_ONLY`, `WRITE_LOW_RISK`,
+`WRITE_MEDIUM_RISK`, `WRITE_HIGH_RISK`, `DESTRUCTIVE` (blocked by default),
+`AUTH_OR_PERMISSION_CHANGE`, `BULK_OPERATION`. Only `READ_ONLY` runs without
+approval; `DESTRUCTIVE` is blocked unless explicitly opted in.
+
+**RAG source types** now span: code, docs, GitHub issues/PRs, Jira tickets,
+commits, OpenAPI, Postman, Cyware docs, CQL docs, resolutions, runbooks, and
+error logs — each chunk carries normalized metadata (`source_name`,
+`endpoint_path`, `http_method`, `jira_ticket_id`, `github_issue_id`,
+`created_at`, …) and every answer cites its sources.
+
+---
+
 ## Connecting real services
 
 All credentials live in `.env.local` (gitignored). See `.env.example`.
@@ -130,8 +171,29 @@ can post real comments (approval-gated).
 JIRA_BASE_URL=https://your.atlassian.net
 JIRA_EMAIL=you@company.com
 JIRA_API_TOKEN=xxx
+JIRA_PROJECT_KEY=PROJ          # optional: scopes search + default create project
 ```
-Jira tickets (`ABC-123`) are then searchable, ingestible, and commentable.
+Jira tickets (`ABC-123`) are then searchable, ingestible, and commentable, and
+the connector can transition, link, and create issues (all approval-gated).
+Verify the live connection at `GET /api/support/health`.
+
+### Cyware Intel Exchange (CTIX)
+```bash
+CYWARE_BASE_URL=https://your-tenant/ctixapi
+CYWARE_API_KEY=xxx             # or CYWARE_CLIENT_ID + CYWARE_CLIENT_SECRET
+CYWARE_AUTH_TYPE=api_key       # bearer | basic | api_key
+```
+Cyware is one configurable API provider — import its OpenAPI/Postman spec via
+`POST /api/support/api-import` so endpoints become RAG-retrievable and the high-
+level flows (search indicators, lookup object, create/add tag, relationships)
+resolve to real endpoints.
+
+### MCP servers (remote HTTP/SSE)
+```bash
+MCP_SERVER_CONFIG_JSON=[{"name":"intel","url":"https://mcp.example.com","transport":"http","headers":{"Authorization":"Bearer xxx"},"allowWrites":false}]
+```
+Tools are discovered automatically; write tools require approval. (Local stdio
+servers are out of scope for serverless deployments.)
 
 ### Pinecone (durable RAG)
 ```bash
@@ -173,10 +235,18 @@ the heuristic engine keep everything working.
 
 ## Safety model
 
-- **Read-only by default.** The only write is *posting a comment*; it requires
-  `approved: true` (set only after the confirmation modal) and is fully audited.
+- **One gated path for all writes.** Every state-changing action (Jira/GitHub
+  comment, transition, link, create; Cyware/API call; MCP write tool) is
+  classified by `safety.ts`, queued for **explicit approval**, executed by a
+  single executor, and audited with its safety class + redacted payload.
+- **Destructive blocked by default.** `DELETE`/destructive actions are not
+  executable unless explicitly opted in; reads run without approval.
 - **Kill switch.** `SUPPORT_AGENT_READ_ONLY=true` blocks all writes regardless.
-- **No secret leakage.** Secrets are read from env only and masked in `/status`.
+- **No secret leakage.** Secrets are read from env only, masked in `/health`,
+  and scrubbed from logs/previews/audit by `redact.ts` (layered exact-match +
+  pattern redaction).
+- **Resilience.** OpenAI, Pinecone, and connector calls retry with exponential
+  backoff + jitter on 429/5xx/network errors (`retry.ts`).
 - **SSRF protection.** User-supplied hosts (e.g. Jira base URL) go through a DNS
   + private-range guard with timeout and response-size caps (`src/lib/ssrf.ts`).
 - **Grounded output.** Both heuristic and LLM paths cite retrieved chunks; the
@@ -217,13 +287,20 @@ scripts/ingest-cli.ts
 ## Limitations & next improvements
 
 **Current limitations**
-- The in-memory vector store is process-local; use Pinecone for durable,
-  cross-instance retrieval (serverless deployments reset memory between cold
-  starts).
-- GitHub ingestion caps at ~400 files / 200 KB each to stay within rate limits.
-- The agent **suggests** code patches but never applies them; there's no PR
-  creation yet.
-- Jira ingestion uses a broad JQL seed, not full project crawl.
+- The in-memory vector store + approval/spec/MCP registries are process-local;
+  set Pinecone (and, later, `DATABASE_URL`/`REDIS_URL`) for durable,
+  cross-instance state (serverless resets memory between cold starts).
+- **Secrets are env-first.** The UI shows masked status but does not yet accept
+  per-session secret entry; set credentials in `.env.local` / your host.
+- MCP support is **remote HTTP/SSE only** (no local stdio).
+- CQL generation depends on the live docs page being fetchable; if it is a
+  JS-rendered SPA returning thin HTML, generation honestly reports missing
+  syntax instead of guessing.
+- The agent **suggests** code patches but never applies them; no PR creation.
+- GitHub ingestion caps at ~400 files / 200 KB each; Jira ingestion uses a broad
+  JQL seed, not a full project crawl.
+- Postgres/Redis adapters are scaffolded via env but not yet wired (in-memory
+  is the active backend).
 
 **Next improvements**
 - Incremental/webhook-driven re-indexing on push and issue events.

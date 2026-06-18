@@ -1,8 +1,11 @@
 import "server-only";
 
+import { withRetry } from "./retry";
+
 /**
  * Minimal SDK-free Pinecone REST client (control plane + data plane).
  * Supports describe/create index, upsert, and query with namespaces.
+ * Data-plane calls retry on 429/5xx/network errors.
  */
 
 const CONTROL_PLANE = "https://api.pinecone.io";
@@ -82,10 +85,12 @@ export async function upsertVectors(
   let upserted = 0;
   for (let i = 0; i < vectors.length; i += 100) {
     const batch = vectors.slice(i, i + 100);
-    const res = await pc(`https://${host}/vectors/upsert`, cfg.apiKey, {
-      method: "POST",
-      body: JSON.stringify({ vectors: batch, namespace }),
-    });
+    const res = await withRetry(() =>
+      pc(`https://${host}/vectors/upsert`, cfg.apiKey, {
+        method: "POST",
+        body: JSON.stringify({ vectors: batch, namespace }),
+      })
+    );
     if (!res.ok) {
       throw new Error(`Pinecone upsert ${res.status}: ${(await res.text()).slice(0, 200)}`);
     }
@@ -131,16 +136,18 @@ export async function queryVectors(
   vector: number[],
   topK: number
 ): Promise<PineconeMatch[]> {
-  const res = await pc(`https://${host}/query`, cfg.apiKey, {
-    method: "POST",
-    body: JSON.stringify({
-      vector,
-      topK,
-      namespace,
-      includeMetadata: true,
-      includeValues: false,
-    }),
-  });
+  const res = await withRetry(() =>
+    pc(`https://${host}/query`, cfg.apiKey, {
+      method: "POST",
+      body: JSON.stringify({
+        vector,
+        topK,
+        namespace,
+        includeMetadata: true,
+        includeValues: false,
+      }),
+    })
+  );
   if (!res.ok) {
     throw new Error(`Pinecone query ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
