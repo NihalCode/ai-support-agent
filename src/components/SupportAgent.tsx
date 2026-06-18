@@ -58,8 +58,11 @@ export function SupportAgent() {
       setIngestMsg(
         `Indexed ${data.repo}@${data.branch}: ${data.chunks} chunks (${by}) → ${data.upserted} upserted${
           data.usedMock.vectorStore ? " · in-memory store" : " · Pinecone"
-        }${data.usedMock.repo ? " · mock repo" : ""}`
+        }${data.usedMock.repo ? " · demo data (no repo URL — add one or set GITHUB_TOKEN)" : data.usedMock.tickets ? "" : " · public GitHub"}`
       );
+      if (data.warnings?.length) {
+        setIngestMsg((m) => `${m ?? ""}\n⚠ ${(data.warnings as string[]).join("; ")}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ingestion failed");
     } finally {
@@ -198,14 +201,14 @@ export function SupportAgent() {
             <input
               value={issueRef}
               onChange={(e) => setIssueRef(e.target.value)}
-              placeholder="gh#41 or PAY-101"
+              placeholder="gh#1024 or PAY-101 — enough on its own"
               style={inputStyle}
             />
             <label style={{ ...labelStyle, marginTop: 12 }}>What is the client experiencing?</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. After upgrading, every call to /api/charge returns 404."
+              placeholder="Plain English is fine — e.g. 'it broke after the update'. Leave blank if you entered an issue number above."
               rows={5}
               style={{ ...inputStyle, resize: "vertical" }}
             />

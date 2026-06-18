@@ -11,6 +11,7 @@ import type {
 } from "./types";
 import { retrieve, citationFromChunk } from "./retrieve";
 import { classifyHeuristic } from "./classify";
+import { expandClientDescription } from "./expand-description";
 import { getConfig, hasOpenAI } from "./config";
 import { chatJson, type ChatMessage } from "./openai";
 import { ingestRepo } from "./ingest";
@@ -29,7 +30,8 @@ export async function analyzeIssue(opts: {
   const { ref, description, issue } = opts;
   const cfg = getConfig();
 
-  const query = [description, issue?.title, issue?.body].filter(Boolean).join("\n");
+  const clientText = expandClientDescription(description, issue);
+  const query = [clientText, issue?.title, issue?.body].filter(Boolean).join("\n");
   let { chunks } = await retrieve(ref, query || "error", 12);
 
   // Lazy ingest: if this repo hasn't been indexed yet, ingest it on demand so
@@ -47,14 +49,14 @@ export async function analyzeIssue(opts: {
     }
   }
 
-  const heuristic = classifyHeuristic(description, issue, chunks);
+  const heuristic = classifyHeuristic(clientText, issue, chunks);
 
   if (!hasOpenAI(cfg) || !cfg.openaiApiKey) {
     return { ...heuristic, retrievedContext: chunks, usedLlm: false };
   }
 
   try {
-    const refined = await refineWithLlm(description, issue, chunks, heuristic, cfg.openaiApiKey);
+    const refined = await refineWithLlm(clientText, issue, chunks, heuristic, cfg.openaiApiKey);
     return { ...refined, retrievedContext: chunks, usedLlm: true };
   } catch {
     // LLM failed — return the trustworthy heuristic result.

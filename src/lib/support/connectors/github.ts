@@ -17,13 +17,14 @@ import { languageFromPath, isProbablyBinary, isIngestableFile } from "../languag
 
 const API = "https://api.github.com";
 
-function gh(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
+function ghHeaders(token?: string | null) {
+  const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "ai-support-agent",
   };
+  if (token?.trim()) h.Authorization = `Bearer ${token.trim()}`;
+  return h;
 }
 
 export function parseRepoUrl(input: string): RepoRef | null {
@@ -45,13 +46,13 @@ export function parseRepoUrl(input: string): RepoRef | null {
 export class GitHubConnector implements RepoConnector, TicketConnector {
   readonly id = "github";
   readonly isMock = false;
-  private token: string;
-  constructor(token: string) {
-    this.token = token;
+  private token: string | null;
+  constructor(token?: string | null) {
+    this.token = token?.trim() || null;
   }
 
   private async json<T>(path: string): Promise<T> {
-    const res = await fetch(`${API}${path}`, { headers: gh(this.token) });
+    const res = await fetch(`${API}${path}`, { headers: ghHeaders(this.token) });
     if (!res.ok) {
       throw new Error(`GitHub ${res.status} on ${path}: ${(await res.text()).slice(0, 200)}`);
     }
@@ -186,11 +187,14 @@ export class GitHubConnector implements RepoConnector, TicketConnector {
   }
 
   async addComment(ref: string, body: string) {
+    if (!this.token) {
+      throw new Error("GitHub write requires GITHUB_TOKEN — public API is read-only.");
+    }
     const repo = this.requireRepo();
     const num = ref.replace(/[^0-9]/g, "");
     const res = await fetch(
       `${API}/repos/${repo.owner}/${repo.name}/issues/${num}/comments`,
-      { method: "POST", headers: gh(this.token), body: JSON.stringify({ body }) }
+      { method: "POST", headers: ghHeaders(this.token), body: JSON.stringify({ body }) }
     );
     if (!res.ok) {
       throw new Error(`GitHub addComment ${res.status}: ${(await res.text()).slice(0, 200)}`);

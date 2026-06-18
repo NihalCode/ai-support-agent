@@ -13,12 +13,16 @@ import { MOCK_REPO } from "./mock-data";
 
 export { parseRepoUrl } from "./github";
 
-/** Resolve a RepoRef from a user-provided URL, the default repo, or the mock. */
+/**
+ * Resolve a RepoRef from a user-provided URL, the default repo, or the mock.
+ * When the user supplies a GitHub URL we always target that repo (public API
+ * works without a token for read-only ingest).
+ */
 export function resolveRepoRef(repoUrl?: string): { ref: RepoRef; mock: boolean } {
   const cfg = getConfig();
-  if (repoUrl && repoUrl.trim()) {
+  if (repoUrl?.trim()) {
     const parsed = parseRepoUrl(repoUrl);
-    if (parsed) return { ref: parsed, mock: !hasGitHub(cfg) };
+    if (parsed) return { ref: parsed, mock: false };
   }
   if (hasGitHub(cfg)) {
     const parsed = parseRepoUrl(cfg.github.defaultRepo);
@@ -27,23 +31,28 @@ export function resolveRepoRef(repoUrl?: string): { ref: RepoRef; mock: boolean 
   return { ref: MOCK_REPO, mock: true };
 }
 
-export function getRepoConnector(): { connector: RepoConnector; mock: boolean } {
+/** Real GitHub (token or public read) when a repo is known; otherwise mock demo data. */
+export function getRepoConnector(ref?: RepoRef): { connector: RepoConnector; mock: boolean } {
   const cfg = getConfig();
+  if (ref && (ref.owner !== MOCK_REPO.owner || ref.name !== MOCK_REPO.name)) {
+    return { connector: new GitHubConnector(cfg.github.token), mock: false };
+  }
   if (hasGitHub(cfg) && cfg.github.token) {
     return { connector: new GitHubConnector(cfg.github.token), mock: false };
   }
   return { connector: new MockRepoConnector(), mock: true };
 }
 
-/** GitHub Issues connector bound to a specific repo. */
+/** GitHub Issues for a repo — public read without token; writes need GITHUB_TOKEN. */
 export function getGitHubTickets(ref: RepoRef): { connector: TicketConnector; mock: boolean } {
   const cfg = getConfig();
-  if (hasGitHub(cfg) && cfg.github.token) {
-    const gh = new GitHubConnector(cfg.github.token);
-    gh.setRepo(ref);
-    return { connector: gh, mock: false };
+  const isMockRepo = ref.owner === MOCK_REPO.owner && ref.name === MOCK_REPO.name;
+  if (isMockRepo && !hasGitHub(cfg)) {
+    return { connector: new MockGitHubTicketConnector(), mock: true };
   }
-  return { connector: new MockGitHubTicketConnector(), mock: true };
+  const gh = new GitHubConnector(cfg.github.token);
+  gh.setRepo(ref);
+  return { connector: gh, mock: false };
 }
 
 export function getJiraTickets(): { connector: TicketConnector; mock: boolean } {
@@ -57,10 +66,6 @@ export function getJiraTickets(): { connector: TicketConnector; mock: boolean } 
   return { connector: new MockJiraTicketConnector(), mock: true };
 }
 
-/**
- * Pick the right ticket connector for a reference. Jira keys look like
- * "ABC-123"; GitHub refs look like "#123", "gh#123", or a number.
- */
 export function ticketConnectorForRef(
   ref: string,
   repoRef: RepoRef

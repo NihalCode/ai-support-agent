@@ -28,7 +28,7 @@ export async function ingestRepo(opts: {
   const repo = `${ref.owner}/${ref.name}`;
   const namespace = namespaceFor(repo, branch);
 
-  const { connector: repoConn, mock: repoMock } = getRepoConnector();
+  const { connector: repoConn, mock: repoMock } = getRepoConnector(ref);
   const store = getVectorStore();
   const cfg = getConfig();
 

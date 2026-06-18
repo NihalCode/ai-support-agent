@@ -7,6 +7,7 @@ import type {
   IssueAnalysis,
 } from "./types";
 import { citationFromChunk } from "./retrieve";
+import { isLowInfoDescription } from "./expand-description";
 
 /**
  * Deterministic heuristic triage engine. Used as the no-LLM fallback AND as a
@@ -116,8 +117,7 @@ function ticketChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
 }
 
 function isLowInfo(description: string): boolean {
-  const words = description.trim().split(/\s+/).filter(Boolean);
-  return words.length < 5 && !/[A-Z_]{3,}|\b\d{3}\b/.test(description);
+  return isLowInfoDescription(description);
 }
 
 function fixabilityFor(category: IssueCategory, fixedAlready: boolean): Fixability {

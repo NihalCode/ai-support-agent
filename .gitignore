@@ -35,3 +35,5 @@ yarn-error.log*
 
 # local audit log (runtime artifact)
 /.audit-log.jsonl
+
+.vercel
