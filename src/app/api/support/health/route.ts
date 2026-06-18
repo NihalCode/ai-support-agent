@@ -52,8 +52,18 @@ export async function GET() {
     connectors.push({ name: "jira", configured: hasJira(cfg), mode: "mock", ok: false, detail: String(err) });
   }
 
-  // Cyware (connector arrives in Phase 6 — report config presence).
-  connectors.push({ name: "cyware", configured: hasCyware(cfg), mode: hasCyware(cfg) ? "live" : "n/a" });
+  // Cyware.
+  if (hasCyware(cfg)) {
+    try {
+      const { getCywareConnector } = await import("@/lib/support/connectors/cyware");
+      const ping = await getCywareConnector().testConnection();
+      connectors.push({ name: "cyware", configured: true, mode: "live", ok: ping.ok, detail: ping.detail });
+    } catch (err) {
+      connectors.push({ name: "cyware", configured: true, mode: "live", ok: false, detail: String(err) });
+    }
+  } else {
+    connectors.push({ name: "cyware", configured: false, mode: "n/a" });
+  }
 
   // MCP servers.
   connectors.push({
