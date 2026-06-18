@@ -45,8 +45,18 @@ function pushChunk(
 ) {
   const trimmed = text.trim();
   if (!trimmed) return;
+  const now = new Date().toISOString();
+  // Populate generalized RAG metadata so every chunk is consistently filterable.
+  const enriched: ChunkMetadata = {
+    ...meta,
+    source_name: meta.source_name ?? meta.repo,
+    file_path: meta.file_path ?? meta.filePath,
+    line_range: meta.line_range ?? (meta.lineStart ? `${meta.lineStart}-${meta.lineEnd ?? meta.lineStart}` : undefined),
+    created_at: meta.created_at ?? now,
+    updated_at: meta.updated_at ?? now,
+  };
   const idBase = `${meta.repo}:${meta.branch}:${meta.sourceType}:${meta.filePath}:${meta.lineStart ?? 0}:${meta.symbol ?? ""}`;
-  chunks.push({ id: idBase.replace(/\s+/g, "_"), text: trimmed, metadata: meta });
+  chunks.push({ id: idBase.replace(/\s+/g, "_"), text: trimmed, metadata: enriched });
 }
 
 function chunkCodeFile(file: RepoFile, ref: RepoRef): SupportChunk[] {
@@ -187,6 +197,7 @@ export function chunkIssue(issue: NormalizedIssue, ref: RepoRef): SupportChunk {
     .filter(Boolean)
     .join("\n\n");
   const sourceType = issue.source === "jira" ? "jira" : issue.state === "merged" ? "pr" : "issue";
+  const now = new Date().toISOString();
   return {
     id: `${repo}:${branch}:${sourceType}:${issue.id}`.replace(/\s+/g, "_"),
     text,
@@ -198,6 +209,12 @@ export function chunkIssue(issue: NormalizedIssue, ref: RepoRef): SupportChunk {
       sourceType,
       title: issue.title,
       url: issue.url,
+      source_name: repo,
+      source_url: issue.url,
+      jira_ticket_id: issue.source === "jira" ? issue.id : undefined,
+      github_issue_id: issue.source === "github" ? issue.id : undefined,
+      created_at: issue.createdAt ?? now,
+      updated_at: issue.updatedAt ?? now,
     },
   };
 }

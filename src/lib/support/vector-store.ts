@@ -6,6 +6,8 @@ import {
   ensureIndexHost,
   upsertVectors,
   queryVectors,
+  indexStats,
+  deleteNamespace as pineconeDeleteNamespace,
   type PineconeCfg,
 } from "./pinecone";
 import { EMBEDDING_DIMENSION } from "./openai";
@@ -51,6 +53,8 @@ export interface VectorStore {
     embedding: number[],
     topK: number
   ): Promise<RetrievedChunk[]>;
+  listNamespaces(): Promise<{ namespace: string; vectorCount: number }[]>;
+  deleteNamespace(namespace: string): Promise<void>;
 }
 
 class PineconeStore implements VectorStore {
@@ -92,6 +96,15 @@ class PineconeStore implements VectorStore {
       };
     });
   }
+  async listNamespaces(): Promise<{ namespace: string; vectorCount: number }[]> {
+    const host = await ensureIndexHost(this.cfg, EMBEDDING_DIMENSION);
+    const stats = await indexStats(this.cfg, host);
+    return Object.entries(stats.namespaces).map(([namespace, v]) => ({ namespace, vectorCount: v.vectorCount }));
+  }
+  async deleteNamespace(namespace: string): Promise<void> {
+    const host = await ensureIndexHost(this.cfg, EMBEDDING_DIMENSION);
+    await pineconeDeleteNamespace(this.cfg, host, namespace);
+  }
 }
 
 class MemoryStore implements VectorStore {
@@ -126,6 +139,12 @@ class MemoryStore implements VectorStore {
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
+  }
+  async listNamespaces(): Promise<{ namespace: string; vectorCount: number }[]> {
+    return [...memStore.entries()].map(([namespace, vecs]) => ({ namespace, vectorCount: vecs.length }));
+  }
+  async deleteNamespace(namespace: string): Promise<void> {
+    memStore.delete(namespace);
   }
 }
 

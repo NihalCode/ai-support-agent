@@ -95,6 +95,35 @@ export async function upsertVectors(
   return upserted;
 }
 
+/** Index stats including per-namespace vector counts. */
+export async function indexStats(
+  cfg: PineconeCfg,
+  host: string
+): Promise<{ namespaces: Record<string, { vectorCount: number }> }> {
+  const res = await pc(`https://${host}/describe_index_stats`, cfg.apiKey, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`Pinecone stats ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const d = (await res.json()) as { namespaces?: Record<string, { vectorCount?: number }> };
+  const namespaces: Record<string, { vectorCount: number }> = {};
+  for (const [ns, v] of Object.entries(d.namespaces ?? {})) {
+    namespaces[ns] = { vectorCount: v.vectorCount ?? 0 };
+  }
+  return { namespaces };
+}
+
+/** Delete all vectors in a namespace. */
+export async function deleteNamespace(cfg: PineconeCfg, host: string, namespace: string): Promise<void> {
+  const res = await pc(`https://${host}/vectors/delete`, cfg.apiKey, {
+    method: "POST",
+    body: JSON.stringify({ deleteAll: true, namespace }),
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Pinecone delete ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
 export async function queryVectors(
   cfg: PineconeCfg,
   host: string,

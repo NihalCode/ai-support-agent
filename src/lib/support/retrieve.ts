@@ -19,17 +19,48 @@ export interface RetrievalOutcome {
 export async function retrieve(
   ref: RepoRef,
   query: string,
-  topK = 12
+  topK = 12,
+  extraNamespaces: string[] = []
 ): Promise<RetrievalOutcome> {
   const namespace = namespaceFor(`${ref.owner}/${ref.name}`, ref.branch ?? "main");
   const store = getVectorStore();
   const { vector, usedOpenAI } = await embedQueryText(query);
 
-  // Over-fetch then diversify.
-  const raw = await store.query(namespace, vector, topK * 2);
+  // Query the repo namespace plus any extra source namespaces (API specs, CQL
+  // docs, knowledge base), then merge + diversify across source types.
+  const namespaces = [namespace, ...extraNamespaces];
+  const raw: RetrievedChunk[] = [];
+  for (const ns of namespaces) {
+    try {
+      raw.push(...(await store.query(ns, vector, topK * 2)));
+    } catch {
+      // skip unreachable/empty namespace
+    }
+  }
+  raw.sort((a, b) => b.score - a.score);
   const diversified = diversify(raw, topK);
 
   return { chunks: diversified, usedMockStore: store.isMock, usedOpenAI };
+}
+
+/** Retrieve across an explicit set of namespaces (no repo assumption). */
+export async function retrieveAcross(
+  namespaces: string[],
+  query: string,
+  topK = 12
+): Promise<RetrievalOutcome> {
+  const store = getVectorStore();
+  const { vector, usedOpenAI } = await embedQueryText(query);
+  const raw: RetrievedChunk[] = [];
+  for (const ns of namespaces) {
+    try {
+      raw.push(...(await store.query(ns, vector, topK * 2)));
+    } catch {
+      // skip
+    }
+  }
+  raw.sort((a, b) => b.score - a.score);
+  return { chunks: diversify(raw, topK), usedMockStore: store.isMock, usedOpenAI };
 }
 
 /** Round-robin across source types to avoid a single-file context dump. */

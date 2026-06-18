@@ -32,7 +32,10 @@ export async function analyzeIssue(opts: {
 
   const clientText = expandClientDescription(description, issue);
   const query = [clientText, issue?.title, issue?.body].filter(Boolean).join("\n");
-  let { chunks } = await retrieve(ref, query || "error", 12);
+  // Also pull from the shared knowledge base (past resolutions / runbooks /
+  // error logs) so recurring issues resolve with prior context cited.
+  const { knowledgeNamespace } = await import("./knowledge");
+  let { chunks } = await retrieve(ref, query || "error", 12, [knowledgeNamespace()]);
 
   // Lazy ingest: if this repo hasn't been indexed yet, ingest it on demand so
   // the very first analysis still has RAG context to ground itself in.
@@ -43,7 +46,7 @@ export async function analyzeIssue(opts: {
         includeIssues: true,
         includePRs: true,
       });
-      ({ chunks } = await retrieve(ref, query || "error", 12));
+      ({ chunks } = await retrieve(ref, query || "error", 12, [knowledgeNamespace()]));
     } catch {
       // proceed with no context — analysis degrades gracefully
     }
