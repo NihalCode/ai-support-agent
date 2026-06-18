@@ -7,6 +7,23 @@
  * the mock repo + in-memory store, which is only useful within a long-lived
  * process — so the CLI is mainly for Pinecone-backed ingestion.
  */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+function loadEnvLocal() {
+  const file = path.join(process.cwd(), ".env.local");
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    if (!process.env[m[1]]) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
+loadEnvLocal();
+
 import { ingestRepo } from "../src/lib/support/ingest";
 
 async function main() {
