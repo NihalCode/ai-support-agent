@@ -8,6 +8,7 @@ import { CitationsPanel, ContextPanel } from "./CitationsPanel";
 import { ResponsesPanel, type DraftedComments } from "./ResponsesPanel";
 import { ConfirmModal } from "./ConfirmModal";
 import { TestMode } from "./TestMode";
+import { IntegrationsPanel } from "./IntegrationsPanel";
 
 interface StatusInfo {
   readOnly: boolean;
@@ -32,6 +33,7 @@ export function SupportAgent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [posting, setPosting] = useState(false);
   const [postResult, setPostResult] = useState<string | null>(null);
+  const [view, setView] = useState<"diagnose" | "integrations">("diagnose");
 
   useEffect(() => {
     fetch("/api/support/status")
@@ -175,8 +177,32 @@ export function SupportAgent() {
           and drafts customer + engineering responses — every claim cited.
         </p>
         {status && <StatusBar status={status} />}
+        <div style={{ display: "flex", gap: 6, marginTop: 16 }}>
+          {([["diagnose", "Diagnose issue"], ["integrations", "Integrations & tools"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              style={{
+                background: view === id ? "var(--surface)" : "transparent",
+                color: view === id ? "var(--text)" : "var(--muted)",
+                border: "1px solid var(--border)",
+                borderBottom: view === id ? "2px solid var(--accent)" : "1px solid var(--border)",
+                borderRadius: "8px 8px 0 0",
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </header>
 
+      {view === "integrations" && <IntegrationsPanel />}
+
+      {view === "diagnose" && (
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 16 }}>
           <Card title="1 · Connect a repository">
@@ -261,6 +287,7 @@ export function SupportAgent() {
           )}
         </div>
       </div>
+      )}
 
       <ConfirmModal
         open={modalOpen}
