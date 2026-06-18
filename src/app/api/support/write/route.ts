@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { resolveRepoRef, ticketConnectorForRef } from "@/lib/support/connectors";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
+import { executeAction } from "@/lib/support/executor";
 
 export const runtime = "nodejs";
 
 /**
- * Approval-gated write endpoint. The ONLY supported write is posting a comment.
- * Never deletes/closes anything. Requires `approved: true` in the request body,
- * which the UI sets only after the user confirms in a modal. Honors the global
- * SUPPORT_AGENT_READ_ONLY kill switch.
+ * Approval-gated write endpoint (back-compat). The supported write is posting a
+ * comment; it now flows through the shared `executeAction` executor so all
+ * writes share one read-only/approval/audit path. Requires `approved: true`,
+ * which the UI sets only after the user confirms in a modal.
  */
 interface WriteBody {
   action: "comment";
@@ -57,19 +57,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { ref: repoRef } = resolveRepoRef(parsed.repoUrl);
-    const { connector, mock } = ticketConnectorForRef(parsed.ref.trim(), repoRef);
-    const result = await connector.addComment(parsed.ref.trim(), parsed.body);
-    await audit({
-      action: "write:comment",
-      target: parsed.ref,
-      approved: true,
-      details: `${mock ? "MOCK " : ""}posted to ${connector.id}: ${result.url ?? "ok"}`,
-    });
-    return NextResponse.json({ ok: result.ok, url: result.url, mock: result.mock ?? mock, source: connector.id });
+    const result = await executeAction(
+      {
+        type: "ticket-comment",
+        provider: /^[A-Z][A-Z0-9]+-\d+$/.test(parsed.ref.trim()) ? "jira" : "github",
+        ref: parsed.ref.trim(),
+        body: parsed.body,
+        repoUrl: parsed.repoUrl,
+      },
+      { approved: true }
+    );
+    return NextResponse.json({ ok: result.ok, url: result.url, mock: result.mock, detail: result.detail });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Write failed";
-    await audit({ action: "write:comment", target: parsed.ref, approved: true, details: `failed: ${message}` });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

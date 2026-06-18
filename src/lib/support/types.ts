@@ -15,11 +15,22 @@ export type SourceType =
   | "pr"
   | "jira"
   | "ticket"
-  | "commit";
+  | "commit"
+  | "openapi"
+  | "postman"
+  | "cyware-doc"
+  | "cql-doc"
+  | "resolution"
+  | "error-log"
+  | "runbook";
 
-/** Metadata stored alongside every vector chunk. */
+/**
+ * Metadata stored alongside every vector chunk. `repo`/`branch` remain for
+ * backward compatibility with code/issue sources; non-repo sources (API specs,
+ * CQL docs, etc.) use the generalized `source_*`/endpoint fields below.
+ */
 export interface ChunkMetadata {
-  repo: string; // owner/name
+  repo: string; // owner/name (or source name for non-repo sources)
   branch: string;
   filePath: string; // file path, issue/PR/ticket reference, or commit sha
   language: string; // programming language or "markdown" / "text" / "n/a"
@@ -30,6 +41,20 @@ export interface ChunkMetadata {
   sourceType: SourceType;
   title?: string; // issue/PR/ticket title or doc heading
   url?: string; // canonical link (file blob, issue, PR, jira)
+
+  /* --- generalized RAG metadata (Phase 7) --- */
+  source_name?: string; // human label, e.g. "Cyware CTIX API" / "checkout.postman_collection"
+  source_url?: string;
+  file_path?: string;
+  line_range?: string; // "12-48"
+  endpoint_path?: string; // "/v3/indicators/"
+  http_method?: string; // GET/POST/...
+  jira_ticket_id?: string;
+  github_issue_id?: string;
+  postman_request_name?: string;
+  cyware_doc_section?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /** A chunk of repo/ticket content ready for embedding + upsert. */
@@ -213,4 +238,199 @@ export interface AuditEntry {
   target?: string;
   approved: boolean;
   details?: string;
+  /** Safety classification of the action, when applicable. */
+  safetyClass?: SafetyClass;
+  /** Connector/provider/MCP server the action targeted. */
+  provider?: string;
+}
+
+/* --------------------- Normalized API schema (Phase 3) -------------------- */
+
+export type ApiSourceKind =
+  | "openapi"
+  | "swagger"
+  | "postman"
+  | "markdown"
+  | "curl"
+  | "manual";
+
+export type ParamLocation = "path" | "query" | "header" | "cookie" | "body";
+
+export interface NormalizedParam {
+  name: string;
+  location: ParamLocation;
+  required: boolean;
+  type?: string;
+  description?: string;
+  example?: unknown;
+  enum?: string[];
+}
+
+export interface NormalizedResponse {
+  status: string; // "200", "4XX", "default"
+  description?: string;
+  schema?: unknown; // JSON schema or example body
+  isError: boolean;
+}
+
+/**
+ * Whether an endpoint mutates state. Drives the safety classifier and approval
+ * gating. `read` is the only class executable in read-only mode.
+ */
+export type EndpointEffect =
+  | "read"
+  | "write"
+  | "bulk"
+  | "auth-changing"
+  | "destructive";
+
+export interface NormalizedEndpoint {
+  operationId?: string;
+  name: string; // human label / summary
+  description?: string;
+  method: string; // GET/POST/...
+  path: string; // "/v3/indicators/{id}/"
+  headersRequired: NormalizedParam[];
+  headersOptional: NormalizedParam[];
+  pathParams: NormalizedParam[];
+  queryParams: NormalizedParam[];
+  requestBodySchema?: unknown;
+  requiredFields: string[];
+  optionalFields: string[];
+  responses: NormalizedResponse[];
+  pagination?: string;
+  rateLimit?: string;
+  effect: EndpointEffect;
+  /** Provenance (Postman folder/request name, OpenAPI tag, etc.). */
+  group?: string;
+  examples?: { name: string; request?: string; response?: string }[];
+}
+
+export interface NormalizedApiSpec {
+  id: string; // stable slug
+  name: string;
+  description?: string;
+  baseUrl: string | null;
+  authType: string; // "bearer" | "apiKey" | "basic" | "oauth2" | "none" | ...
+  sourceKind: ApiSourceKind;
+  sourceUrl?: string;
+  variables?: Record<string, string>; // Postman/env variables (no secrets)
+  endpoints: NormalizedEndpoint[];
+  createdAt: string;
+}
+
+export interface ApiImportRequest {
+  /** Raw content (OpenAPI/Swagger/Postman JSON or YAML, markdown, cURL). */
+  content?: string;
+  /** Or a public docs/spec URL to fetch. */
+  url?: string;
+  /** Override/hint for the parser; auto-detected when omitted. */
+  kind?: ApiSourceKind;
+  name?: string;
+  /** Index the normalized endpoints into the RAG store. */
+  index?: boolean;
+}
+
+/* ------------------------ Safety classifier (Phase 9) --------------------- */
+
+export type SafetyClass =
+  | "READ_ONLY"
+  | "WRITE_LOW_RISK"
+  | "WRITE_MEDIUM_RISK"
+  | "WRITE_HIGH_RISK"
+  | "DESTRUCTIVE"
+  | "AUTH_OR_PERMISSION_CHANGE"
+  | "BULK_OPERATION";
+
+export interface SafetyVerdict {
+  safetyClass: SafetyClass;
+  requiresApproval: boolean;
+  blocked: boolean; // true => not executable even with approval (e.g. DELETE by default)
+  reason: string;
+}
+
+export interface PlannedAction {
+  /** What kind of action: an HTTP API call, a connector op, or an MCP tool. */
+  kind: "api" | "jira" | "github" | "cyware" | "mcp";
+  method?: string; // HTTP method when kind === "api"/"cyware"
+  effect?: EndpointEffect;
+  provider?: string;
+  toolName?: string; // MCP tool
+  summary: string;
+  /** Whether the user/operator allowed DELETE/destructive for this provider. */
+  allowDestructive?: boolean;
+}
+
+/* ------------------------- Approval queue (Phase 1) ----------------------- */
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "failed";
+
+export interface ApprovalRequest {
+  id: string;
+  createdAt: string;
+  status: ApprovalStatus;
+  /** The concrete, fully-resolved action to run on approval. */
+  action: ApprovalAction;
+  safety: SafetyVerdict;
+  /** Human-readable preview of exactly what will execute (redacted). */
+  preview: string;
+  resolvedAt?: string;
+  result?: string;
+}
+
+/** Discriminated union of executable actions, all approval-gated. */
+export type ApprovalAction =
+  | { type: "ticket-comment"; provider: "github" | "jira"; ref: string; body: string; repoUrl?: string }
+  | { type: "jira-transition"; ref: string; transition: string }
+  | { type: "jira-link"; from: string; to: string; linkType: string }
+  | { type: "jira-create"; projectKey: string; summary: string; description: string; issueType: string }
+  | { type: "api-call"; provider: string; method: string; url: string; headers?: Record<string, string>; body?: string }
+  | { type: "mcp-call"; server: string; tool: string; args: Record<string, unknown> };
+
+/* ----------------------------- MCP (Phase 4) ------------------------------ */
+
+export interface McpToolDescriptor {
+  server: string;
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+  outputSchema?: unknown;
+  /** Heuristic: does invoking this tool mutate state? Drives approval. */
+  isWrite: boolean;
+}
+
+export interface McpServerStatus {
+  name: string;
+  url: string;
+  transport: "http" | "sse";
+  connected: boolean;
+  toolCount: number;
+  error?: string;
+}
+
+export interface McpCallResult {
+  ok: boolean;
+  server: string;
+  tool: string;
+  content?: unknown;
+  error?: string;
+}
+
+/* ------------------------------ CQL (Phase 5) ----------------------------- */
+
+export interface CqlResult {
+  intent: string; // user intent
+  cql: string | null; // generated CQL (null if not enough info)
+  explanation: string; // plain-English
+  apiEndpoint?: string; // endpoint needed
+  httpMethod?: string;
+  queryParams?: Record<string, string>;
+  payload?: unknown;
+  effect: EndpointEffect;
+  requiresApproval: boolean;
+  expectedResult: string;
+  /** When docs were insufficient, what is missing. Never hallucinate syntax. */
+  missingInfo?: string[];
+  citations: AnalysisCitation[];
+  usedLlm: boolean;
 }
