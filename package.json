@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "ingest": "tsx --conditions=react-server scripts/ingest-cli.ts",
+    "vendor:cyware-specs": "tsx --conditions=react-server scripts/vendor-cyware-specs.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

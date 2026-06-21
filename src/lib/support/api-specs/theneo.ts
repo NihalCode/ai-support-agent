@@ -2,20 +2,23 @@ import "server-only";
 
 import { safeFetch } from "../../ssrf";
 import { withRetry } from "../retry";
+import { fetchCywareDoc, cywareDocHeaders } from "./cyware-fetch";
 import type { NormalizedApiSpec, NormalizedEndpoint, NormalizedParam } from "../types";
 import { effectForEndpoint, pathParamNames, specSlug } from "./normalize";
 import { parseMarkdownApi } from "./markdown";
-
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 export interface TheneoIngestOptions {
   origin: string;
   project: string;
   llmsPath?: string;
+  /** Alternate llms.txt paths to try when the primary returns 403. */
+  llmsPaths?: string[];
+  /** Referer header (doc site landing page). */
+  referer?: string;
   name?: string;
-  /** Cap pages fetched (Theneo exports can be large). */
   maxPages?: number;
+  /** Pre-fetched llms.txt content (bundled fallback). */
+  indexText?: string;
 }
 
 export interface TheneoIngestResult {
@@ -44,14 +47,11 @@ export function parseLlmsIndex(text: string): LlmsEntry[] {
     entries.push({ title: m[1].trim(), url, description: (m[3] || "").trim() });
   }
 
-  // Fallback: bare .md paths on their own line.
   if (entries.length === 0) {
     for (const line of text.split("\n")) {
       const trimmed = line.trim();
       const bare = trimmed.match(/^(?:-\s*)?(\S+\.md)\s*$/);
-      if (bare) {
-        entries.push({ title: bare[1], url: bare[1], description: "" });
-      }
+      if (bare) entries.push({ title: bare[1], url: bare[1], description: "" });
     }
   }
 
@@ -102,17 +102,11 @@ export function parseCywareEndpointPre(preText: string): {
   }
 }
 
-async function fetchDoc(url: string): Promise<string | null> {
+async function fetchDocPage(url: string, referer: string): Promise<string | null> {
   try {
     const res = await withRetry(
-      () =>
-        safeFetch(url, {
-          headers: {
-            Accept: "text/html,text/plain,*/*",
-            "User-Agent": BROWSER_UA,
-          },
-        }),
-      { retries: 3, baseDelayMs: 400 }
+      () => safeFetch(url, { headers: cywareDocHeaders(referer) }),
+      { retries: 2, baseDelayMs: 500 }
     );
     if (!res.ok) return null;
     return res.text;
@@ -124,21 +118,26 @@ async function fetchDoc(url: string): Promise<string | null> {
 /** Fetch a Theneo llms.txt index + per-page .md exports and build a NormalizedApiSpec. */
 export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<TheneoIngestResult> {
   const warnings: string[] = [];
-  const llmsPath = opts.llmsPath ?? `/${opts.project}/llms.txt`;
-  const indexUrl = `${opts.origin.replace(/\/$/, "")}${llmsPath}`;
+  const origin = opts.origin.replace(/\/$/, "");
+  const referer = opts.referer ?? `${origin}/${opts.project}`;
+  const llmsCandidates = [
+    ...(opts.llmsPaths ?? []),
+    opts.llmsPath ?? `/${opts.project}/llms.txt`,
+    `/${opts.project}/llms.txt`,
+    "/llms.txt",
+  ].map((p) => (p.startsWith("http") ? p : `${origin}${p.startsWith("/") ? p : `/${p}`}`));
+  const uniqueLlms = [...new Set(llmsCandidates)];
 
-  const indexRes = await withRetry(
-    () =>
-      safeFetch(indexUrl, {
-        headers: { Accept: "text/plain,*/*", "User-Agent": BROWSER_UA },
-      }),
-    { retries: 3, baseDelayMs: 400 }
-  );
-  if (!indexRes.ok) {
-    throw new Error(`Theneo index fetch failed (${indexRes.status}): ${indexUrl}`);
+  let indexText = opts.indexText ?? "";
+  let indexUrl = uniqueLlms[0];
+
+  if (!indexText) {
+    const fetched = await fetchCywareDoc(uniqueLlms, referer);
+    indexText = fetched.text;
+    indexUrl = fetched.url;
   }
 
-  const entries = parseLlmsIndex(indexRes.text);
+  const entries = parseLlmsIndex(indexText);
   if (entries.length === 0) {
     warnings.push("llms.txt contained no markdown .md links — index format may have changed.");
   }
@@ -160,11 +159,10 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
       batch.map(async (entry) => {
         const url = entry.url.startsWith("http")
           ? entry.url
-          : `${opts.origin.replace(/\/$/, "")}/${opts.project}/${entry.url.replace(/^\//, "")}`;
-        const html = await fetchDoc(url);
+          : `${origin}/${opts.project}/${entry.url.replace(/^\//, "")}`;
+        const html = await fetchDocPage(url, referer);
         if (!html) return null;
-        const text = extractTheneoPage(html);
-        return { entry, text };
+        return { entry, text: extractTheneoPage(html) };
       })
     );
 
@@ -214,9 +212,7 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
       seen.add(key);
       endpoints.push(ep);
     }
-    if (endpoints.length > 0) {
-      warnings.push("Used markdown fallback parser for endpoint extraction.");
-    }
+    if (endpoints.length > 0) warnings.push("Used markdown fallback parser for endpoint extraction.");
   }
 
   if (endpoints.length === 0 && toFetch.length === 0) {
@@ -240,7 +236,6 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
   return { spec, pagesFetched: toFetch.length, pagesTotal: entries.length, warnings };
 }
 
-/** Extract inner text from a Theneo .md HTML export (single <pre> block). */
 export function extractTheneoPage(html: string): string {
   const m = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
   if (!m) return decodeEntities(html.replace(/<[^>]+>/g, " "));
@@ -257,22 +252,18 @@ function decodeEntities(input: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-/** Parse endpoint blocks from Theneo pre content (JSON or METHOD /path lines). */
 function endpointsFromTheneoText(text: string): NormalizedEndpoint[] {
   const out: NormalizedEndpoint[] = [];
-
   const jsonRe = /"method"\s*:\s*"(GET|POST|PUT|PATCH|DELETE)"[\s\S]*?"path"\s*:\s*"([^"]+)"/gi;
   let jm: RegExpExecArray | null;
   while ((jm = jsonRe.exec(text)) !== null) {
     out.push(makeEndpoint(jm[1], jm[2], text.slice(Math.max(0, jm.index - 80), jm.index + 200)));
   }
-
   const methodRe = /\b(GET|POST|PUT|PATCH|DELETE)\b\s+(`?)(\/[A-Za-z0-9_\-./{}:]*)\2/g;
   let mm: RegExpExecArray | null;
   while ((mm = methodRe.exec(text)) !== null) {
     out.push(makeEndpoint(mm[1], mm[3], text.slice(mm.index, mm.index + 300)));
   }
-
   return out;
 }
 

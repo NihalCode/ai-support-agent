@@ -63,6 +63,7 @@ export async function POST(req: Request) {
         endpoints: result.spec.endpoints.length,
         indexed: result.indexed,
         warnings: result.warnings,
+        source: result.source,
       });
     } catch (err) {
       return NextResponse.json(

@@ -14,7 +14,7 @@ export interface CywareProductPreset {
   /** Public docs landing page (shown in UI). */
   docsSiteUrl: string;
   importStrategy: "theneo" | "postman-documenter";
-  theneo?: { origin: string; project: string; llmsPath: string };
+  theneo?: { origin: string; project: string; llmsPath: string; llmsPaths?: string[] };
   postmanDocumenter?: { collectionUrl: string };
   /** Spec id written to the registry after import. */
   specId: string;
@@ -30,6 +30,7 @@ export const CYWARE_PRODUCT_PRESETS: Record<CywareProductId, CywareProductPreset
       origin: "https://ctixapiv3.cyware.com",
       project: "intel-exchange-api-reference",
       llmsPath: "/intel-exchange-api-reference/llms.txt",
+      llmsPaths: ["/intel-exchange-api-reference/llms.txt", "/llms.txt"],
     },
     specId: "cyware-ctix-api",
   },
@@ -42,6 +43,7 @@ export const CYWARE_PRODUCT_PRESETS: Record<CywareProductId, CywareProductPreset
       origin: "https://csapapi.cyware.com",
       project: "cyware-csap-api-reference",
       llmsPath: "/cyware-csap-api-reference/llms.txt",
+      llmsPaths: ["/llms.txt", "/cyware-csap-api-reference/llms.txt"],
     },
     specId: "cyware-csap-api",
   },
@@ -65,6 +67,11 @@ export const CYWARE_PRODUCT_PRESETS: Record<CywareProductId, CywareProductPreset
       origin: "https://orchestrateapi.cyware.com",
       project: "cyware-orchestrate-api-reference-theneo",
       llmsPath: "/cyware-orchestrate-api-reference-theneo/llms.txt",
+      llmsPaths: [
+        "/cyware-orchestrate-api-reference-theneo/llms.txt",
+        "/cyware-orchestrate-api-reference/llms.txt",
+        "/llms.txt",
+      ],
     },
     specId: "cyware-orchestrate-api",
   },
