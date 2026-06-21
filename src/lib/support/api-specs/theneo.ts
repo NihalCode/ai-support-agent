@@ -132,7 +132,7 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
       safeFetch(indexUrl, {
         headers: { Accept: "text/plain,*/*", "User-Agent": BROWSER_UA },
       }),
-    { maxAttempts: 3, baseMs: 400 }
+    { retries: 3, baseDelayMs: 400 }
   );
   if (!indexRes.ok) {
     throw new Error(`Theneo index fetch failed (${indexRes.status}): ${indexUrl}`);
