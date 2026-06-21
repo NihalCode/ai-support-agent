@@ -1,7 +1,8 @@
 import "server-only";
 
 import { safeFetch } from "../../ssrf";
-import type { NormalizedApiSpec, NormalizedEndpoint } from "../types";
+import { withRetry } from "../retry";
+import type { NormalizedApiSpec, NormalizedEndpoint, NormalizedParam } from "../types";
 import { effectForEndpoint, pathParamNames, specSlug } from "./normalize";
 import { parseMarkdownApi } from "./markdown";
 
@@ -24,67 +25,202 @@ export interface TheneoIngestResult {
   warnings: string[];
 }
 
+export interface LlmsEntry {
+  title: string;
+  url: string;
+  description: string;
+}
+
+/** Parse a Theneo llms.txt index — markdown links to .md pages. */
+export function parseLlmsIndex(text: string): LlmsEntry[] {
+  const entries: LlmsEntry[] = [];
+  const seen = new Set<string>();
+  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+?\.md)\)\s*:?\s*([^\n]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const url = m[2].trim();
+    if (seen.has(url)) continue;
+    seen.add(url);
+    entries.push({ title: m[1].trim(), url, description: (m[3] || "").trim() });
+  }
+
+  // Fallback: bare .md paths on their own line.
+  if (entries.length === 0) {
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      const bare = trimmed.match(/^(?:-\s*)?(\S+\.md)\s*$/);
+      if (bare) {
+        entries.push({ title: bare[1], url: bare[1], description: "" });
+      }
+    }
+  }
+
+  return entries;
+}
+
+/** Parse a Cyware/Theneo endpoint page (description + JSON block in <pre>). */
+export function parseCywareEndpointPre(preText: string): {
+  method: string;
+  path: string;
+  description: string;
+  queryParams: NormalizedParam[];
+  pathParams: NormalizedParam[];
+} | null {
+  const braceIdx = preText.indexOf("\n{");
+  if (braceIdx === -1) return null;
+  const description = preText.slice(0, braceIdx).trim();
+  try {
+    const spec = JSON.parse(preText.slice(braceIdx + 1)) as {
+      endpoints?: { method?: string; path?: string };
+      request?: {
+        query?: Array<{ name: string; isRequired?: boolean; description?: string }>;
+        path?: Array<{ name: string; isRequired?: boolean; description?: string }>;
+      };
+    };
+    const ep = spec.endpoints;
+    if (!ep?.method || !ep?.path) return null;
+    const path = ep.path.startsWith("/") ? ep.path : `/${ep.path}`;
+    return {
+      method: ep.method.toUpperCase(),
+      path,
+      description,
+      queryParams: (spec.request?.query ?? []).map((q) => ({
+        name: q.name,
+        location: "query" as const,
+        required: q.isRequired === true,
+        description: q.description,
+      })),
+      pathParams: (spec.request?.path ?? []).map((p) => ({
+        name: p.name,
+        location: "path" as const,
+        required: p.isRequired !== false,
+        description: p.description,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDoc(url: string): Promise<string | null> {
+  try {
+    const res = await withRetry(
+      () =>
+        safeFetch(url, {
+          headers: {
+            Accept: "text/html,text/plain,*/*",
+            "User-Agent": BROWSER_UA,
+          },
+        }),
+      { retries: 3, baseDelayMs: 400 }
+    );
+    if (!res.ok) return null;
+    return res.text;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch a Theneo llms.txt index + per-page .md exports and build a NormalizedApiSpec. */
 export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<TheneoIngestResult> {
   const warnings: string[] = [];
   const llmsPath = opts.llmsPath ?? `/${opts.project}/llms.txt`;
   const indexUrl = `${opts.origin.replace(/\/$/, "")}${llmsPath}`;
 
-  const indexRes = await safeFetch(indexUrl, {
-    headers: { Accept: "text/plain,*/*", "User-Agent": BROWSER_UA },
-  });
+  const indexRes = await withRetry(
+    () =>
+      safeFetch(indexUrl, {
+        headers: { Accept: "text/plain,*/*", "User-Agent": BROWSER_UA },
+      }),
+    { maxAttempts: 3, baseMs: 400 }
+  );
   if (!indexRes.ok) {
     throw new Error(`Theneo index fetch failed (${indexRes.status}): ${indexUrl}`);
   }
 
-  const mdPaths = indexRes.text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.endsWith(".md"));
+  const entries = parseLlmsIndex(indexRes.text);
+  if (entries.length === 0) {
+    warnings.push("llms.txt contained no markdown .md links — index format may have changed.");
+  }
 
-  const maxPages = opts.maxPages ?? 300;
-  const toFetch = mdPaths.slice(0, maxPages);
-  if (mdPaths.length > maxPages) {
-    warnings.push(`Indexed only first ${maxPages} of ${mdPaths.length} doc pages.`);
+  const maxPages = opts.maxPages ?? 600;
+  const toFetch = entries.slice(0, maxPages);
+  if (entries.length > maxPages) {
+    warnings.push(`Indexed only first ${maxPages} of ${entries.length} doc pages.`);
   }
 
   const endpoints: NormalizedEndpoint[] = [];
   const seen = new Set<string>();
   const markdownParts: string[] = [];
 
-  const concurrency = 8;
+  const concurrency = 10;
   for (let i = 0; i < toFetch.length; i += concurrency) {
     const batch = toFetch.slice(i, i + concurrency);
     const pages = await Promise.all(
-      batch.map(async (rel) => {
-        const url = `${opts.origin.replace(/\/$/, "")}/${opts.project}/${rel.replace(/^\//, "")}`;
-        try {
-          const res = await safeFetch(url, {
-            headers: { Accept: "text/html,text/plain,*/*", "User-Agent": BROWSER_UA },
-          });
-          if (!res.ok) return null;
-          return { rel, text: extractTheneoPage(res.text) };
-        } catch {
-          return null;
-        }
+      batch.map(async (entry) => {
+        const url = entry.url.startsWith("http")
+          ? entry.url
+          : `${opts.origin.replace(/\/$/, "")}/${opts.project}/${entry.url.replace(/^\//, "")}`;
+        const html = await fetchDoc(url);
+        if (!html) return null;
+        const text = extractTheneoPage(html);
+        return { entry, text };
       })
     );
+
     for (const page of pages) {
       if (!page?.text) continue;
       markdownParts.push(page.text);
+
+      const parsed = parseCywareEndpointPre(page.text);
+      if (parsed) {
+        const key = `${parsed.method} ${parsed.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        endpoints.push({
+          name: page.entry.title || key,
+          description: (parsed.description || page.entry.description).slice(0, 400),
+          method: parsed.method,
+          path: parsed.path,
+          headersRequired: [],
+          headersOptional: [],
+          pathParams:
+            parsed.pathParams.length > 0
+              ? parsed.pathParams
+              : pathParamNames(parsed.path).map((n) => ({ name: n, location: "path" as const, required: true })),
+          queryParams: parsed.queryParams,
+          requiredFields: [],
+          optionalFields: [],
+          responses: [],
+          effect: effectForEndpoint(parsed.method, parsed.description),
+        });
+        continue;
+      }
+
       for (const ep of endpointsFromTheneoText(page.text)) {
         const key = `${ep.method} ${ep.path}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        endpoints.push(ep);
+        endpoints.push({ ...ep, name: page.entry.title || ep.name });
       }
     }
   }
 
   if (endpoints.length === 0 && markdownParts.length > 0) {
     const mdSpec = parseMarkdownApi(markdownParts.join("\n\n"), opts.name ?? opts.project);
-    endpoints.push(...mdSpec.endpoints);
-    warnings.push("Used markdown fallback parser for endpoint extraction.");
+    for (const ep of mdSpec.endpoints) {
+      const key = `${ep.method} ${ep.path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      endpoints.push(ep);
+    }
+    if (endpoints.length > 0) {
+      warnings.push("Used markdown fallback parser for endpoint extraction.");
+    }
+  }
+
+  if (endpoints.length === 0 && toFetch.length === 0) {
+    warnings.push("No doc pages were fetched — the host may block server requests (403).");
   }
 
   const name = opts.name ?? opts.project.replace(/-/g, " ");
@@ -92,14 +228,16 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
     id: specSlug(name),
     name,
     baseUrl: guessBaseUrl(markdownParts.join("\n")) ?? opts.origin,
-    authType: /api[-_\s]?key|bearer|authorization/i.test(markdownParts.join("\n")) ? "api_key" : "none",
+    authType: /api[-_\s]?key|bearer|authorization|accessid|signature/i.test(markdownParts.join("\n"))
+      ? "api_key"
+      : "none",
     sourceKind: "markdown",
     sourceUrl: indexUrl,
     endpoints,
     createdAt: new Date().toISOString(),
   };
 
-  return { spec, pagesFetched: toFetch.length, pagesTotal: mdPaths.length, warnings };
+  return { spec, pagesFetched: toFetch.length, pagesTotal: entries.length, warnings };
 }
 
 /** Extract inner text from a Theneo .md HTML export (single <pre> block). */
@@ -123,7 +261,6 @@ function decodeEntities(input: string): string {
 function endpointsFromTheneoText(text: string): NormalizedEndpoint[] {
   const out: NormalizedEndpoint[] = [];
 
-  // JSON endpoint export: { "method": "GET", "path": "/v3/..." }
   const jsonRe = /"method"\s*:\s*"(GET|POST|PUT|PATCH|DELETE)"[\s\S]*?"path"\s*:\s*"([^"]+)"/gi;
   let jm: RegExpExecArray | null;
   while ((jm = jsonRe.exec(text)) !== null) {
@@ -140,14 +277,15 @@ function endpointsFromTheneoText(text: string): NormalizedEndpoint[] {
 }
 
 function makeEndpoint(method: string, path: string, context: string): NormalizedEndpoint {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return {
-    name: `${method} ${path}`.slice(0, 120),
+    name: `${method} ${normalizedPath}`.slice(0, 120),
     description: context.replace(/\s+/g, " ").slice(0, 400),
     method: method.toUpperCase(),
-    path,
+    path: normalizedPath,
     headersRequired: [],
     headersOptional: [],
-    pathParams: pathParamNames(path).map((n) => ({ name: n, location: "path" as const, required: true })),
+    pathParams: pathParamNames(normalizedPath).map((n) => ({ name: n, location: "path" as const, required: true })),
     queryParams: [],
     requiredFields: [],
     optionalFields: [],

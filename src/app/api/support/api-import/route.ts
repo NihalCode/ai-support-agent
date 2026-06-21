@@ -11,6 +11,7 @@ import { audit } from "@/lib/support/audit";
 import { redact } from "@/lib/support/redact";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * Import an API source (OpenAPI/Swagger/Postman/markdown/cURL) by raw content

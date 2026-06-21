@@ -35,7 +35,7 @@ export async function importCywareProduct(
       project: preset.theneo.project,
       llmsPath: preset.theneo.llmsPath,
       name: preset.name,
-      maxPages: opts.maxPages,
+      maxPages: productId === "ctix" ? 200 : opts.maxPages ?? 300,
     });
     spec = result.spec;
     spec.id = preset.specId;
