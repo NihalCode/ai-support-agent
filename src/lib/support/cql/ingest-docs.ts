@@ -30,14 +30,27 @@ export interface CqlIngestResult {
   warnings: string[];
 }
 
-export async function ingestCqlDocs(url = DEFAULT_CQL_DOC_URL): Promise<CqlIngestResult> {
+export async function ingestCqlDocs(
+  url = DEFAULT_CQL_DOC_URL,
+  directContent?: string
+): Promise<CqlIngestResult> {
   const warnings: string[] = [];
-  const res = await safeFetch(url, {
-    headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "ai-support-agent" },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch CQL docs (${res.status})`);
+  let text: string;
 
-  const text = htmlToText(res.text);
+  if (directContent?.trim()) {
+    text = directContent.trim();
+  } else {
+    const res = await safeFetch(url, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml,text/plain,*/*",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      },
+    });
+    if (!res.ok) throw new Error(`Failed to fetch CQL docs (${res.status})`);
+    text = htmlToText(res.text);
+  }
+
   if (text.length < 400) {
     warnings.push(
       "Fetched CQL page is very short — it may be a JavaScript-rendered SPA. " +

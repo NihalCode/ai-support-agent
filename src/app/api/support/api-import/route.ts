@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import type { ApiImportRequest } from "@/lib/support/types";
 import { normalizeApiSource } from "@/lib/support/api-specs";
-import { indexSpec, registerSpec, listSpecs } from "@/lib/support/api-specs/registry";
+import { indexSpec, registerSpec, listSpecs, removeSpec } from "@/lib/support/api-specs/registry";
+import { importCywareProduct, listCywareProductImportStatus } from "@/lib/support/api-specs/cyware-import";
+import { ingestTheneoDocs, looksLikeTheneoUrl } from "@/lib/support/api-specs/theneo";
+import { ingestPostmanDocumenter, looksLikePostmanDocumenterUrl } from "@/lib/support/api-specs/postman-documenter";
+import type { CywareProductId } from "@/lib/support/cyware-products";
 import { safeFetch } from "@/lib/ssrf";
 import { audit } from "@/lib/support/audit";
 import { redact } from "@/lib/support/redact";
@@ -24,21 +28,99 @@ export async function GET() {
     authType: s.authType,
     endpoints: s.endpoints.length,
   }));
-  return NextResponse.json({ specs });
+  return NextResponse.json({ specs, cywareProducts: listCywareProductImportStatus() });
 }
 
 export async function POST(req: Request) {
-  let body: ApiImportRequest;
+  let body: ApiImportRequest & { cywareProduct?: CywareProductId; delete?: string };
   try {
-    body = (await req.json()) as ApiImportRequest;
+    body = (await req.json()) as ApiImportRequest & { cywareProduct?: CywareProductId; delete?: string };
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  // Delete a registered spec.
+  if (body.delete) {
+    const ok = removeSpec(body.delete);
+    return NextResponse.json({ deleted: ok, id: body.delete });
+  }
+
+  // One-click Cyware product import (CSAP, CFTR, Orchestrate, CTIX).
+  if (body.cywareProduct) {
+    try {
+      const result = await importCywareProduct(body.cywareProduct, { index: body.index !== false });
+      await audit({
+        action: "api-import:cyware-product",
+        target: body.cywareProduct,
+        approved: true,
+        provider: body.cywareProduct,
+        details: result.detail,
+      });
+      return NextResponse.json({
+        product: body.cywareProduct,
+        spec: summarize(result.spec),
+        endpoints: result.spec.endpoints.length,
+        indexed: result.indexed,
+        warnings: result.warnings,
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: redact(err instanceof Error ? err.message : "Cyware product import failed") },
+        { status: 502 }
+      );
+    }
   }
 
   let content = body.content?.trim() ?? "";
   const sourceUrl = body.url?.trim();
 
   if (!content && sourceUrl) {
+    // Cyware Theneo doc site → llms.txt ingest.
+    if (looksLikeTheneoUrl(sourceUrl)) {
+      try {
+        const u = new URL(sourceUrl);
+        const parts = u.pathname.split("/").filter(Boolean);
+        const project = parts[0] ?? "api-reference";
+        const result = await ingestTheneoDocs({
+          origin: u.origin,
+          project,
+          name: body.name ?? project,
+        });
+        let spec = result.spec;
+        if (body.name) spec = { ...spec, name: body.name };
+        registerSpec(spec);
+        let indexResult = null;
+        if (body.index !== false) indexResult = await indexSpec(spec);
+        return NextResponse.json({
+          spec: summarize(spec),
+          endpoints: spec.endpoints.length,
+          indexed: indexResult,
+          warnings: result.warnings,
+          pagesFetched: result.pagesFetched,
+        });
+      } catch (err) {
+        return NextResponse.json({ error: redact(err instanceof Error ? err.message : "Theneo ingest failed") }, { status: 502 });
+      }
+    }
+
+    // Postman Documenter (CFTR) → collection JSON.
+    if (looksLikePostmanDocumenterUrl(sourceUrl)) {
+      try {
+        const { spec, collectionUrl } = await ingestPostmanDocumenter(sourceUrl, body.name);
+        registerSpec(spec);
+        let indexResult = null;
+        if (body.index !== false) indexResult = await indexSpec(spec);
+        return NextResponse.json({
+          spec: summarize(spec),
+          endpoints: spec.endpoints.length,
+          indexed: indexResult,
+          collectionUrl,
+        });
+      } catch (err) {
+        return NextResponse.json({ error: redact(err instanceof Error ? err.message : "Postman import failed") }, { status: 502 });
+      }
+    }
+
     try {
       const res = await safeFetch(sourceUrl, { headers: { Accept: "application/json, text/yaml, text/plain, */*" } });
       if (!res.ok) {

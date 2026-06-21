@@ -5,11 +5,14 @@ import {
   hasPinecone,
   hasGitHub,
   hasJira,
-  hasCyware,
   hasMcp,
   maskSecret,
+  configuredCywareProducts,
 } from "@/lib/support/config";
+import type { CywareProductId } from "@/lib/support/cyware-products";
 import { getJiraTickets, getGitHubTickets, MOCK_REPO } from "@/lib/support/connectors";
+import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
+import { serverStatuses } from "@/lib/support/mcp/registry";
 
 export const runtime = "nodejs";
 
@@ -22,19 +25,16 @@ interface ConnectorHealth {
 }
 
 /**
- * Connector + integration health checks. Performs a live ping only for
- * configured connectors (Jira, GitHub). Secrets are never returned — only
- * masked presence + booleans.
+ * Connector + integration health checks. Live ping for Jira, GitHub, Cyware
+ * products, and MCP servers. Secrets are masked — never returned in full.
  */
 export async function GET() {
   const cfg = getConfig();
   const connectors: ConnectorHealth[] = [];
 
-  // OpenAI / Pinecone — presence only (no spend on health checks).
   connectors.push({ name: "openai", configured: hasOpenAI(cfg), mode: hasOpenAI(cfg) ? "live" : "mock" });
   connectors.push({ name: "pinecone", configured: hasPinecone(cfg), mode: hasPinecone(cfg) ? "live" : "mock" });
 
-  // GitHub.
   try {
     const { connector, mock } = getGitHubTickets(MOCK_REPO);
     const ping = connector.testConnection ? await connector.testConnection() : { ok: !mock, detail: mock ? "mock" : "live" };
@@ -43,7 +43,6 @@ export async function GET() {
     connectors.push({ name: "github", configured: hasGitHub(cfg), mode: "mock", ok: false, detail: String(err) });
   }
 
-  // Jira.
   try {
     const { connector, mock } = getJiraTickets();
     const ping = !mock && connector.testConnection ? await connector.testConnection() : { ok: !mock, detail: mock ? "mock data (no JIRA_* env)" : "live" };
@@ -52,36 +51,51 @@ export async function GET() {
     connectors.push({ name: "jira", configured: hasJira(cfg), mode: "mock", ok: false, detail: String(err) });
   }
 
-  // Cyware.
-  if (hasCyware(cfg)) {
-    try {
-      const { getCywareConnector } = await import("@/lib/support/connectors/cyware");
-      const ping = await getCywareConnector().testConnection();
-      connectors.push({ name: "cyware", configured: true, mode: "live", ok: ping.ok, detail: ping.detail });
-    } catch (err) {
-      connectors.push({ name: "cyware", configured: true, mode: "live", ok: false, detail: String(err) });
+  for (const productId of ["ctix", "csap", "cftr", "orchestrate"] as CywareProductId[]) {
+    const conn = getCywareProductConnector(productId);
+    if (conn.configured) {
+      try {
+        const ping = await conn.testConnection();
+        connectors.push({ name: `cyware-${productId}`, configured: true, mode: "live", ok: ping.ok, detail: ping.detail });
+      } catch (err) {
+        connectors.push({ name: `cyware-${productId}`, configured: true, mode: "live", ok: false, detail: String(err) });
+      }
+    } else {
+      connectors.push({ name: `cyware-${productId}`, configured: false, mode: "n/a", detail: "set env vars + import spec" });
     }
-  } else {
-    connectors.push({ name: "cyware", configured: false, mode: "n/a" });
   }
 
-  // MCP servers.
-  connectors.push({
-    name: "mcp",
-    configured: hasMcp(cfg),
-    mode: hasMcp(cfg) ? "live" : "n/a",
-    detail: hasMcp(cfg) ? `${cfg.mcpServers.length} server(s) configured` : "none",
-  });
+  if (hasMcp(cfg)) {
+    try {
+      const statuses = await serverStatuses();
+      const connected = statuses.filter((s) => s.connected).length;
+      connectors.push({
+        name: "mcp",
+        configured: true,
+        mode: "live",
+        ok: connected > 0,
+        detail: `${connected}/${statuses.length} server(s) connected`,
+      });
+    } catch (err) {
+      connectors.push({ name: "mcp", configured: true, mode: "live", ok: false, detail: String(err) });
+    }
+  } else {
+    connectors.push({ name: "mcp", configured: false, mode: "n/a", detail: "none" });
+  }
 
   return NextResponse.json({
     appEnv: cfg.appEnv,
     readOnly: cfg.readOnly,
+    cywareConfigured: configuredCywareProducts(),
     secrets: {
       openai: maskSecret(cfg.openaiApiKey),
       pinecone: maskSecret(cfg.pinecone.apiKey),
       github: maskSecret(cfg.github.token),
       jira: maskSecret(cfg.jira.apiToken),
-      cyware: maskSecret(cfg.cyware.apiKey),
+      ctix: maskSecret(cfg.cywareProducts.ctix.apiKey),
+      csap: maskSecret(cfg.cywareProducts.csap.apiKey),
+      cftr: maskSecret(cfg.cywareProducts.cftr.apiKey),
+      orchestrate: maskSecret(cfg.cywareProducts.orchestrate.apiKey),
     },
     connectors,
   });

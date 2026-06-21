@@ -1,11 +1,24 @@
 import "server-only";
 
+import type { CywareProductId } from "./cyware-products";
+import { CYWARE_PRODUCT_PRESETS } from "./cyware-products";
+
 /**
  * Central auth/config service. Reads all credentials from environment
  * variables — never hardcode secrets. Every integration is optional; when a
  * credential is missing the corresponding service falls back to a mock/in-memory
  * implementation so the app always runs.
  */
+
+export interface CywareProductConfig {
+  id: CywareProductId;
+  name: string;
+  baseUrl: string | null;
+  apiKey: string | null;
+  clientId: string | null;
+  clientSecret: string | null;
+  authType: string;
+}
 
 /** A single MCP server entry parsed from MCP_SERVER_CONFIG_JSON. */
 export interface McpServerConfig {
@@ -41,6 +54,7 @@ export interface SupportConfig {
     apiToken: string | null;
     projectKey: string | null;
   };
+  /** @deprecated Use cywareProducts.ctix — kept for backward compatibility. */
   cyware: {
     baseUrl: string | null;
     apiKey: string | null;
@@ -48,6 +62,7 @@ export interface SupportConfig {
     clientSecret: string | null;
     authType: string;
   };
+  cywareProducts: Record<CywareProductId, CywareProductConfig>;
   mcpServers: McpServerConfig[];
   /** Optional durable backends. When unset the app uses file/in-memory. */
   databaseUrl: string | null;
@@ -96,7 +111,55 @@ function parseMcpServers(raw: string | null): McpServerConfig[] {
   }
 }
 
+function readProductEnv(
+  prefix: string,
+  fallback?: { baseUrl?: string | null; apiKey?: string | null; clientId?: string | null; clientSecret?: string | null; authType?: string }
+): Omit<CywareProductConfig, "id" | "name"> {
+  return {
+    baseUrl: clean(process.env[`${prefix}_BASE_URL`]) ?? fallback?.baseUrl ?? null,
+    apiKey: clean(process.env[`${prefix}_API_KEY`]) ?? fallback?.apiKey ?? null,
+    clientId: clean(process.env[`${prefix}_CLIENT_ID`]) ?? fallback?.clientId ?? null,
+    clientSecret: clean(process.env[`${prefix}_CLIENT_SECRET`]) ?? fallback?.clientSecret ?? null,
+    authType: clean(process.env[`${prefix}_AUTH_TYPE`]) ?? fallback?.authType ?? "api_key",
+  };
+}
+
+export function getCywareProductConfig(id: CywareProductId): CywareProductConfig {
+  const preset = CYWARE_PRODUCT_PRESETS[id];
+  const cfg = getConfig();
+  return cfg.cywareProducts[id] ?? {
+    id,
+    name: preset.name,
+    baseUrl: null,
+    apiKey: null,
+    clientId: null,
+    clientSecret: null,
+    authType: "api_key",
+  };
+}
+
 export function getConfig(): SupportConfig {
+  const ctixLegacy = {
+    baseUrl: clean(process.env.CYWARE_BASE_URL) ?? clean(process.env.CTIX_BASE_URL),
+    apiKey: clean(process.env.CYWARE_API_KEY) ?? clean(process.env.CTIX_API_KEY),
+    clientId: clean(process.env.CYWARE_CLIENT_ID) ?? clean(process.env.CTIX_CLIENT_ID),
+    clientSecret: clean(process.env.CYWARE_CLIENT_SECRET) ?? clean(process.env.CTIX_CLIENT_SECRET),
+    authType: clean(process.env.CYWARE_AUTH_TYPE) ?? clean(process.env.CTIX_AUTH_TYPE) ?? "api_key",
+  };
+
+  const cywareProducts: Record<CywareProductId, CywareProductConfig> = {
+    ctix: { id: "ctix", name: CYWARE_PRODUCT_PRESETS.ctix.name, ...readProductEnv("CTIX", ctixLegacy) },
+    csap: { id: "csap", name: CYWARE_PRODUCT_PRESETS.csap.name, ...readProductEnv("CSAP") },
+    cftr: { id: "cftr", name: CYWARE_PRODUCT_PRESETS.cftr.name, ...readProductEnv("CFTR") },
+    orchestrate: { id: "orchestrate", name: CYWARE_PRODUCT_PRESETS.orchestrate.name, ...readProductEnv("ORCHESTRATE") },
+  };
+
+  // CTIX also accepts legacy CYWARE_* without CTIX_ prefix.
+  if (!cywareProducts.ctix.baseUrl) cywareProducts.ctix.baseUrl = ctixLegacy.baseUrl;
+  if (!cywareProducts.ctix.apiKey) cywareProducts.ctix.apiKey = ctixLegacy.apiKey;
+  if (!cywareProducts.ctix.clientId) cywareProducts.ctix.clientId = ctixLegacy.clientId;
+  if (!cywareProducts.ctix.clientSecret) cywareProducts.ctix.clientSecret = ctixLegacy.clientSecret;
+
   return {
     openaiApiKey: clean(process.env.OPENAI_API_KEY),
     openaiModel: clean(process.env.OPENAI_MODEL) ?? "gpt-4o-mini",
@@ -119,13 +182,8 @@ export function getConfig(): SupportConfig {
       apiToken: clean(process.env.JIRA_API_TOKEN),
       projectKey: clean(process.env.JIRA_PROJECT_KEY),
     },
-    cyware: {
-      baseUrl: clean(process.env.CYWARE_BASE_URL),
-      apiKey: clean(process.env.CYWARE_API_KEY),
-      clientId: clean(process.env.CYWARE_CLIENT_ID),
-      clientSecret: clean(process.env.CYWARE_CLIENT_SECRET),
-      authType: clean(process.env.CYWARE_AUTH_TYPE) ?? "api_key",
-    },
+    cyware: ctixLegacy,
+    cywareProducts,
     mcpServers: parseMcpServers(clean(process.env.MCP_SERVER_CONFIG_JSON)),
     databaseUrl: clean(process.env.DATABASE_URL),
     redisUrl: clean(process.env.REDIS_URL),
@@ -151,7 +209,18 @@ export function hasJira(c = getConfig()): boolean {
   return Boolean(c.jira.baseUrl && c.jira.email && c.jira.apiToken);
 }
 export function hasCyware(c = getConfig()): boolean {
-  return Boolean(c.cyware.baseUrl && (c.cyware.apiKey || c.cyware.clientSecret));
+  return hasCywareProduct("ctix", c);
+}
+
+export function hasCywareProduct(id: CywareProductId, c = getConfig()): boolean {
+  const p = c.cywareProducts[id];
+  return Boolean(p.baseUrl && (p.apiKey || p.clientSecret));
+}
+
+export function configuredCywareProducts(c = getConfig()): CywareProductId[] {
+  return (["ctix", "csap", "cftr", "orchestrate"] as CywareProductId[]).filter((id) =>
+    hasCywareProduct(id, c)
+  );
 }
 export function hasMcp(c = getConfig()): boolean {
   return c.mcpServers.length > 0;

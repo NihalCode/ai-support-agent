@@ -35,7 +35,14 @@ export async function analyzeIssue(opts: {
   // Also pull from the shared knowledge base (past resolutions / runbooks /
   // error logs) so recurring issues resolve with prior context cited.
   const { knowledgeNamespace } = await import("./knowledge");
-  let { chunks } = await retrieve(ref, query || "error", 12, [knowledgeNamespace()]);
+  const { cqlNamespace } = await import("./cql/ingest-docs");
+  const { listSpecs } = await import("./api-specs/registry");
+  const { apiSpecNamespace } = await import("./api-specs");
+  const extraNamespaces = [knowledgeNamespace(), cqlNamespace()];
+  for (const spec of listSpecs()) {
+    extraNamespaces.push(apiSpecNamespace(spec.id));
+  }
+  let { chunks } = await retrieve(ref, query || "error", 12, extraNamespaces);
 
   // Lazy ingest: if this repo hasn't been indexed yet, ingest it on demand so
   // the very first analysis still has RAG context to ground itself in.
@@ -46,7 +53,7 @@ export async function analyzeIssue(opts: {
         includeIssues: true,
         includePRs: true,
       });
-      ({ chunks } = await retrieve(ref, query || "error", 12, [knowledgeNamespace()]));
+      ({ chunks } = await retrieve(ref, query || "error", 12, extraNamespaces));
     } catch {
       // proceed with no context — analysis degrades gracefully
     }

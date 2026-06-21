@@ -361,8 +361,10 @@ export interface NormalizedApiSpec {
 export interface ApiImportRequest {
   /** Raw content (OpenAPI/Swagger/Postman JSON or YAML, markdown, cURL). */
   content?: string;
-  /** Or a public docs/spec URL to fetch. */
+  /** Or a public docs/spec URL to fetch (OpenAPI, Postman, Theneo, Postman Documenter). */
   url?: string;
+  /** One-click import for a built-in Cyware product: ctix | csap | cftr | orchestrate */
+  cywareProduct?: "ctix" | "csap" | "cftr" | "orchestrate";
   /** Override/hint for the parser; auto-detected when omitted. */
   kind?: ApiSourceKind;
   name?: string;

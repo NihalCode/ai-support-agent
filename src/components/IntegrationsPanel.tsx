@@ -12,6 +12,7 @@ import { Card, Button, Badge, Spinner } from "./ui";
 
 const SUBTABS = [
   ["health", "Connectors"],
+  ["cyware", "Cyware APIs"],
   ["api", "API & Postman"],
   ["mcp", "MCP servers"],
   ["cql", "Cyware CQL"],
@@ -46,6 +47,7 @@ export function IntegrationsPanel() {
         ))}
       </div>
       {tab === "health" && <HealthSection />}
+      {tab === "cyware" && <CywareApisSection />}
       {tab === "api" && <ApiImportSection />}
       {tab === "mcp" && <McpSection />}
       {tab === "cql" && <CqlSection />}
@@ -95,11 +97,105 @@ function HealthSection() {
             </div>
           ))}
           <p style={mutedNote}>
-            Credentials are read from server env vars and shown masked only. Set them in
-            <code> .env.local</code> or your host (Vercel) — see the README.
+            Credentials are read from server env vars and shown masked only. Jira: <code>JIRA_BASE_URL</code>,{" "}
+            <code>JIRA_EMAIL</code>, <code>JIRA_API_TOKEN</code>. Cyware products: <code>CYWARE_*</code> (CTIX),{" "}
+            <code>CSAP_*</code>, <code>CFTR_*</code>, <code>ORCHESTRATE_*</code>. MCP: <code>MCP_SERVER_CONFIG_JSON</code>.
           </p>
         </div>
       )}
+    </Card>
+  );
+}
+
+/* ----------------------------- Cyware APIs -------------------------------- */
+
+interface CywareProvider {
+  id: string;
+  name: string;
+  kind: string;
+  configured: boolean;
+  endpoints: number;
+  specId?: string;
+  docsSiteUrl?: string;
+  baseUrl?: string | null;
+}
+
+function CywareApisSection() {
+  const [providers, setProviders] = useState<CywareProvider[]>([]);
+  const [specId, setSpecId] = useState("");
+  const [search, setSearch] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [out, setOut] = useState<unknown>(null);
+
+  const load = () => {
+    fetch("/api/support/cyware")
+      .then((r) => r.json())
+      .then((d) => setProviders((d.providers ?? []).filter((p: CywareProvider) => p.kind === "cyware")));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function importProduct(product: string) {
+    setBusy(product);
+    setOut(null);
+    try {
+      const res = await fetch("/api/support/api-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cywareProduct: product, index: true }),
+      });
+      setOut(await res.json());
+      load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function previewCall() {
+    if (!specId) return;
+    const res = await fetch("/api/support/api-execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ intent: "preview", specId, search: search || undefined }),
+    });
+    setOut(await res.json());
+  }
+
+  return (
+    <Card title="Cyware product APIs" right={<Button variant="ghost" onClick={load}>Refresh</Button>}>
+      <p style={mutedNote}>
+        Import API docs for CTIX, CSAP, CFTR, and Orchestrate, then preview/execute endpoints. Set product credentials in env before executing live calls.
+      </p>
+      <div style={{ display: "grid", gap: 10 }}>
+        {providers.map((p) => (
+          <div key={p.id} style={{ ...rowStyle, border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 600 }}>{p.name}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                {p.endpoints} endpoints · spec: {p.specId ?? "not imported"}
+              </div>
+              {p.docsSiteUrl && (
+                <a href={p.docsSiteUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                  Docs ↗
+                </a>
+              )}
+            </div>
+            <Badge label={p.configured ? "credentials set" : "no credentials"} />
+            <Button onClick={() => importProduct(p.id)} disabled={busy === p.id}>
+              {busy === p.id ? "Importing…" : "Import docs"}
+            </Button>
+          </div>
+        ))}
+      </div>
+      <label style={{ ...labelStyle, marginTop: 16 }}>Preview an API call (any imported spec)</label>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input value={specId} onChange={(e) => setSpecId(e.target.value)} placeholder="spec id e.g. cyware-cftr-api" style={{ ...inputStyle, width: 220 }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="describe endpoint e.g. list incidents" style={{ ...inputStyle, flex: 1 }} />
+        <Button onClick={previewCall} disabled={!specId}>Preview</Button>
+      </div>
+      {out != null && <Pre data={out} />}
     </Card>
   );
 }
@@ -114,6 +210,17 @@ function ApiImportSection() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
+  const [specs, setSpecs] = useState<{ id: string; name: string; endpoints: number; sourceKind: string }[]>([]);
+
+  const loadSpecs = () => {
+    fetch("/api/support/api-import")
+      .then((r) => r.json())
+      .then((d) => setSpecs(d.specs ?? []));
+  };
+
+  useEffect(() => {
+    loadSpecs();
+  }, []);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -135,6 +242,7 @@ function ApiImportSection() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
       setResult(data);
+      loadSpecs();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -144,7 +252,22 @@ function ApiImportSection() {
 
   return (
     <Card title="Import API spec / Postman collection">
-      <p style={mutedNote}>OpenAPI/Swagger (JSON or YAML), Postman collection, raw markdown docs, or cURL — auto-detected.</p>
+      <p style={mutedNote}>
+        OpenAPI/Swagger, Postman, cURL, markdown, Cyware Theneo doc URLs, or CFTR Postman Documenter URLs — auto-detected.
+      </p>
+      {specs.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Imported specs ({specs.length})</label>
+          {specs.map((s) => (
+            <div key={s.id} style={rowStyle}>
+              <code style={{ fontSize: 12 }}>{s.id}</code>
+              <span style={{ fontSize: 13 }}>{s.name}</span>
+              <Badge label={`${s.endpoints} ep`} />
+              <Badge label={s.sourceKind} />
+            </div>
+          ))}
+        </div>
+      )}
       <label style={labelStyle}>Upload a file</label>
       <input type="file" accept=".json,.yaml,.yml,.txt,.md" onChange={onFile} style={{ fontSize: 13 }} />
       <label style={{ ...labelStyle, marginTop: 12 }}>…or paste a public spec URL</label>
@@ -252,6 +375,8 @@ function McpSection() {
 
 function CqlSection() {
   const [query, setQuery] = useState("");
+  const [docUrl, setDocUrl] = useState("https://techdocs.cyware.com/ctix/en/cyware-query-language--cql-.html");
+  const [docContent, setDocContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [result, setResult] = useState<unknown>(null);
@@ -264,7 +389,7 @@ function CqlSection() {
       const res = await fetch("/api/support/cql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "index" }),
+        body: JSON.stringify({ intent: "index", url: docUrl || undefined, content: docContent || undefined }),
       });
       const data = await res.json();
       setMsg(res.ok ? `Indexed ${data.result.chunks} CQL doc chunks (${data.result.fetchedChars} chars).${data.result.warnings?.length ? " ⚠ " + data.result.warnings.join("; ") : ""}` : (data.error ?? "Index failed"));
@@ -290,8 +415,18 @@ function CqlSection() {
 
   return (
     <Card title="Cyware Query Language (CQL)">
-      <p style={mutedNote}>Index the live CQL docs once, then generate CQL grounded strictly in them (no invented syntax).</p>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <p style={mutedNote}>
+        Index CQL docs from{" "}
+        <a href="https://techdocs.cyware.com/ctix/en/cyware-query-language--cql-.html" target="_blank" rel="noreferrer">
+          techdocs.cyware.com
+        </a>
+        , then generate CQL grounded strictly in them (no invented syntax).
+      </p>
+      <label style={labelStyle}>Doc URL (optional if pasting content)</label>
+      <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} style={inputStyle} />
+      <label style={{ ...labelStyle, marginTop: 8 }}>Or paste CQL doc text directly</label>
+      <textarea value={docContent} onChange={(e) => setDocContent(e.target.value)} rows={3} placeholder="Paste CQL documentation if the URL is JS-rendered" style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace" }} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
         <Button onClick={index} disabled={indexing}>{indexing ? "Indexing docs…" : "Index CQL docs"}</Button>
         {indexing && <Spinner />}
       </div>

@@ -15,6 +15,8 @@ export const maxDuration = 60;
 interface CqlBody {
   intent?: "index" | "generate";
   url?: string;
+  /** Paste CQL doc text directly when the live URL is JS-rendered. */
+  content?: string;
   query?: string;
 }
 
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
 
   if (body.intent === "index") {
     try {
-      const result = await ingestCqlDocs(body.url || DEFAULT_CQL_DOC_URL);
+      const result = await ingestCqlDocs(body.url || DEFAULT_CQL_DOC_URL, body.content);
       await audit({
         action: "cql:index",
         target: result.url,

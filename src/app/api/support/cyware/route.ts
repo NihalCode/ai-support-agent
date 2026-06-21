@@ -1,26 +1,42 @@
 import { NextResponse } from "next/server";
-import { getCywareConnector, type CywareFlow } from "@/lib/support/connectors/cyware";
+import type { CywareProductId } from "@/lib/support/cyware-products";
+import { getCywareProductConnector, type CywareFlow } from "@/lib/support/connectors/cyware-product";
 import { listProviders } from "@/lib/support/providers";
-import { getConfig } from "@/lib/support/config";
+import { getConfig, configuredCywareProducts } from "@/lib/support/config";
 import { executeAction } from "@/lib/support/executor";
 import { redact } from "@/lib/support/redact";
 
 export const runtime = "nodejs";
 
 /**
- * Cyware API provider endpoint.
- *   GET                              → providers + Cyware connection status
- *   POST {intent:"preview", method, path, query?, body?, flow?}  → resolved + safety
- *   POST {intent:"execute", method, path, query?, body?, approved} → approval-gated call
- * All Cyware write actions require approval; reads run when allowed.
+ * Cyware multi-product API endpoint (CTIX, CSAP, CFTR, Orchestrate).
+ *   GET  ?product=ctix           → providers + connection status
+ *   POST {product?, intent, method, path, query?, body?, flow?, approved?}
  */
-export async function GET() {
-  const cyware = getCywareConnector();
-  const status = cyware.configured ? await cyware.testConnection() : { ok: false, detail: "not configured" };
-  return NextResponse.json({ providers: listProviders(), cyware: { configured: cyware.configured, ...status } });
+export async function GET(req: Request) {
+  const product = parseProduct(new URL(req.url).searchParams.get("product"));
+  const conn = getCywareProductConnector(product);
+  const status = conn.configured ? await conn.testConnection() : { ok: false, detail: "not configured" };
+
+  const statuses: Record<string, { configured: boolean; ok: boolean; detail: string }> = {};
+  for (const id of ["ctix", "csap", "cftr", "orchestrate"] as CywareProductId[]) {
+    const c = getCywareProductConnector(id);
+    statuses[id] = c.configured
+      ? { configured: true, ...(await c.testConnection()) }
+      : { configured: false, ok: false, detail: "not configured" };
+  }
+
+  return NextResponse.json({
+    providers: listProviders(),
+    product,
+    cyware: { configured: conn.configured, ...status },
+    products: statuses,
+    configured: configuredCywareProducts(),
+  });
 }
 
 interface CywareBody {
+  product?: CywareProductId;
   intent: "preview" | "execute";
   method?: string;
   path?: string;
@@ -32,6 +48,12 @@ interface CywareBody {
   approved?: boolean;
 }
 
+function parseProduct(raw: string | null | undefined): CywareProductId {
+  const p = (raw ?? "ctix").toLowerCase();
+  if (p === "csap" || p === "cftr" || p === "orchestrate" || p === "ctix") return p;
+  return "ctix";
+}
+
 export async function POST(req: Request) {
   let body: CywareBody;
   try {
@@ -40,12 +62,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const cyware = getCywareConnector();
+  const product = body.product ?? "ctix";
+  const cyware = getCywareProductConnector(product);
   if (!cyware.configured) {
-    return NextResponse.json({ error: "Cyware not configured (set CYWARE_BASE_URL + key)." }, { status: 400 });
+    return NextResponse.json(
+      { error: `${product.toUpperCase()} not configured (set ${product === "ctix" ? "CYWARE_" : product.toUpperCase() + "_"}BASE_URL + key).` },
+      { status: 400 }
+    );
   }
 
-  // Resolve a high-level flow to an endpoint when provided.
   let method = body.method;
   let path = body.path;
   let flowEndpoint;
@@ -53,7 +78,7 @@ export async function POST(req: Request) {
     const resolved = cyware.resolveFlow(body.flow);
     if (!resolved) {
       return NextResponse.json(
-        { error: `No endpoint found for flow "${body.flow}". Import a Cyware API spec first (POST /api/support/api-import).` },
+        { error: `No endpoint found for flow "${body.flow}". Import the ${product} API spec first.` },
         { status: 422 }
       );
     }
@@ -75,6 +100,7 @@ export async function POST(req: Request) {
 
   if (body.intent === "preview") {
     return NextResponse.json({
+      product,
       preview: {
         method: plan.method,
         url: redact(plan.url),
@@ -86,34 +112,38 @@ export async function POST(req: Request) {
     });
   }
 
-  // execute
   if (plan.safety.blocked) {
     return NextResponse.json({ error: plan.safety.reason }, { status: 403 });
   }
 
-  // Read-only calls run directly (no approval needed).
   if (plan.safety.safetyClass === "READ_ONLY") {
     try {
       const { safeFetch } = await import("@/lib/ssrf");
       const { audit } = await import("@/lib/support/audit");
-      const res = await safeFetch(plan.url, { method: plan.method, headers: plan.headers });
-      await audit({ action: "cyware:read", target: plan.url, approved: true, provider: "cyware", safetyClass: "READ_ONLY", details: `${plan.method} → ${res.status}` });
+      const res = await safeFetch(plan.url, { method: plan.method, headers: plan.headers, body: plan.body });
+      await audit({
+        action: `${product}:read`,
+        target: plan.url,
+        approved: true,
+        provider: product,
+        safetyClass: "READ_ONLY",
+        details: `${plan.method} → ${res.status}`,
+      });
       return NextResponse.json({ result: { ok: res.ok, status: res.status, detail: redact(res.text.slice(0, 2000)) } });
     } catch (err) {
       return NextResponse.json({ error: redact(err instanceof Error ? err.message : "request failed") }, { status: 502 });
     }
   }
 
-  // Write calls: approval-gated through the executor.
   if (getConfig().readOnly) {
     return NextResponse.json({ error: "Read-only mode enabled." }, { status: 403 });
   }
   if (!body.approved) {
-    return NextResponse.json({ error: "This Cyware write action requires approval.", safety: plan.safety }, { status: 403 });
+    return NextResponse.json({ error: "This write action requires approval.", safety: plan.safety }, { status: 403 });
   }
   try {
     const result = await executeAction(
-      { type: "api-call", provider: "cyware", method: plan.method, url: plan.url, headers: plan.headers, body: plan.body },
+      { type: "api-call", provider: product, method: plan.method, url: plan.url, headers: plan.headers, body: plan.body },
       { approved: true }
     );
     return NextResponse.json({ result: { ok: result.ok, detail: result.detail } });
