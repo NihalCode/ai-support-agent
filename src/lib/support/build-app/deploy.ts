@@ -10,6 +10,7 @@ import { runBuildPreflight, formatPreflightReport } from "./preflight";
 import {
   formatCommandLog,
   runCommand,
+  shouldMockProjectCommands,
   type CommandResult,
 } from "./command-runner";
 import { classifyBuildError } from "./error-classify";
@@ -25,6 +26,7 @@ export interface ProjectBuildResult {
 }
 
 export function createDeploymentPlan(projectId: string, target: DeploymentTarget): DeploymentPlan {
+  const readiness = checkVercelReadiness(projectId);
   const mock = isTestMode() || !process.env.VERCEL_TOKEN;
 
   return {
@@ -38,7 +40,10 @@ export function createDeploymentPlan(projectId: string, target: DeploymentTarget
       mock ? "Mock Vercel deploy (TEST_MODE or missing VERCEL_TOKEN)" : `Vercel ${target} deploy via API`,
       "Return deployment URL",
     ],
-    risks: target === "production" ? ["Production deploy affects live users."] : ["Preview deploy may expose WIP features."],
+    risks: [
+      ...(target === "production" ? ["Production deploy affects live users."] : ["Preview deploy may expose WIP features."]),
+      ...readiness.issues.filter((i) => !i.includes("mock")),
+    ],
     requiresApproval: true,
     mock,
   };
@@ -65,7 +70,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
     };
   }
 
-  const mockMode = isTestMode();
+  const mockMode = shouldMockProjectCommands();
   const mockFail = process.env.MOCK_BUILD_FAIL === "true";
   const preflight = runBuildPreflight(p.rootDir);
   const commands: CommandResult[] = [];
@@ -91,7 +96,11 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
 
   const preface = [
     formatPreflightReport(preflight),
-    mockMode ? "[MOCK MODE] Commands are simulated — install/build not executed on disk." : "",
+    mockMode
+      ? process.env.VERCEL === "1"
+        ? "[MOCK MODE] Vercel serverless — install/build simulated. Set BUILD_APP_REAL_COMMANDS=true for real npm on a worker with network + disk."
+        : "[MOCK MODE] Commands are simulated — install/build not executed on disk."
+      : "",
   ]
     .filter(Boolean)
     .join("\n\n");

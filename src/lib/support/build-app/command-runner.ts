@@ -1,9 +1,34 @@
 import "server-only";
 
 import { execSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { isTestMode } from "@/lib/test-mode";
 
 export type CommandStatus = "success" | "failed" | "cancelled" | "timed_out";
+
+/** Real npm install/build on Vercel serverless is unreliable (home dir, timeouts). */
+export function shouldMockProjectCommands(): boolean {
+  if (isTestMode()) return true;
+  if (process.env.BUILD_APP_REAL_COMMANDS === "true") return false;
+  if (process.env.VERCEL === "1") return true;
+  return false;
+}
+
+function npmEnvForCwd(cwd: string): NodeJS.ProcessEnv {
+  const cacheDir = path.join(cwd, ".npm-cache");
+  mkdirSync(cacheDir, { recursive: true });
+  return {
+    ...process.env,
+    HOME: cwd,
+    USERPROFILE: cwd,
+    npm_config_cache: cacheDir,
+    npm_config_update_notifier: "false",
+    CI: "true",
+    npm_config_fund: "false",
+    npm_config_audit: "false",
+  };
+}
 
 export interface CommandResult {
   command: string;
@@ -24,7 +49,7 @@ export function runCommand(
 ): CommandResult {
   const startedAt = new Date().toISOString();
 
-  if (opts.mock ?? isTestMode()) {
+  if (opts.mock ?? shouldMockProjectCommands()) {
     const exitCode = opts.mockExitCode ?? 0;
     const combined = opts.mockOutput ?? `[MOCK] ${command} in ${cwd}\n`;
     return {
@@ -46,7 +71,7 @@ export function runCommand(
       encoding: "utf8",
       timeout: opts.timeoutMs ?? 120_000,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CI: "true", npm_config_fund: "false", npm_config_audit: "false" },
+      env: npmEnvForCwd(cwd),
     });
     return {
       command,

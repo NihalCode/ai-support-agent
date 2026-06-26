@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { runBuildPreflight, formatPreflightReport } from "../build-app/preflight";
-import { runCommand, allCommandsSucceeded } from "../build-app/command-runner";
+import { runCommand, allCommandsSucceeded, shouldMockProjectCommands } from "../build-app/command-runner";
 import { classifyBuildError } from "../build-app/error-classify";
 import { canTransition } from "../build-app/workflow-state";
 import { handleBuildAppPlan } from "../build-app/orchestrate";
@@ -64,6 +64,21 @@ describe("command runner", () => {
     const bad = runCommand("npm test", process.cwd(), { mock: true, mockExitCode: 1 });
     expect(allCommandsSucceeded([ok])).toBe(true);
     expect(allCommandsSucceeded([ok, bad])).toBe(false);
+  });
+
+  it("defaults to mock on Vercel serverless", () => {
+    const prev = { VERCEL: process.env.VERCEL, TEST: process.env.TEST_MODE, REAL: process.env.BUILD_APP_REAL_COMMANDS };
+    delete process.env.TEST_MODE;
+    delete process.env.BUILD_APP_REAL_COMMANDS;
+    process.env.VERCEL = "1";
+    expect(shouldMockProjectCommands()).toBe(true);
+    process.env.BUILD_APP_REAL_COMMANDS = "true";
+    expect(shouldMockProjectCommands()).toBe(false);
+    process.env.VERCEL = prev.VERCEL;
+    if (prev.TEST === undefined) delete process.env.TEST_MODE;
+    else process.env.TEST_MODE = prev.TEST;
+    if (prev.REAL === undefined) delete process.env.BUILD_APP_REAL_COMMANDS;
+    else process.env.BUILD_APP_REAL_COMMANDS = prev.REAL;
   });
 });
 
