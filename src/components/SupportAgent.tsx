@@ -3,7 +3,7 @@
 import { WorkspaceProvider } from "./ide/WorkspaceProvider";
 import { AppShell } from "./ide/AppShell";
 
-/** Root UI — Cursor-style AI investigation IDE shell. */
+/** Root UI — AI Support Studio workspace shell. */
 export function SupportAgent() {
   return (
     <WorkspaceProvider>

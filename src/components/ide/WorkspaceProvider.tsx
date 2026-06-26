@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   type ReactNode,
 } from "react";
 import type {
@@ -34,6 +35,14 @@ import {
   getActiveGroup,
 } from "./workspace-state";
 import { SLASH_COMMANDS } from "./types";
+import {
+  clientLayoutDefaults,
+  developerLayoutDefaults,
+  productConfig,
+  readStoredProductMode,
+  PRODUCT_MODE_STORAGE_KEY,
+  type ProductMode,
+} from "@/lib/product-config";
 
 const STORAGE_KEY = "ai-support-ide-layout-v2";
 
@@ -182,12 +191,34 @@ export interface WorkspaceContextValue {
   runCommand: (commandId: string) => void;
   handleSlashInput: (input: string) => boolean;
   setLayoutSize: (partial: Partial<WorkspaceState["layout"]>) => void;
+  productMode: ProductMode;
+  isClientMode: boolean;
+  setProductMode: (mode: ProductMode) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialWorkspaceState);
+  const [productMode, setProductModeState] = useState<ProductMode>(productConfig.defaultMode);
+
+  useEffect(() => {
+    setProductModeState(readStoredProductMode());
+  }, []);
+
+  const setProductMode = useCallback((mode: ProductMode) => {
+    setProductModeState(mode);
+    try {
+      localStorage.setItem(PRODUCT_MODE_STORAGE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+    const layoutPatch = mode === "developer" ? developerLayoutDefaults() : clientLayoutDefaults();
+    dispatch({ type: "SET_LAYOUT", partial: layoutPatch });
+    if (mode === "client") {
+      dispatch({ type: "SET_ACTIVITY", activity: "home" });
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -222,6 +253,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     fetch("/api/support/status")
       .then((r) => r.json())
       .then((s) => {
+        if (readStoredProductMode() === "client") {
+          dispatch({ type: "SET_PROBLEMS", problems: [] });
+          return;
+        }
         const problems: WorkspaceState["problems"] = [];
         const integ = s.integrations ?? {};
         if (!integ.jira?.configured) problems.push({ id: "jira", severity: "warn", message: "Jira credentials missing — ticket search uses mock data." });
@@ -305,6 +340,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         break;
       case "search":
         dispatch({ type: "SET_ACTIVITY", activity: "search" });
+        break;
+      case "home":
+        dispatch({ type: "SET_ACTIVITY", activity: "home" });
         break;
       default:
         break;
@@ -418,8 +456,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       runCommand,
       handleSlashInput,
       setLayoutSize: (partial) => dispatch({ type: "SET_LAYOUT", partial }),
+      productMode,
+      isClientMode: productMode === "client",
+      setProductMode,
     }),
-    [state, runCommand, handleSlashInput, pinEvidenceToInvestigation]
+    [state, runCommand, handleSlashInput, pinEvidenceToInvestigation, productMode, setProductMode]
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

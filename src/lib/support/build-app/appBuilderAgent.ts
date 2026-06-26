@@ -14,6 +14,16 @@ import {
   proposeBuildErrorFixes,
   formatBuildErrorExplanation,
 } from "./build-error-fix";
+import { isScaffoldApprovalMessage } from "./approval-phrases";
+import {
+  loadAppBuilderSession,
+  touchSessionRequest,
+} from "./session-store";
+import {
+  mergeChangesIntoPending,
+  readFileFromProjectSources,
+  shouldShowDescribeFallback,
+} from "./session-state";
 
 const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
   "scaffolded",
@@ -22,6 +32,9 @@ const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
   "deployed",
   "failed",
 ]);
+
+const DESCRIBE_FALLBACK =
+  "Describe the app you want to build. I'll pick the right template, connect the right APIs, generate files, test it, and prepare a preview.";
 
 export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
   const { isEdit } = classifyBuildAppRequest(req);
@@ -66,7 +79,6 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
 }
 
 function conversationalReply(message: string, project: BuildAppProject): string | null {
-  // Only intercept clarifying chat during initial plan review — never block edits on a live app.
   if (project.status !== "pending_approval" && project.status !== "planning") {
     return null;
   }
@@ -92,9 +104,76 @@ function hasActiveApp(project: BuildAppProject): boolean {
   return ACTIVE_APP_STATUSES.has(project.status) || (project.appliedChanges?.length ?? 0) > 0;
 }
 
+function isAwaitingScaffoldApproval(project: BuildAppProject): boolean {
+  return (
+    project.status === "pending_approval" &&
+    (project.appliedChanges?.length ?? 0) === 0 &&
+    (project.pendingChanges?.length ?? 0) > 0
+  );
+}
+
+function isAwaitingEditApproval(project: BuildAppProject): boolean {
+  return project.status === "pending_approval" && (project.appliedChanges?.length ?? 0) > 0;
+}
+
+function proposePendingPlanEdits(projectId: string, message: string): BuildAppAgentResult {
+  const project = getProject(projectId)!;
+  touchSessionRequest(projectId, message);
+
+  const intent = classifyEditIntent(message);
+  const readFile = readFileFromProjectSources(project, (path) => readProjectFile(projectId, path));
+  const virtualProject: BuildAppProject = {
+    ...project,
+    files: project.pendingChanges.map((c) => c.path),
+  };
+
+  const { changes, summary, understoodRequest } = generateUiEditChanges({
+    project: virtualProject,
+    message,
+    intent: intent.kind === "unknown" ? { kind: "clean_ui", isEdit: true, label: "Clean up UI" } : intent,
+    readFile,
+  });
+
+  if (changes.length === 0) {
+    return {
+      plan: project.plan!,
+      project,
+      explanation:
+        "I reviewed the planned files — the landing page already uses professional copy. Tell me a specific change (e.g. remove text, change the title) or say \"build the app\" when you're ready.",
+      needsApproval: true,
+      pendingChanges: project.pendingChanges,
+    };
+  }
+
+  const merged = mergeChangesIntoPending(project.pendingChanges, changes);
+  setPendingChanges(projectId, merged);
+
+  const fileList = changes.map((c) => c.path).join(", ");
+  const explanation = [
+    `Got it. ${understoodRequest}`,
+    "",
+    `I'm updating the plan: ${fileList}`,
+    "",
+    "Review the updated diff below, then approve to create the app — or tell me what else to change.",
+  ].join("\n");
+
+  return {
+    plan: project.plan!,
+    project: getProject(projectId)!,
+    explanation,
+    needsApproval: true,
+    approvalPreview: `Update plan — ${summary}`,
+    pendingChanges: merged,
+  };
+}
+
 function proposeEdits(projectId: string, message: string, clientBuildOutput?: string): BuildAppAgentResult {
   const project = getProject(projectId);
   if (!project) throw new Error("Project not found");
+
+  loadAppBuilderSession(projectId, {
+    awaitingApproval: project.status === "pending_approval",
+  });
 
   const buildLog = mergeBuildLog(message, clientBuildOutput ?? project.buildOutput);
   const buildFailed = project.buildOk === false;
@@ -106,9 +185,33 @@ function proposeEdits(projectId: string, message: string, clientBuildOutput?: st
       buildProjectId: projectId,
       buildOk: project.buildOk,
       buildFailed,
+      pendingApproval: (project.pendingChanges?.length ?? 0) > 0,
     },
   });
   const activeApp = hasActiveApp(project);
+  const awaitingScaffold = isAwaitingScaffoldApproval(project);
+  const awaitingEdit = isAwaitingEditApproval(project);
+
+  if (isScaffoldApprovalMessage(message) && (awaitingScaffold || awaitingEdit)) {
+    return {
+      plan: project.plan!,
+      project,
+      explanation: awaitingEdit
+        ? "Got it — apply the pending changes when you're ready using the button below or say \"apply changes\"."
+        : "Got it — I'll create the app files when you approve. Review the diff below or tell me what to change first.",
+      needsApproval: true,
+      pendingChanges: project.pendingChanges,
+    };
+  }
+
+  const wantsEdit =
+    intent.isEdit ||
+    isEditIntent(message) ||
+    ["edit_app", "fix_error", "run_tests"].includes(nlIntent.primaryIntent);
+
+  if (awaitingScaffold && wantsEdit) {
+    return proposePendingPlanEdits(projectId, message);
+  }
 
   const wantsErrorFix =
     nlIntent.primaryIntent === "fix_error" ||
@@ -166,26 +269,24 @@ function proposeEdits(projectId: string, message: string, clientBuildOutput?: st
   }
 
   const conversational = conversationalReply(message, project);
-  if (conversational && !activeApp) {
+  if (conversational && (awaitingScaffold || project.status === "planning")) {
     return {
       plan: project.plan!,
       project,
       explanation: conversational,
-      needsApproval: false,
+      needsApproval: Boolean(project.pendingChanges?.length),
+      pendingChanges: project.pendingChanges,
     };
   }
 
-  const wantsEdit =
-    intent.isEdit ||
-    isEditIntent(message) ||
-    ["edit_app", "fix_error", "run_tests"].includes(nlIntent.primaryIntent);
-
   if (activeApp && wantsEdit) {
+    touchSessionRequest(projectId, message);
+    const readFile = readFileFromProjectSources(project, (path) => readProjectFile(projectId, path));
     const { changes, summary, understoodRequest } = generateUiEditChanges({
       project,
       message,
       intent: intent.kind === "unknown" ? { kind: "clean_ui", isEdit: true, label: "Clean up UI" } : intent,
-      readFile: (path) => readProjectFile(projectId, path),
+      readFile,
     });
 
     if (changes.length === 0) {
@@ -226,12 +327,22 @@ function proposeEdits(projectId: string, message: string, clientBuildOutput?: st
     };
   }
 
-  if (!activeApp) {
+  if (awaitingScaffold || awaitingEdit) {
     return {
       plan: project.plan!,
       project,
       explanation:
-        'Describe the app you want to build. I\'ll pick the right template, connect the right APIs, generate files, test it, and prepare a preview.',
+        "Review the proposed file changes below. Tell me what to adjust (e.g. \"make the UI cleaner\") or approve when you're ready.",
+      needsApproval: true,
+      pendingChanges: project.pendingChanges,
+    };
+  }
+
+  if (shouldShowDescribeFallback(project, message)) {
+    return {
+      plan: project.plan!,
+      project,
+      explanation: DESCRIBE_FALLBACK,
       needsApproval: false,
     };
   }

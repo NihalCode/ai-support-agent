@@ -12,6 +12,7 @@ import {
   listProjects,
   applyFileChanges,
   restoreProjectFromSnapshot,
+  setPendingChanges,
 } from "@/lib/support/build-app/project-store";
 import { listTemplates } from "@/lib/support/build-app/templates";
 import { runProjectBuild } from "@/lib/support/build-app/deploy";
@@ -117,10 +118,15 @@ export async function POST(req: Request) {
         }
 
         if (body.userConfirmed) {
-          if (!project.pendingChanges?.length) {
+          const pendingToApply =
+            snapshot?.pendingChanges?.length ? snapshot.pendingChanges : project.pendingChanges;
+          if (!pendingToApply?.length) {
             return NextResponse.json({ error: "Nothing to apply" }, { status: 400 });
           }
-          applyFileChanges(body.projectId, project.pendingChanges);
+          if (snapshot?.pendingChanges?.length && snapshot.pendingChanges !== project.pendingChanges) {
+            setPendingChanges(body.projectId, snapshot.pendingChanges);
+          }
+          applyFileChanges(body.projectId, pendingToApply);
           await audit({
             action: "write:build-app-scaffold",
             target: body.projectId,

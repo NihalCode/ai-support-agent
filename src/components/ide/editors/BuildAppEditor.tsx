@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BuildAppFileChange, BuildAppProject } from "@/lib/support/build-app/types";
 import type { BuildAppHandoffMode } from "@/lib/support/build-app/handoff";
 import { classifyBuildAppWorkspaceMessage } from "@/lib/support/intent/classify-intent";
+import { isBuildAfterApprovalPhrase } from "@/lib/support/build-app/approval-phrases";
+import { sessionFromProject, sessionStatusLabel } from "@/lib/support/build-app/session-ui";
 import { workflowLabel, workflowStateFromProject } from "@/lib/support/build-app/workflow-state";
 import { useWorkspace } from "../WorkspaceProvider";
 import { BuildAppChat, type BuildAppChatMessage } from "./BuildAppChat";
@@ -88,7 +90,7 @@ export function BuildAppEditor({
   autoStart,
   mode = "plan",
 }: BuildAppEditorProps) {
-  const { setActiveBuildProject, setProblems, state } = useWorkspace();
+  const { setActiveBuildProject, setProblems, state, isClientMode } = useWorkspace();
   const [chatMessages, setChatMessages] = useState<BuildAppChatMessage[]>([]);
   const [ticketId, setTicketId] = useState(initialTicketId ?? "");
   const [suggestedTemplateId, setSuggestedTemplateId] = useState(initialTemplateId ?? "");
@@ -110,6 +112,8 @@ export function BuildAppEditor({
 
   const step = stepFromProject(project, approvalId);
   const workflowState = workflowStateFromProject(project, { awaitingApproval: Boolean(approvalId) });
+  const sessionState = sessionFromProject(project, { awaitingApproval: Boolean(approvalId || pendingChanges.length > 0) });
+  const statusLabel = sessionStatusLabel(sessionState.currentState);
 
   const syncBuildProblem = useCallback(
     (message: string | null) => {
@@ -463,7 +467,7 @@ export function BuildAppEditor({
 
     if (wsIntent.recommendedRoute === "build_app:apply") {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
-      await approveAndApply();
+      await approveAndApply({ runBuildAfter: isBuildAfterApprovalPhrase(text) });
       return;
     }
 
@@ -482,16 +486,17 @@ export function BuildAppEditor({
     await runAgent(text);
   }
 
-  async function approveAndApply() {
+  async function approveAndApply(opts?: { runBuildAfter?: boolean }) {
     if (!project) return;
     const isEdit = (project.appliedChanges?.length ?? 0) > 0;
     setLoading(true);
     setError(null);
     try {
+      const projWithPending = { ...project, pendingChanges: pendingChanges.length ? pendingChanges : project.pendingChanges };
       const res = await fetch("/api/support/build-app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true, projectSnapshot: project }),
+        body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true, projectSnapshot: projWithPending }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; project?: BuildAppProject };
       if (!res.ok) throw new Error(data.error ?? "Could not apply changes");
@@ -504,6 +509,13 @@ export function BuildAppEditor({
         pushAssistant("Changes applied. Running a test build…");
         setLoading(false);
         await runBuildAfterEdit(fresh ?? project);
+        return;
+      }
+
+      if (opts?.runBuildAfter) {
+        pushAssistant("Creating your app files and running a build check…");
+        setLoading(false);
+        await runBuild();
         return;
       }
 
@@ -595,12 +607,16 @@ export function BuildAppEditor({
       if (isMock) {
         setAwaitingVercelToken(false);
         pushAssistant(
-          "Test build passed (mock mode — no real compile on Vercel serverless).\n\nType deploy in the chat to get a link. Paste your Vercel token from vercel.com/account/tokens to get a real preview URL, or say skip for a demo link."
+          isClientMode
+            ? "Build check passed. Say deploy in the chat when you want a preview link for your team, or paste a Vercel token for a live preview."
+            : "Test build passed (mock mode — no real compile on Vercel serverless).\n\nType deploy in the chat to get a link. Paste your Vercel token from vercel.com/account/tokens to get a real preview URL, or say skip for a demo link."
         );
       } else {
         setAwaitingVercelToken(false);
         pushAssistant(
-          "Build passed! Type deploy in the chat when you're ready. Paste your Vercel token to get a real preview link, or say skip for a demo."
+          isClientMode
+            ? "Build passed. Say deploy in the chat when you are ready for a preview link."
+            : "Build passed! Type deploy in the chat when you're ready. Paste your Vercel token to get a real preview link, or say skip for a demo."
         );
       }
     } catch (e) {
@@ -664,7 +680,7 @@ export function BuildAppEditor({
             ))}
           </div>
           <p data-testid="build-app-workflow-state" style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-            Status: {workflowLabel(workflowState)}
+            Status: {statusLabel || workflowLabel(workflowState)}
             {project?.buildOk === false ? " — fix build errors before preview or deploy." : ""}
           </p>
         </header>
@@ -762,7 +778,7 @@ export function BuildAppEditor({
           <p data-testid="build-app-preview-url" style={{ marginTop: 12, fontSize: 12 }}>
             Preview:{" "}
             <a href={project.previewUrl} target="_blank" rel="noreferrer">{project.previewUrl}</a>
-            {project.deployments[0]?.mock ? " (demo link)" : ""}
+            {project.deployments[0]?.mock && !isClientMode ? " (demo link)" : ""}
           </p>
         )}
 
@@ -770,7 +786,7 @@ export function BuildAppEditor({
           <pre
             data-testid="build-app-output"
             style={{
-              display: showTechnical || project?.buildOk === false ? "block" : "none",
+              display: showTechnical ? "block" : "none",
               whiteSpace: "pre-wrap",
               background: "var(--surface-2)",
               padding: 12,
@@ -789,6 +805,23 @@ export function BuildAppEditor({
 
       {/* Sidebar */}
       <aside style={{ borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>Readiness</h3>
+        <ul
+          data-testid="build-app-readiness"
+          style={{ margin: "0 0 16px", paddingLeft: 0, listStyle: "none", fontSize: 12, lineHeight: 1.8 }}
+        >
+          {[
+            { label: "App plan created", done: Boolean(project?.plan || approvalId) },
+            { label: "Awaiting approval", done: Boolean((project?.files?.length ?? 0) > 0) },
+            { label: "Files created", done: Boolean((project?.files?.length ?? 0) > 0) },
+            { label: "Build checked", done: project?.buildOk === true },
+            { label: "Preview ready", done: Boolean(project?.previewUrl) },
+          ].map((item) => (
+            <li key={item.label} style={{ color: item.done ? "var(--green)" : "var(--muted)" }}>
+              {item.done ? "✓" : "○"} {item.label}
+            </li>
+          ))}
+        </ul>
         <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>What&apos;s next</h3>
         <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.7 }}>
           {step === "describe" && (

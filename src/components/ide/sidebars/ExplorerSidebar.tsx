@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { explorerRepoLabel } from "../client-copy";
 import { useWorkspace } from "../WorkspaceProvider";
 
 interface SpecSummary {
@@ -11,7 +12,7 @@ interface SpecSummary {
 }
 
 export function ExplorerSidebar() {
-  const { openTab, runCommand } = useWorkspace();
+  const { openTab, runCommand, isClientMode } = useWorkspace();
   const [specs, setSpecs] = useState<SpecSummary[]>([]);
   const [repo, setRepo] = useState("");
 
@@ -28,7 +29,7 @@ export function ExplorerSidebar() {
   return (
     <div style={{ padding: "4px 0" }}>
       <Section label="Repository">
-        <TreeItem label={repo || "GitHub (mock)"} onClick={() => openTab({ id: "integrations", kind: "integrations", title: "Integrations" })} />
+        <TreeItem label={explorerRepoLabel(repo || null, !isClientMode)} onClick={() => openTab({ id: "integrations", kind: "integrations", title: "Integrations" })} />
       </Section>
       <Section label="API Sources">
         {specs.map((s) => (

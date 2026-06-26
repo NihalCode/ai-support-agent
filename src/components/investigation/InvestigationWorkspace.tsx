@@ -332,7 +332,7 @@ export function InvestigationWorkspace({
               <input
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="NihalCode/ai-support-agent"
+                placeholder="org/repository"
                 style={inputStyle}
               />
             </div>

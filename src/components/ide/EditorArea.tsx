@@ -14,6 +14,7 @@ import { DiagnoseEditor } from "./editors/DiagnoseEditor";
 import { EndpointEditor } from "./editors/EndpointEditor";
 import { InvestigationObjectPanel } from "../investigation/InvestigationObjectPanel";
 import { BuildAppEditor } from "./editors/BuildAppEditor";
+import { SettingsEditor } from "./editors/SettingsEditor";
 import { JiraTicketEditor } from "./editors/JiraTicketEditor";
 
 export function EditorArea({
@@ -89,7 +90,7 @@ export function EditorArea({
       {tab.kind === "api-runner" && <ApiRunnerPanel developerMode={devMode} />}
       {tab.kind === "cql" && <CqlWorkspaceEditor />}
       {tab.kind === "credentials" && <CredentialSetup />}
-      {tab.kind === "settings" && <CredentialSetup />}
+      {tab.kind === "settings" && <SettingsEditor />}
       {tab.kind === "investigation-object" && (
         <InvestigationObjectPanel investigationId={String(tab.payload?.investigationId ?? "")} />
       )}

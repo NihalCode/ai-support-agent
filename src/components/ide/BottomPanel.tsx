@@ -28,7 +28,7 @@ export function BottomPanel({ hideTabs = false }: { hideTabs?: boolean }) {
       {state.bottomTab === "problems" && (
         <div data-testid="problems-panel">
           {state.problems.length === 0 ? (
-            <p style={{ color: "var(--muted)" }}>No problems detected.</p>
+            <p style={{ color: "var(--muted)" }} data-testid="problems-empty">Everything looks ready.</p>
           ) : (
             state.problems.map((p) => (
               <div key={p.id} className={`ide-problem ${p.severity}`}>

@@ -6,6 +6,7 @@ import type {
   UserTechnicalLevel,
   WorkspaceIntentContext,
 } from "./types";
+import { isScaffoldApprovalMessage } from "../build-app/approval-phrases";
 import { SLASH_INTENT_MAP, applyContextBoosts, scoreMessageRules } from "./rules";
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
@@ -348,16 +349,16 @@ export function classifyBuildAppWorkspaceMessage(
     },
   });
 
-  // Approve patterns
-  if (ctx.pendingChanges && /\b(yes|approve|go ahead|apply|build it|create it|looks good)\b/i.test(message)) {
-    return {
-      ...classification,
-      primaryIntent: "edit_app",
-      confidence: "high",
-      recommendedRoute: "build_app:apply",
-      planSummary: "Apply pending file changes.",
-      needsClarification: false,
-    };
+  // Approve patterns — must not match edit requests like "apply a filter"
+  if (ctx.pendingChanges && isScaffoldApprovalMessage(message)) {
+      return {
+        ...classification,
+        primaryIntent: "edit_app",
+        confidence: "high",
+        recommendedRoute: "build_app:apply",
+        planSummary: "Apply pending file changes.",
+        needsClarification: false,
+      };
   }
 
   if (ctx.awaitingToken && /\b(skip|no token|demo|without|mock)\b/i.test(message)) {

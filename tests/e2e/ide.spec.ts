@@ -9,21 +9,35 @@ test.beforeEach(async ({ page }) => {
   });
 });
 test.describe("App shell", () => {
-  test("loads IDE with activity bar and command palette", async ({ page }) => {
+  test("loads client IDE with activity bar and home dashboard", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("ide-root")).toBeVisible();
     await expect(page.getByTestId("activity-bar")).toBeVisible();
+    await expect(page.getByTestId("home-dashboard")).toBeVisible();
+    await expect(page.getByTestId("open-command-palette")).toHaveCount(0);
+  });
+
+  test("developer mode shows command palette", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("open-command-palette").click();
     await expect(page.getByTestId("command-palette")).toBeVisible();
   });
 
-  test("bottom panel terminal tab visible by default", async ({ page }) => {
+  test("client mode hides developer bottom panel by default", async ({ page }) => {
     await page.goto("/");
+    await expect(page.getByTestId("bottom-tab-terminal")).toHaveCount(0);
+  });
+
+  test("developer mode shows bottom panel", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
   });
 
   test("switches sidebar via search activity", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-search").click();
     await expect(page.getByTestId("sidebar-header-search")).toBeVisible();
     await expect(page.getByTestId("search-sidebar")).toBeVisible();
@@ -33,6 +47,7 @@ test.describe("App shell", () => {
 test.describe("Split editor", () => {
   test("splits editor right via command palette and persists", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("open-command-palette").click();
     await page.getByRole("button", { name: "Split Editor Right" }).click();
     await expect(page.locator(".ide-editor-group")).toHaveCount(2);
@@ -44,6 +59,7 @@ test.describe("Split editor", () => {
 test.describe("Semantic search", () => {
   test("returns mocked semantic results in test mode", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-search").click();
     await page.getByTestId("search-mode-semantic").click();
     await page.getByTestId("search-input").fill("tag creation fails with 400");
@@ -85,6 +101,7 @@ test.describe("Chat streaming", () => {
 test.describe("Terminal", () => {
   test("runs allowlisted command", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("bottom-tab-terminal").click();
     await expect(page.getByTestId("terminal-panel")).toBeVisible();
     await page.getByTestId("terminal-input").fill("npm test");
@@ -96,6 +113,7 @@ test.describe("Terminal", () => {
 
   test("blocks unsafe command", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("bottom-tab-terminal").click();
     await page.getByTestId("terminal-input").fill("rm -rf /");
     await page.getByTestId("terminal-run").click();
@@ -130,7 +148,6 @@ test.describe("Build App workspace", () => {
     test.setTimeout(90000);
     await page.goto("/");
     await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-new").click();
     await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
     const msg =
       "Build me a simple indicator search dashboard using Cyware APIs. Search box, optional CQL filter, table results, and details panel. Prepare for Vercel deployment.";
@@ -143,12 +160,13 @@ test.describe("Build App workspace", () => {
     await page.getByTestId("build-app-approve").click();
     await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
     await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|mock mode/i, {
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Preview ready|Build checked/i, {
       timeout: 15000,
     });
     await expect(page.getByTestId("build-app-deploy-preview")).toBeVisible({ timeout: 5000 });
     await page.getByTestId("build-app-deploy-preview").click();
-    await expect(page.getByTestId("build-app-preview-url")).toContainText(/mock-preview\.vercel\.app|mock/i, {
+    await page.getByRole("button", { name: "Show technical details" }).click();
+    await expect(page.getByTestId("build-app-preview-url")).toContainText(/vercel\.app/i, {
       timeout: 20000,
     });
   });
@@ -182,7 +200,7 @@ test.describe("Build App workspace", () => {
     });
     await page.goto("/");
     await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-new").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
     await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
     await page.getByTestId("build-app-chat-send").click();
     await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
@@ -192,6 +210,12 @@ test.describe("Build App workspace", () => {
       timeout: 15000,
     });
     await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
+    await expect(
+      page.getByTestId("build-app-workspace").getByText(/Next\.js CLI is not installed|build check failed|required dependency/i).first()
+    ).toBeVisible();
+    await expect(page.getByTestId("build-app-output")).toBeHidden();
+    await page.getByRole("button", { name: "Show technical details" }).click();
+    await expect(page.getByTestId("build-app-output")).toBeVisible();
     await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
   });
 
@@ -201,7 +225,7 @@ test.describe("Build App workspace", () => {
       "Build me an indicator search dashboard. I want a simple page where I can type in an indicator or CQL query, search, see a table, and open details.";
     await page.goto("/");
     await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-new").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
     await page.getByTestId("build-app-chat-input").fill(scaffoldMsg);
     await page.getByTestId("build-app-chat-send").click();
     await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
@@ -209,7 +233,7 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
 
     // Scaffolded page must not contain raw prompt in explanation/diff
-    await page.getByText("Show technical details").click();
+    await page.getByRole("button", { name: "Show technical details" }).click();
     const diffPanel = page.getByTestId("build-app-diff-panel");
     await expect(diffPanel).toBeVisible({ timeout: 5000 });
     await expect(diffPanel).not.toContainText(/Build me an indicator search dashboard\. I want a simple page/i);
@@ -226,6 +250,116 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-chat-assistant").last()).toContainText(/Build passed|Changes applied|test build/i, {
       timeout: 30000,
     });
+  });
+
+  test("E2E pending scaffold edit does not show describe fallback", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard with search and table");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-chat-input").fill(
+      "make the UI cleaner, the landing page should not have any unnecessary text"
+    );
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
+      /Describe the app you want to build/i,
+      { timeout: 15000 }
+    );
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 10000 });
+  });
+
+  test('E2E "Now build the app" approves and runs build', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-chat-input").fill("Now build the app");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Build checked|Preview ready/i, {
+      timeout: 45000,
+    });
+  });
+
+  test("E2E generated scaffold has no raw prompt in pending diff", async ({ page }) => {
+    test.setTimeout(90000);
+    const scaffoldMsg =
+      "Build me an indicator search dashboard. I want a simple page where I can type in an indicator or CQL query, search, see a table, and open details.";
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-chat-input").fill(scaffoldMsg);
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByRole("button", { name: "Show technical details" }).click();
+    const diffPanel = page.getByTestId("build-app-diff-panel");
+    await expect(diffPanel).toBeVisible({ timeout: 5000 });
+    await expect(diffPanel).not.toContainText(/Build me an indicator search dashboard\. I want a simple page/i);
+  });
+
+  test('E2E edit after scaffold: "make it client-ready"', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-chat-input").fill("make it client-ready");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
+      /Describe the app you want to build/i,
+      { timeout: 15000 }
+    );
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("E2E build failure shows client-friendly error without fake success", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.route("**/api/support/build-app", async (route, request) => {
+      if (request.method() === "POST") {
+        const body = request.postDataJSON() as { action?: string };
+        if (body.action === "build") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: false,
+              buildOk: false,
+              preflightOk: true,
+              output: "sh: line 1: next: command not found",
+              classification: {
+                kind: "missing_command",
+                summary: "The build check failed because a required dependency is missing.",
+              },
+              project: { id: "test", status: "failed", buildOk: false },
+            }),
+          });
+          return;
+        }
+      }
+      await route.continue();
+    });
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-chat-input").fill("Build indicator dashboard");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await page.getByTestId("build-app-build").click();
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build/i, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
+    await expect(
+      page.getByTestId("build-app-workspace").getByText(/required dependency is missing|build check failed/i).first()
+    ).toBeVisible();
   });
 });
 
@@ -261,7 +395,7 @@ test.describe("Natural-language agent routing", () => {
     test.setTimeout(120000);
     await page.goto("/");
     await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-new").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
     await page.getByTestId("build-app-chat-input").fill(
       "I need a dashboard where analysts can search indicators and open details."
     );
@@ -297,6 +431,7 @@ test.describe("Investigation workspace UI", () => {
 test.describe("Investigation workspace", () => {
   test("pins evidence from search", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-search").click();
     await page.getByTestId("search-input").fill("tag");
     await page.getByTestId("search-submit").click();
@@ -308,6 +443,7 @@ test.describe("Investigation workspace", () => {
 test.describe("CQL workspace", () => {
   test("opens CQL tab via activity bar", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-cql").click();
     await expect(page.getByText("CQL Workspace")).toBeVisible();
   });
@@ -316,6 +452,7 @@ test.describe("CQL workspace", () => {
 test.describe("Degraded mode", () => {
   test("shows problems panel warnings", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("bottom-tab-problems").click();
     await expect(page.getByTestId("problems-panel")).toBeVisible();
   });
@@ -324,6 +461,7 @@ test.describe("Degraded mode", () => {
 test.describe("Jira sidebar", () => {
   test("finds mock ticket by key and opens editor", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-jira").click();
     await expect(page.getByTestId("jira-sidebar")).toBeVisible();
     await page.getByTestId("jira-search-input").fill("PAY-101");
@@ -335,6 +473,7 @@ test.describe("Jira sidebar", () => {
 
   test("shows error for empty search", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-jira").click();
     await page.getByTestId("jira-search-submit").click();
     await expect(page.getByTestId("jira-search-error")).toBeVisible();
@@ -344,15 +483,106 @@ test.describe("Jira sidebar", () => {
 test.describe("MCP sidebar", () => {
   test("shows MCP status note", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-mcp").click();
     await expect(page.getByTestId("mcp-sidebar")).toBeVisible();
     await expect(page.getByTestId("mcp-sidebar-note")).toBeVisible();
   });
 });
 
+test.describe("Client mode professionalism", () => {
+  test("home page does not show internal developer labels", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("app-title")).toHaveText("AI Support Studio");
+    await expect(page.getByText("AI Support Investigation IDE")).toHaveCount(0);
+    await expect(page.getByText(/Cursor-style/i)).toHaveCount(0);
+    await expect(page.getByText(/GitHub \(mock\)/i)).toHaveCount(0);
+    await expect(page.getByText(/Jira: mock/i)).toHaveCount(0);
+    await expect(page.getByText(/RAG: local/i)).toHaveCount(0);
+    await expect(page.getByTestId("bottom-tab-terminal")).toHaveCount(0);
+    await expect(page.getByText(/Agent Trace/i)).toHaveCount(0);
+    await expect(page.getByText(/\/build-app/i)).toHaveCount(0);
+    await expect(page.getByText(/NihalCode|nihalcodes/i)).toHaveCount(0);
+  });
+
+  test("home page shows professional dashboard copy", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("home-dashboard")).toBeVisible();
+    await expect(page.getByText(/Describe what you want to build, fix, investigate, or deploy/i)).toBeVisible();
+    await expect(page.getByTestId("home-card-build")).toBeVisible();
+    await expect(page.getByTestId("home-card-investigate")).toBeVisible();
+    await expect(page.getByTestId("home-card-apis")).toBeVisible();
+    await expect(page.getByTestId("home-card-deploy")).toBeVisible();
+    await expect(page.getByText("Start building")).toBeVisible();
+    await expect(page.getByText("Start investigation")).toBeVisible();
+  });
+
+  test("client mode shows friendly status and chat", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("status-readiness")).toContainText(/Everything looks ready|issue/i);
+    await expect(page.getByTestId("ai-chat-input")).toBeVisible();
+    await expect(page.getByTestId("chat-empty-state")).toBeVisible();
+    await expect(page.getByTestId("chat-empty-state").getByText(/Build an indicator dashboard/i)).toBeVisible();
+  });
+
+  test("developer mode reveals advanced panels", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
+    await expect(page.getByTestId("open-command-palette")).toBeVisible();
+    await expect(page.getByTestId("activity-mcp")).toBeVisible();
+  });
+
+  test("client mode hides raw build errors until technical details expanded", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.route("**/api/support/build-app", async (route, request) => {
+      if (request.method() === "POST") {
+        const body = request.postDataJSON() as { action?: string };
+        if (body.action === "build") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: false,
+              buildOk: false,
+              output: "sh: line 1: next: command not found",
+              classification: {
+                kind: "missing_command",
+                summary: "The build check failed because a required dependency is missing.",
+                suggestedFix: "I can update the project setup and run the check again.",
+              },
+              project: { id: "test", status: "failed", buildOk: false },
+            }),
+          });
+          return;
+        }
+      }
+      await route.continue();
+    });
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("build-app-chat-input").fill("Build indicator dashboard");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await page.getByTestId("build-app-build").click();
+    await expect(
+      page.getByTestId("build-app-workspace").getByText(/required dependency is missing|build check failed/i).first()
+    ).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByText(/next: command not found/i)).toBeHidden();
+    await page.getByRole("button", { name: "Show technical details" }).click();
+    await expect(page.getByTestId("build-app-output")).toBeVisible();
+    await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
+  });
+});
+
 test.describe("Investigations sidebar", () => {
   test("lists saved investigations in test mode", async ({ page }) => {
     await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-investigations").click();
     await expect(page.getByTestId("investigations-sidebar")).toBeVisible();
     await expect(page.locator('[data-testid^="investigation-"]').first()).toBeVisible({ timeout: 10000 });

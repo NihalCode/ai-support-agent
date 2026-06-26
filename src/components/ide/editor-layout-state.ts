@@ -3,7 +3,7 @@ import type { EditorTab, EditorLayout, EditorGroup, EditorLayoutOrientation } fr
 export const DEFAULT_GROUP_ID = "group-primary";
 
 export function createWelcomeTab(): EditorTab {
-  return { id: "welcome", kind: "welcome", title: "Welcome" };
+  return { id: "welcome", kind: "welcome", title: "Home" };
 }
 
 export function createSingleEditorLayout(): EditorLayout {

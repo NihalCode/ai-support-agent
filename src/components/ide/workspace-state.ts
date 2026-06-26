@@ -29,6 +29,8 @@ export {
 
 export function activityToDefaultTab(activity: ActivityId): EditorTab | null {
   switch (activity) {
+    case "home":
+      return createWelcomeTab();
     case "investigations":
       return { id: "investigation-main", kind: "investigation", title: "Investigation" };
     case "api-registry":
@@ -58,7 +60,7 @@ export function parseSlashCommand(input: string): { command: string; rest: strin
 
 export function initialWorkspaceState(): WorkspaceState {
   return {
-    activity: "explorer",
+    activity: "home",
     layout: { ...DEFAULT_LAYOUT },
     editorLayout: createSingleEditorLayout(),
     bottomTab: "problems",

@@ -1,6 +1,7 @@
 /** IDE workspace types — Cursor-inspired layout, no proprietary branding. */
 
 export type ActivityId =
+  | "home"
   | "explorer"
   | "search"
   | "source-control"
@@ -118,7 +119,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
   bottomHeight: 200,
   sidebarVisible: true,
   chatVisible: true,
-  bottomVisible: true,
+  bottomVisible: false,
 };
 
 export const SLASH_COMMANDS = [

@@ -1,6 +1,7 @@
 "use client";
 
 import "./ide.css";
+import { productConfig } from "@/lib/product-config";
 import { ActivityBar } from "./ActivityBar";
 import { PrimarySidebar } from "./PrimarySidebar";
 import { SplitEditorLayout } from "./SplitEditorLayout";
@@ -14,48 +15,71 @@ import { useWorkspace } from "./WorkspaceProvider";
 
 export function AppShell() {
   useKeyboardShortcuts();
-  const { setCommandPalette, toggleChat } = useWorkspace();
+  const { setCommandPalette, toggleChat, isClientMode, productMode, setProductMode } = useWorkspace();
 
   return (
-    <div className="ide-root" data-testid="ide-root">
+    <div
+      className={`ide-root ${isClientMode ? "ide-root--client" : "ide-root--developer"}`}
+      data-testid="ide-root"
+      data-product-mode={productMode}
+    >
       <header className="ide-header">
-        <span className="ide-header-title">AI Support Investigation IDE</span>
+        <span className="ide-header-title" data-testid="app-title">
+          {productConfig.appName}
+        </span>
         <span className="ide-header-spacer" />
-        <button
-          type="button"
-          className="ide-tree-item"
-          style={{ width: "auto", padding: "4px 10px" }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setCommandPalette(true);
-          }}
-          title="Ctrl+K"
-          data-testid="open-command-palette"
-        >
-          ⌘ Command
-        </button>
+        <label className="ide-mode-toggle" data-testid="product-mode-toggle">
+          <span className="ide-mode-toggle-label">Mode</span>
+          <select
+            value={productMode}
+            onChange={(e) => setProductMode(e.target.value as "client" | "developer")}
+            aria-label="Client or Developer mode"
+          >
+            <option value="client">Client</option>
+            <option value="developer">Developer</option>
+          </select>
+        </label>
+        {!isClientMode && (
+          <button
+            type="button"
+            className="ide-tree-item"
+            style={{ width: "auto", padding: "4px 10px" }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setCommandPalette(true);
+            }}
+            title="Command palette"
+            data-testid="open-command-palette"
+          >
+            Command
+          </button>
+        )}
         <button
           type="button"
           className="ide-tree-item"
           style={{ width: "auto", padding: "4px 10px" }}
           onClick={toggleChat}
-          title="Toggle AI chat"
+          title="Toggle assistant"
         >
-          Chat
+          Assistant
         </button>
       </header>
 
       <div className="ide-main">
         <ActivityBar />
-        <ResizableSidebar>
-          <PrimarySidebar />
-        </ResizableSidebar>
+        {!isClientMode && (
+          <ResizableSidebar>
+            <PrimarySidebar />
+          </ResizableSidebar>
+        )}
 
         <div className="ide-center-col">
           <SplitEditorLayout />
-          <ResizableBottom>
-            <BottomPanelContainer />
-          </ResizableBottom>
+          {!isClientMode && (
+            <ResizableBottom>
+              <BottomPanelContainer />
+            </ResizableBottom>
+          )}
         </div>
 
         <ResizableChat>
@@ -64,7 +88,7 @@ export function AppShell() {
       </div>
 
       <StatusBar />
-      <CommandPalette />
+      {!isClientMode && <CommandPalette />}
     </div>
   );
 }

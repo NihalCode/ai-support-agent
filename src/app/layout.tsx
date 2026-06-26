@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Support Agent",
+  title: "AI Support Studio",
   description:
-    "Diagnose client-reported GitHub/Jira issues with repo-aware RAG and get a structured, citable triage report.",
+    "Build apps, investigate issues, and work with Cyware APIs using natural language.",
 };
 
 export default function RootLayout({

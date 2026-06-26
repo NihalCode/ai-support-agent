@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
+import { productConfig } from "@/lib/product-config";
 import { useWorkspace } from "./WorkspaceProvider";
 import { SLASH_COMMANDS } from "./types";
 import { parseSlashCommand } from "./workspace-state";
@@ -19,6 +20,7 @@ export function AIChatPanel() {
     setActiveBuildProject,
     openTab,
     setActivity,
+    isClientMode,
   } = useWorkspace();
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -217,20 +219,24 @@ export function AIChatPanel() {
 
   return (
     <>
-      <div className="ide-chat-header">AI Support Agent</div>
+      <div className="ide-chat-header">{productConfig.chatPanelTitle}</div>
       <div className="ide-chat-messages">
         {state.chatMessages.length === 0 && (
-          <div className="ide-empty" style={{ padding: 16 }}>
+          <div className="ide-empty ide-chat-empty" style={{ padding: 16 }} data-testid="chat-empty-state">
             <p>
-              Describe what you want to build, fix, investigate, or change — the agent interprets your intent
-              automatically.
+              {isClientMode
+                ? "Start with a plain-English request. The assistant can build apps, investigate issues, generate API calls, validate CQL, and prepare deployments."
+                : "Describe what you want to build, fix, investigate, or change — the agent interprets your intent automatically."}
             </p>
-            <p style={{ fontSize: 11, color: "var(--muted)" }}>
-              Support: &quot;The automation that blocks bad IPs stopped working yesterday.&quot;
-              <br />
-              Build: &quot;I need a small tool where analysts can search indicators.&quot;
-            </p>
-            <p style={{ fontSize: 11 }}>{SLASH_COMMANDS.slice(0, 6).map((c) => c.cmd).join(" · ")}</p>
+            <ul style={{ fontSize: 12, color: "var(--muted)", paddingLeft: 18, lineHeight: 1.7 }}>
+              <li>&ldquo;Build an indicator dashboard.&rdquo;</li>
+              <li>&ldquo;The blocking workflow stopped working yesterday.&rdquo;</li>
+              <li>&ldquo;Make this app client-ready.&rdquo;</li>
+              <li>&ldquo;Create a preview link for my team.&rdquo;</li>
+            </ul>
+            {!isClientMode && (
+              <p style={{ fontSize: 11 }}>{SLASH_COMMANDS.slice(0, 6).map((c) => c.cmd).join(" · ")}</p>
+            )}
           </div>
         )}
         {state.chatMessages.map((m) => (
@@ -254,7 +260,7 @@ export function AIChatPanel() {
         <input
           className="ide-chat-input"
           data-testid="ai-chat-input"
-          placeholder="Describe what you want to build, fix, investigate, or change…"
+          placeholder={productConfig.chatPlaceholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

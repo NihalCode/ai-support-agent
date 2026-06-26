@@ -5,7 +5,7 @@ import type { IssueAnalysis, RetrievedChunk } from "../types";
 
 /** Map investigation context → IssueAnalysis for /api/support/patch. */
 export function investigationToAnalysis(ctx: InvestigationContext): IssueAnalysis {
-  const repo = ctx.query.repoUrl ?? "NihalCode/ai-support-agent";
+  const repo = ctx.query.repoUrl ?? "org/repository";
   const retrievedContext: RetrievedChunk[] = ctx.code.files.map((f, i) => ({
     id: f.id,
     score: Math.max(0.1, 1 - i * 0.05),
