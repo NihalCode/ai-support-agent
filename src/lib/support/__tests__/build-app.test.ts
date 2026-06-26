@@ -164,6 +164,17 @@ describe("build-app chat routing", () => {
     expect(
       shouldRouteToBuildApp("Make the dashboard look cleaner", { buildProjectId: "abc" })
     ).toBe(true);
+    expect(
+      shouldRouteToBuildApp("This looks too much like a demo. Make it client-ready.", {
+        buildProjectId: "abc",
+      })
+    ).toBe(true);
+  });
+
+  it("routes natural-language share request when build project active", () => {
+    expect(
+      shouldRouteToBuildApp("Can I share this with my team?", { buildProjectId: "abc", buildOk: true })
+    ).toBe(true);
   });
 
   it("routes deploy when project active", () => {

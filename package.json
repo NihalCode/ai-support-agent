@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:intents": "vitest run src/lib/support/__tests__/intent.test.ts src/lib/support/__tests__/intent-integration.test.ts",
+    "test:predeploy": "node scripts/predeploy-check.mjs",
     "test:watch": "vitest",
     "ingest": "tsx --conditions=react-server scripts/ingest-cli.ts",
     "vendor:cyware-specs": "tsx --conditions=react-server scripts/vendor-cyware-specs.ts",

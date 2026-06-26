@@ -1,0 +1,111 @@
+import "server-only";
+
+import type { IntentClassification, WorkspaceIntentContext } from "./types";
+import {
+  shouldRouteToBuildAppFromIntent,
+  shouldAutoInvestigateFromIntent,
+  formatIntentSummary,
+} from "./classify-intent";
+
+export type ChatRouteKind =
+  | "build_app"
+  | "investigation_create"
+  | "investigation_chat"
+  | "investigation_customer_response"
+  | "investigation_developer_handoff"
+  | "cql"
+  | "api"
+  | "clarify"
+  | "general";
+
+export interface ChosenChatRoute {
+  kind: ChatRouteKind;
+  buildAppMode?: "plan" | "edit" | "deploy";
+  investigationPromptHint?: string;
+}
+
+export function chooseAgentRoute(
+  classification: IntentClassification,
+  ctx: WorkspaceIntentContext
+): ChosenChatRoute {
+  if (classification.needsClarification && classification.confidence === "low" && classification.primaryIntent === "unknown") {
+    return { kind: "clarify" };
+  }
+
+  if (shouldRouteToBuildAppFromIntent(classification, ctx)) {
+    let mode: "plan" | "edit" | "deploy" = "plan";
+    if (ctx.buildProjectId) {
+      if (classification.primaryIntent === "deploy_app" || classification.primaryIntent === "preview_app") {
+        mode = "deploy";
+      } else if (
+        ["edit_app", "fix_error", "explain_app", "run_tests", "commit_changes"].includes(
+          classification.primaryIntent
+        )
+      ) {
+        mode = "edit";
+      } else if (classification.primaryIntent === "build_app") {
+        mode = "edit";
+      } else {
+        mode = "edit";
+      }
+    }
+    return { kind: "build_app", buildAppMode: mode };
+  }
+
+  if (ctx.sessionId || ctx.investigationId) {
+    if (classification.primaryIntent === "generate_customer_response") {
+      return {
+        kind: "investigation_customer_response",
+        investigationPromptHint: "Draft a plain-English customer response based on investigation evidence.",
+      };
+    }
+    if (classification.primaryIntent === "generate_developer_handoff") {
+      return {
+        kind: "investigation_developer_handoff",
+        investigationPromptHint: "Summarize what engineering needs to fix, with evidence citations.",
+      };
+    }
+    if (["generate_cql", "validate_cql"].includes(classification.primaryIntent)) {
+      return { kind: "cql" };
+    }
+    if (["generate_api_request", "search_api_docs", "run_api_dry_run"].includes(classification.primaryIntent)) {
+      return { kind: "api" };
+    }
+    return { kind: "investigation_chat" };
+  }
+
+  if (shouldAutoInvestigateFromIntent(classification, ctx)) {
+    return { kind: "investigation_create" };
+  }
+
+  if (["generate_cql", "validate_cql"].includes(classification.primaryIntent)) {
+    return { kind: "cql" };
+  }
+
+  if (["generate_api_request", "search_api_docs"].includes(classification.primaryIntent)) {
+    return { kind: "api" };
+  }
+
+  if (classification.primaryIntent === "unknown") {
+    return { kind: "clarify" };
+  }
+
+  // Default: if it reads like support, investigate
+  if (classification.primaryIntent === "diagnose_support_issue") {
+    return { kind: "investigation_create" };
+  }
+
+  return { kind: "clarify" };
+}
+
+export function buildClarificationReply(classification: IntentClassification): string {
+  if (classification.clarificationQuestion) {
+    const choices = classification.clarificationChoices?.map((c, i) => `${i + 1}. ${c}`).join("\n");
+    return [classification.clarificationQuestion, choices].filter(Boolean).join("\n\n");
+  }
+  return "Describe what you want to build, fix, investigate, or change — I’ll figure out the best next step.";
+}
+
+export function buildIntentAwareIntro(classification: IntentClassification): string {
+  return formatIntentSummary(classification);
+}

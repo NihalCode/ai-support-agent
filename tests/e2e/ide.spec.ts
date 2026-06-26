@@ -229,6 +229,57 @@ test.describe("Build App workspace", () => {
   });
 });
 
+test.describe("Natural-language agent routing", () => {
+  test("E2E NL build app from main chat", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto("/");
+    const msg =
+      "I need a small internal tool where analysts can search indicators and click into details.";
+    await page.getByTestId("ai-chat-input").fill(msg);
+    await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(/Understood as: build app|Build App|template/i, {
+      timeout: 20000,
+    });
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("E2E NL investigation auto-create", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto("/");
+    const msg =
+      "The automation that blocks malicious IPs stopped working yesterday. I do not know the endpoint.";
+    await page.getByTestId("ai-chat-input").fill(msg);
+    await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(
+      /Understood as: diagnose|investigate|I'll investigate/i,
+      { timeout: 25000 }
+    );
+    await expect(page.getByText(/Run investigation first/i)).toHaveCount(0);
+  });
+
+  test("E2E NL edit in build app workspace", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-new").click();
+    await page.getByTestId("build-app-chat-input").fill(
+      "I need a dashboard where analysts can search indicators and open details."
+    );
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await page.getByTestId("build-app-chat-input").fill(
+      "This looks too much like a demo. Make it client-ready."
+    );
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
+      /Tell me what you'd like changed/i,
+      { timeout: 15000 }
+    );
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+  });
+});
+
 test.describe("Investigation workspace UI", () => {
   test("shows plain-English input and optional advanced fields", async ({ page }) => {
     await page.goto("/");

@@ -6,6 +6,7 @@ import { classifyBuildAppRequest } from "./classify-request";
 import { getProject, readProjectFile, setPendingChanges } from "./project-store";
 import { listSpecs } from "@/lib/support/api-specs/registry";
 import { classifyEditIntent, isEditIntent } from "./edit-intent";
+import { classifyUserIntent } from "../intent/classify-intent";
 import { generateUiEditChanges } from "./ui-edits";
 
 const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
@@ -90,9 +91,17 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
   if (!project) throw new Error("Project not found");
 
   const intent = classifyEditIntent(message);
+  const nlIntent = classifyUserIntent({
+    message,
+    context: {
+      buildProjectId: projectId,
+      buildOk: project.buildOk,
+      buildFailed: project.buildOk === false,
+    },
+  });
   const activeApp = hasActiveApp(project);
 
-  if (intent.kind === "explain") {
+  if (nlIntent.primaryIntent === "explain_app" || intent.kind === "explain") {
     return {
       plan: project.plan!,
       project,
@@ -111,7 +120,10 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
     };
   }
 
-  const wantsEdit = intent.isEdit || isEditIntent(message);
+  const wantsEdit =
+    intent.isEdit ||
+    isEditIntent(message) ||
+    ["edit_app", "fix_error", "run_tests"].includes(nlIntent.primaryIntent);
 
   if (activeApp && wantsEdit) {
     const { changes, summary, understoodRequest } = generateUiEditChanges({

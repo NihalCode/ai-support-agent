@@ -1,0 +1,703 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "message": "I need a small internal tool where analysts can search indicators and click into details.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Can you make a dashboard for checking IPs and domains?",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Create something my team can use to look up threats.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "We need a portal for our analysts to review IOC matches.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Make an app where we can search indicators with a table.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "I want a page where analysts type a query and see results.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Help me build a threat lookup tool for the SOC.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Something for the team to search CTIX data quickly.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Design a simple dashboard for indicator review.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Could you scaffold a frontend for searching bad IPs?",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Generate an internal UI for indicator details.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Our analysts need a search tool with a details panel.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Build a small Next app for threat indicator lookup.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "Create a tool to query indicators and open records.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "I need a client-facing search page for threat data.",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "This looks too much like a demo. Make it client-ready.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Remove the sentence at the top and make the page more professional.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Can you make the table easier to read?",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "The layout feels cluttered.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Make this something I can show my manager.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "This page still looks like a rough demo.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Polish the UI so it looks production-ready.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "The heading text should not be there — clean it up.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Make the search area less messy.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Improve spacing and typography on the landing page.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Can you simplify the dashboard layout?",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Make the results table cleaner and easier to scan.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Remove demo-like copy from the hero section.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Make it less cluttered and more professional.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "This needs to look like a real product page.",
+      "expectedIntent": "edit_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Can I share this with my team?",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Put this online for review.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Give me a link I can send around.",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Deploy a preview version.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Can you put this on the internet so my team can try it?",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "I want a shareable link for stakeholders.",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Publish a preview for review.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Ship this to Vercel preview.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Get this online for the team.",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Send me a URL my colleagues can open.",
+      "expectedIntent": "preview_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Make a preview deployment.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "Release a test version online.",
+      "expectedIntent": "deploy_app",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": true
+      }
+    },
+    {
+      "message": "The automation that blocks malicious IPs stopped working yesterday.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Customers say the workflow hangs and never finishes.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Our API is failing but I do not know which one.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "The customer says this used to work last week but now it times out.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "The thing that blocks bad IPs is freezing and nobody knows why.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Something is broken in our blocking workflow since yesterday.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Users report the integration stops after 30 seconds.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "We have a production issue with threat blocking automation.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "The workflow never completes and spins forever.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Our orchestration playbook fails intermittently.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Bad IP blocking stopped working and we need help.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "The system hangs when trying to block indicators.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Support ticket says the API times out on bulk actions.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "An automation we rely on is failing in production.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "Nobody on the team knows why the blocker workflow fails.",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "What should I tell the customer?",
+      "expectedIntent": "generate_customer_response",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Write this in simple terms for the client.",
+      "expectedIntent": "generate_customer_response",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "What should I say back to them?",
+      "expectedIntent": "generate_customer_response",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Draft a customer reply based on what we found.",
+      "expectedIntent": "generate_customer_response",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Give me something I can send to engineering.",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Summarize what the developer needs to fix.",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "What should dev know about this issue?",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Create a handoff note for the engineering team.",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Explain the fix to the customer in plain English.",
+      "expectedIntent": "generate_customer_response",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "What does engineering need to investigate further?",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "I want to find indicators from the last week with high confidence.",
+      "expectedIntent": "generate_cql",
+      "context": {}
+    },
+    {
+      "message": "Turn this into the right Cyware query.",
+      "expectedIntent": "generate_cql",
+      "context": {}
+    },
+    {
+      "message": "Validate this CQL before I run it.",
+      "expectedIntent": "validate_cql",
+      "context": {}
+    },
+    {
+      "message": "Make the API call for listing indicators.",
+      "expectedIntent": "generate_api_request",
+      "context": {}
+    },
+    {
+      "message": "Show me the request body for this endpoint.",
+      "expectedIntent": "generate_api_request",
+      "context": {}
+    },
+    {
+      "message": "Which API endpoint handles indicator search?",
+      "expectedIntent": "search_api_docs",
+      "context": {}
+    },
+    {
+      "message": "Generate a CQL filter for recent high-severity IOCs.",
+      "expectedIntent": "generate_cql",
+      "context": {}
+    },
+    {
+      "message": "Help me write a query for last 7 days.",
+      "expectedIntent": "generate_cql",
+      "context": {}
+    },
+    {
+      "message": "What does the indicators API expect in the payload?",
+      "expectedIntent": "search_api_docs",
+      "context": {}
+    },
+    {
+      "message": "Build the HTTP request for this lookup.",
+      "expectedIntent": "generate_api_request",
+      "context": {}
+    },
+    {
+      "message": "Fix that error.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "Why did the build fail?",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "The preview is not opening.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "It broke again.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "Can you fix it?",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "Resolve the build failure.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "Something failed in the last build — fix it.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "The compile error needs fixing.",
+      "expectedIntent": "fix_error",
+      "context": {
+        "buildProjectId": "proj-1",
+        "buildOk": false,
+        "buildFailed": true
+      }
+    },
+    {
+      "message": "Search Jira for similar blocking workflow issues.",
+      "expectedIntent": "search_jira",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Find tickets about IP blocking failures.",
+      "expectedIntent": "search_jira",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Check logs for timeout errors yesterday.",
+      "expectedIntent": "search_logs",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "What do the logs say about this failure?",
+      "expectedIntent": "search_logs",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Create a Jira draft for this issue.",
+      "expectedIntent": "create_jira_ticket",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Add this finding to the support ticket.",
+      "expectedIntent": "update_jira_ticket",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Look up PAY-101 in Jira.",
+      "expectedIntent": "search_jira",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Search logs around the failure time.",
+      "expectedIntent": "search_logs",
+      "context": {
+        "sessionId": "sess-1"
+      }
+    },
+    {
+      "message": "Explain how this app works in simple terms.",
+      "expectedIntent": "explain_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "What does this dashboard do?",
+      "expectedIntent": "explain_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Run tests on the generated app.",
+      "expectedIntent": "run_tests",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Verify the build still passes.",
+      "expectedIntent": "run_tests",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "How does authentication work in this app?",
+      "expectedIntent": "explain_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Test the app again please.",
+      "expectedIntent": "run_tests",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "Walk me through what this code does.",
+      "expectedIntent": "explain_app",
+      "context": {
+        "buildProjectId": "proj-1"
+      }
+    },
+    {
+      "message": "/build-app indicator search dashboard",
+      "expectedIntent": "build_app",
+      "context": {}
+    },
+    {
+      "message": "/deploy preview",
+      "expectedIntent": "deploy_app",
+      "context": {}
+    },
+    {
+      "message": "/investigate workflow timeout",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    },
+    {
+      "message": "/customer-response",
+      "expectedIntent": "generate_customer_response",
+      "context": {}
+    },
+    {
+      "message": "/developer-handoff",
+      "expectedIntent": "generate_developer_handoff",
+      "context": {}
+    },
+    {
+      "message": "/validate-cql type = ip",
+      "expectedIntent": "validate_cql",
+      "context": {}
+    },
+    {
+      "message": "/search-jira blocking workflow",
+      "expectedIntent": "search_jira",
+      "context": {}
+    },
+    {
+      "message": "/search-logs timeout",
+      "expectedIntent": "search_logs",
+      "context": {}
+    },
+    {
+      "message": "/generate-api-call indicators list",
+      "expectedIntent": "generate_api_request",
+      "context": {}
+    },
+    {
+      "message": "/diagnose production outage",
+      "expectedIntent": "diagnose_support_issue",
+      "context": {}
+    }
+  ]
+}

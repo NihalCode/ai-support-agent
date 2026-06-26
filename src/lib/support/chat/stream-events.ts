@@ -2,6 +2,14 @@
 
 export type ChatStreamEvent =
   | { type: "message_start"; messageId: string }
+  | {
+      type: "intent_classified";
+      messageId: string;
+      primaryIntent: string;
+      confidence: string;
+      summary: string;
+      recommendedRoute: string;
+    }
   | { type: "token"; messageId: string; text: string }
   | { type: "tool_call_start"; toolCallId: string; agent: string; name: string; summary?: string }
   | { type: "tool_call_update"; toolCallId: string; status: string; summary?: string }

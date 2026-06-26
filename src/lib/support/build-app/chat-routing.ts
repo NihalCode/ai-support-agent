@@ -1,28 +1,23 @@
 import type { BuildAppRequest } from "./types";
-import { isBuildAppRequest, isDeployRequest } from "./classify-request";
+import {
+  classifyUserIntent,
+  shouldRouteToBuildAppFromIntent,
+} from "../intent/classify-intent";
+import type { WorkspaceIntentContext } from "../intent/types";
 
 /** Whether the main AI chat should route to Build App instead of investigation. */
 export function shouldRouteToBuildApp(
   message: string,
-  opts: { buildProjectId?: string | null; sessionId?: string | null } = {}
+  opts: { buildProjectId?: string | null; sessionId?: string | null; buildOk?: boolean | null } = {}
 ): boolean {
-  const { buildProjectId, sessionId } = opts;
-
-  if (buildProjectId) {
-    if (isDeployRequest(message)) return true;
-    if (isBuildAppRequest(message)) return true;
-    if (/\b(edit|fix|cleaner|filter|explain|add |make |update|change|ui|look)\b/i.test(message)) {
-      return true;
-    }
-    return false;
-  }
-
-  if (isBuildAppRequest(message)) return true;
-
-  // Deploy without an active project — still route to build app (will prompt to scaffold first)
-  if (isDeployRequest(message) && !sessionId) return true;
-
-  return false;
+  const ctx: WorkspaceIntentContext = {
+    buildProjectId: opts.buildProjectId,
+    sessionId: opts.sessionId,
+    buildOk: opts.buildOk,
+    buildFailed: opts.buildOk === false,
+  };
+  const classification = classifyUserIntent({ message, context: ctx });
+  return shouldRouteToBuildAppFromIntent(classification, ctx);
 }
 
 export function buildAppChatRequest(message: string, projectId?: string | null): BuildAppRequest {

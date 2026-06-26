@@ -66,6 +66,10 @@ export function AIChatPanel() {
             const line = part.trim();
             if (!line.startsWith("data:")) continue;
             const event = JSON.parse(line.slice(5).trim()) as ChatStreamEvent;
+            if (event.type === "intent_classified") {
+              content = `${event.summary}\n\n`;
+              updateChatMessage(assistantId, { content });
+            }
             if (event.type === "token") {
               content += event.text;
               updateChatMessage(assistantId, { content });
@@ -194,16 +198,12 @@ export function AIChatPanel() {
     if (!text || streaming) return;
 
     const parsed = parseSlashCommand(text);
-    if (parsed) {
-      const match = SLASH_COMMANDS.find((c) => c.cmd === parsed.command);
-      if (match && (match.action === "build-app" || match.action === "deployments") && parsed.rest) {
-        setInput("");
-        await sendStream(parsed.rest);
-        return;
-      }
+    if (parsed?.rest) {
+      setInput("");
+      await sendStream(`${parsed.command} ${parsed.rest}`);
+      return;
     }
-
-    if (handleSlashInput(text)) {
+    if (parsed && handleSlashInput(text)) {
       setInput("");
       return;
     }
@@ -222,13 +222,13 @@ export function AIChatPanel() {
         {state.chatMessages.length === 0 && (
           <div className="ide-empty" style={{ padding: 16 }}>
             <p>
-              Describe a support issue or ask to build a Cyware API app — the agent routes automatically to
-              investigation or Build App.
+              Describe what you want to build, fix, investigate, or change — the agent interprets your intent
+              automatically.
             </p>
             <p style={{ fontSize: 11, color: "var(--muted)" }}>
-              Support: &quot;Our block malicious IP workflow stops after 30 seconds.&quot;
+              Support: &quot;The automation that blocks bad IPs stopped working yesterday.&quot;
               <br />
-              Build: &quot;Build me a CTIX indicator search dashboard and prepare it for Vercel.&quot;
+              Build: &quot;I need a small tool where analysts can search indicators.&quot;
             </p>
             <p style={{ fontSize: 11 }}>{SLASH_COMMANDS.slice(0, 6).map((c) => c.cmd).join(" · ")}</p>
           </div>
@@ -254,7 +254,7 @@ export function AIChatPanel() {
         <input
           className="ide-chat-input"
           data-testid="ai-chat-input"
-          placeholder="Support issue or build an app…"
+          placeholder="Describe what you want to build, fix, investigate, or change…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

@@ -9,11 +9,15 @@ import { isTestMode } from "@/lib/test-mode";
 import { redact } from "@/lib/support/redact";
 import {
   ensureInvestigationSession,
-  isSupportLikeMessage,
 } from "@/lib/support/investigation/ensure-investigation";
 import { extractNaturalLanguageDetails } from "@/lib/support/investigation/extract-query";
-import { shouldRouteToBuildApp } from "@/lib/support/build-app/chat-routing";
 import { streamBuildAppHandoffFromChat } from "@/lib/support/build-app/chat-stream";
+import { classifyUserIntent, formatIntentSummary } from "@/lib/support/intent/classify-intent";
+import {
+  chooseAgentRoute,
+  buildClarificationReply,
+} from "@/lib/support/intent/choose-route";
+import type { WorkspaceIntentContext } from "@/lib/support/intent/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -23,6 +27,7 @@ interface StreamBody {
   message: string;
   investigationId?: string;
   buildProjectId?: string;
+  buildOk?: boolean | null;
 }
 
 function investigationTitle(message: string): string {
@@ -60,20 +65,36 @@ export async function POST(req: Request) {
         let investigationId = body.investigationId;
         let buildProjectId = body.buildProjectId;
 
-        if (
-          shouldRouteToBuildApp(message, {
-            buildProjectId,
-            sessionId,
-          })
-        ) {
+        const intentCtx: WorkspaceIntentContext = {
+          sessionId,
+          investigationId,
+          buildProjectId,
+          buildOk: body.buildOk,
+          buildFailed: body.buildOk === false,
+        };
+        const classification = classifyUserIntent({ message, context: intentCtx });
+        const route = chooseAgentRoute(classification, intentCtx);
+
+        send({
+          type: "intent_classified",
+          messageId,
+          primaryIntent: classification.primaryIntent,
+          confidence: classification.confidence,
+          summary: formatIntentSummary(classification),
+          recommendedRoute: classification.recommendedRoute,
+        });
+
+        if (route.kind === "build_app") {
           const build = await streamBuildAppHandoffFromChat({
             message,
             projectId: buildProjectId,
+            buildOk: body.buildOk,
             messageId,
             send,
+            classification,
           });
           fullText = build.fullText;
-        } else if (!sessionId && isSupportLikeMessage(message)) {
+        } else if (route.kind === "investigation_create") {
           const createToolId = crypto.randomUUID();
           send({
             type: "tool_call_start",
@@ -148,13 +169,21 @@ export async function POST(req: Request) {
             .map((e) => `[${e.sourceType}] ${e.title}: ${e.summary}`)
             .join("\n");
 
+          let systemPrompt =
+            "You are a support engineering copilot. Answer ONLY from investigation evidence. Use plain English unless the user is clearly technical. Be concise. No hidden reasoning.";
+          if (route.kind === "investigation_customer_response") {
+            systemPrompt +=
+              " The user wants a customer-facing reply. Write what they can send to the customer — professional, empathetic, no internal jargon.";
+          } else if (route.kind === "investigation_developer_handoff") {
+            systemPrompt +=
+              " The user wants a developer/engineering handoff. Include likely root cause, evidence, suggested fix, and reproduction steps.";
+          } else if (route.investigationPromptHint) {
+            systemPrompt += ` ${route.investigationPromptHint}`;
+          }
+
           if (hasOpenAI(cfg) && cfg.openaiApiKey && !isTestMode()) {
             const messages = [
-              {
-                role: "system" as const,
-                content:
-                  "You are a support engineering copilot. Answer ONLY from investigation evidence. Use plain English unless the user is clearly technical. Be concise. No hidden reasoning.",
-              },
+              { role: "system" as const, content: systemPrompt },
               {
                 role: "user" as const,
                 content: `EVIDENCE:\n${evidenceBlock}\n\nQUESTION:\n${message}`,
@@ -191,6 +220,23 @@ export async function POST(req: Request) {
             status: "success",
             summary: "Used investigation evidence",
           });
+        } else if (route.kind === "clarify") {
+          fullText = buildClarificationReply(classification);
+          // Intent summary already streamed via intent_classified — avoid duplicate token stream.
+        } else if (route.kind === "cql") {
+          fullText =
+            "I'll help with CQL — open the **CQL Workspace** from the activity bar, or describe your filter criteria here and I'll generate a query.\n\n" +
+            formatIntentSummary(classification);
+          for await (const chunk of simulateStream(fullText)) {
+            send({ type: "token", messageId, text: chunk });
+          }
+        } else if (route.kind === "api") {
+          fullText =
+            "I'll help with the API request — open **API Registry** or the API runner, or continue here with more detail about the endpoint you need.\n\n" +
+            formatIntentSummary(classification);
+          for await (const chunk of simulateStream(fullText)) {
+            send({ type: "token", messageId, text: chunk });
+          }
         } else if (isTestMode()) {
           const toolId = crypto.randomUUID();
           send({

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BuildAppFileChange, BuildAppProject } from "@/lib/support/build-app/types";
 import type { BuildAppHandoffMode } from "@/lib/support/build-app/handoff";
+import { classifyBuildAppWorkspaceMessage } from "@/lib/support/intent/classify-intent";
 import { workflowLabel, workflowStateFromProject } from "@/lib/support/build-app/workflow-state";
 import { useWorkspace } from "../WorkspaceProvider";
 import { BuildAppChat, type BuildAppChatMessage } from "./BuildAppChat";
@@ -277,7 +278,12 @@ export function BuildAppEditor({
 
   // --- chat send: routes deploy, approval, token, and normal messages ---
   async function handleChatSend(text: string) {
-    const lower = text.toLowerCase().trim();
+    const wsIntent = classifyBuildAppWorkspaceMessage(text, {
+      hasProject: Boolean(project),
+      buildOk: project?.buildOk,
+      pendingChanges: Boolean(approvalId || pendingChanges.length > 0),
+      awaitingToken: awaitingVercelToken,
+    });
 
     // Detect a pasted Vercel token (in context of deploying)
     const tok = looksLikeToken(text);
@@ -289,35 +295,42 @@ export function BuildAppEditor({
       return;
     }
 
-    // Deploy intent
-    if (/\b(deploy|preview link|share|publish|get a link)\b/i.test(lower) && project) {
+    if (
+      (wsIntent.primaryIntent === "preview_app" || wsIntent.primaryIntent === "deploy_app") &&
+      project
+    ) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       if (project.buildOk !== true) {
-        pushAssistant("I need to run a test build first. Click **Test my app** below.");
+        pushAssistant("I'll run a test build first — click **Test my app** below, then ask again to share.");
         return;
       }
       if (!vercelToken) {
         setAwaitingVercelToken(true);
         pushAssistant(
-          "Ready to deploy! Paste your Vercel token in the chat and I'll create a real preview link.\n\nGet one at vercel.com/account/tokens (needs no special scope — just an account token).\n\nOr just say \"skip\" to get a demo link without a token."
+          "Ready to share! Paste your Vercel token for a real preview link, or say \"skip\" for a demo link.\n\nGet a token at vercel.com/account/tokens."
         );
         return;
       }
-      await requestDeploy(/\bprod(uction)?\b/i.test(lower) ? "production" : "preview");
+      await requestDeploy(wsIntent.extractedEntities.deployTarget === "production" ? "production" : "preview");
       return;
     }
 
-    // "skip token" → demo deploy
-    if (awaitingVercelToken && /\b(skip|no token|demo|without|mock)\b/i.test(lower)) {
+    if (wsIntent.recommendedRoute === "build_app:deploy_demo" || (awaitingVercelToken && wsIntent.primaryIntent === "preview_app")) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       await requestDeploy("preview", "");
       return;
     }
 
-    // Approve scaffold
-    if (/\b(yes|build it|create it|go ahead|approve)\b/i.test(lower) && (approvalId || pendingChanges.length > 0)) {
+    if (wsIntent.recommendedRoute === "build_app:apply") {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       await approveAndApply();
+      return;
+    }
+
+    if (project && ["edit_app", "fix_error", "explain_app"].includes(wsIntent.primaryIntent)) {
+      setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
+      pushAssistant(`Understood — ${wsIntent.planSummary ?? "I'll update the app."}`);
+      await runAgent(text);
       return;
     }
 
@@ -468,10 +481,10 @@ export function BuildAppEditor({
       : "Tell me what to change — e.g. \"make it cleaner,\" \"add a filter,\" or \"remove that text.\"";
 
   const chatPlaceholder = !project
-    ? "Describe the app you want to build…"
+    ? "Describe what you want to build, fix, investigate, or change…"
     : awaitingVercelToken
       ? "Paste Vercel token here, or say skip for a demo link…"
-      : "Tell me what to change in this app…";
+      : "Tell me what to change, share, or improve in this app…";
   const files = project?.files ?? pendingChanges.map((c) => c.path);
   const diffContent = pendingChanges.find((c) => c.path === selectedFile);
   const templateLabel = (suggestedTemplateId || project?.templateId)?.replace(/-/g, " ");
