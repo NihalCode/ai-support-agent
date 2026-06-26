@@ -14,6 +14,17 @@ export type ChatStreamEvent =
     }
   | { type: "session_created"; sessionId: string; investigationId?: string; title: string }
   | {
+      type: "build_app_handoff";
+      title: string;
+      description: string;
+      templateId: string;
+      templateReason: string;
+      ticketId?: string;
+      projectId?: string;
+      mode: "plan" | "edit" | "deploy";
+      autoStart: boolean;
+    }
+  | {
       type: "build_app_created";
       projectId: string;
       title: string;

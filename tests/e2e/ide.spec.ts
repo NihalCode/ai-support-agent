@@ -112,11 +112,15 @@ test.describe("Chat build app routing", () => {
     await page.getByTestId("ai-chat-input").fill(msg);
     await page.getByTestId("ai-chat-input").press("Enter");
     await expect(page.getByTestId("chat-assistant-message")).toContainText(
-      /indicator-search-dashboard|Build App|template/i,
+      /Build App|indicator search|template/i,
       { timeout: 20000 }
     );
-    await expect(page.getByText(/appBuilder|plan_app/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/open_build_app|appBuilder/i).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("build-app-input")).toHaveValue(msg, { timeout: 5000 });
+    await expect(page.getByTestId("build-app-suggested-template")).toContainText(/indicator search/i, {
+      timeout: 15000,
+    });
   });
 });
 

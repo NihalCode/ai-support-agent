@@ -82,6 +82,23 @@ export function AIChatPanel() {
                 });
               }
             }
+            if (event.type === "build_app_handoff") {
+              setActivity("build-app");
+              const tabId = event.projectId ? `build-app-${event.projectId}` : `build-app-new-${Date.now()}`;
+              openTab({
+                id: tabId,
+                kind: "build-app",
+                title: event.title,
+                payload: {
+                  projectId: event.projectId,
+                  initialMessage: event.description,
+                  initialTicketId: event.ticketId,
+                  initialTemplateId: event.templateId,
+                  autoStart: event.autoStart,
+                  mode: event.mode,
+                },
+              });
+            }
             if (event.type === "build_app_created") {
               setActiveBuildProject(event.projectId);
               setActivity("build-app");

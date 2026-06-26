@@ -5,6 +5,7 @@ import { generateEnvSnippet } from "../build-app/env-snippet";
 import { listTemplates, resolveTemplateFiles } from "../build-app/templates";
 import { checkVercelReadiness } from "../build-app/vercel-readiness";
 import { shouldRouteToBuildApp } from "../build-app/chat-routing";
+import { extractBuildAppHandoff } from "../build-app/handoff";
 import { createDeploymentPlan } from "../build-app/deploy";
 import { classifyAction } from "../safety";
 
@@ -118,6 +119,25 @@ describe("build-app chat routing", () => {
     expect(
       shouldRouteToBuildApp("Deploy this to Vercel preview", { buildProjectId: "abc" })
     ).toBe(true);
+  });
+});
+
+describe("build-app chat handoff", () => {
+  it("extracts template and ticket for handoff", () => {
+    const h = extractBuildAppHandoff(
+      "Build me an indicator search dashboard for ticket AISUP5-1 with table and details panel",
+      {}
+    );
+    expect(h.templateId).toBe("indicator-search-dashboard");
+    expect(h.ticketId).toBe("AISUP5-1");
+    expect(h.mode).toBe("plan");
+    expect(h.autoStart).toBe(true);
+  });
+
+  it("uses edit mode when project is active", () => {
+    const h = extractBuildAppHandoff("Make the table sortable", { buildProjectId: "proj-1" });
+    expect(h.mode).toBe("edit");
+    expect(h.projectId).toBe("proj-1");
   });
 });
 

@@ -1,10 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BuildAppFileChange, BuildAppProject } from "@/lib/support/build-app/types";
+import type { BuildAppHandoffMode } from "@/lib/support/build-app/handoff";
+import { useWorkspace } from "../WorkspaceProvider";
 
-export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: string }) {
-  const [message, setMessage] = useState("");
+export interface BuildAppEditorProps {
+  projectId?: string;
+  initialMessage?: string;
+  initialTicketId?: string;
+  initialTemplateId?: string;
+  autoStart?: boolean;
+  mode?: BuildAppHandoffMode;
+}
+
+export function BuildAppEditor({
+  projectId: initialProjectId,
+  initialMessage,
+  initialTicketId,
+  initialTemplateId,
+  autoStart,
+  mode = "plan",
+}: BuildAppEditorProps) {
+  const { setActiveBuildProject } = useWorkspace();
+  const [message, setMessage] = useState(initialMessage ?? "");
+  const [ticketId, setTicketId] = useState(initialTicketId ?? "");
+  const [suggestedTemplateId, setSuggestedTemplateId] = useState(initialTemplateId ?? "");
   const [project, setProject] = useState<BuildAppProject | null>(null);
   const [explanation, setExplanation] = useState("");
   const [pendingChanges, setPendingChanges] = useState<BuildAppFileChange[]>([]);
@@ -13,6 +34,7 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [buildOutput, setBuildOutput] = useState("");
+  const autoStartedRef = useRef(false);
 
   const loadProject = useCallback(async (id: string) => {
     const res = await fetch(`/api/support/build-app?projectId=${encodeURIComponent(id)}`);
@@ -24,8 +46,29 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
     if (initialProjectId) void loadProject(initialProjectId);
   }, [initialProjectId, loadProject]);
 
-  async function plan() {
+  useEffect(() => {
+    if (initialMessage) setMessage(initialMessage);
+  }, [initialMessage]);
+
+  useEffect(() => {
+    if (initialTicketId) setTicketId(initialTicketId);
+  }, [initialTicketId]);
+
+  useEffect(() => {
+    if (initialTemplateId) setSuggestedTemplateId(initialTemplateId);
+  }, [initialTemplateId]);
+
+  const planMessage = useCallback(() => {
     const text = message.trim();
+    if (!text) return "";
+    if (ticketId.trim()) {
+      return `[Jira ticket ${ticketId.trim()}]\n${text}`;
+    }
+    return text;
+  }, [message, ticketId]);
+
+  const plan = useCallback(async () => {
+    const text = planMessage();
     if (!text) return;
     setLoading(true);
     setError(null);
@@ -34,7 +77,13 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          project ? { action: "edit", projectId: project.id, message: text } : { action: "plan", message: text }
+          project
+            ? { action: "edit", projectId: project.id, message: text }
+            : {
+                action: "plan",
+                message: text,
+                templateOverride: suggestedTemplateId || undefined,
+              }
         ),
       });
       const data = await res.json();
@@ -44,6 +93,7 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
       setApprovalId(data.approvalId ?? null);
       if (data.project) {
         setProject(data.project);
+        setActiveBuildProject(data.project.id);
         void loadProject(data.project.id);
       }
     } catch (e) {
@@ -51,7 +101,59 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
     } finally {
       setLoading(false);
     }
-  }
+  }, [planMessage, project, suggestedTemplateId, loadProject, setActiveBuildProject]);
+
+  const requestDeploy = useCallback(
+    async (target: "preview" | "production") => {
+      if (!project) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const planRes = await fetch("/api/support/build-app", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "deploy", projectId: project.id, target }),
+        });
+        const planData = await planRes.json();
+        if (!planRes.ok) throw new Error(planData.error ?? "Deploy plan failed");
+        setBuildOutput(planData.buildOutput ?? planData.explanation ?? "");
+        if (!planData.approvalId) return;
+        const depRes = await fetch("/api/support/approvals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ intent: "approve", id: planData.approvalId }),
+        });
+        const depData = await depRes.json();
+        if (!depRes.ok) throw new Error(depData.error ?? "Deploy failed");
+        await loadProject(project.id);
+        setBuildOutput(depData.result?.detail ?? planData.explanation ?? "");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Deploy failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [project, loadProject]
+  );
+
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+
+    if (mode === "deploy") {
+      if (!project) {
+        if (initialProjectId) void loadProject(initialProjectId);
+        return;
+      }
+      autoStartedRef.current = true;
+      const target = /\bprod(uction)?\b/i.test(message) ? "production" : "preview";
+      void requestDeploy(target);
+      return;
+    }
+
+    if (!message.trim()) return;
+    autoStartedRef.current = true;
+    void plan();
+  }, [autoStart, mode, message, plan, project, initialProjectId, loadProject, requestDeploy]);
 
   async function approveAndApply() {
     if (!project || !approvalId) return;
@@ -87,31 +189,6 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
       const data = await res.json();
       setBuildOutput(data.output ?? "");
       if (data.project) setProject(data.project);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function requestDeploy(target: "preview" | "production") {
-    if (!project) return;
-    setLoading(true);
-    try {
-      const planRes = await fetch("/api/support/build-app", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "deploy", projectId: project.id, target }),
-      });
-      const planData = await planRes.json();
-      setBuildOutput(planData.buildOutput ?? planData.explanation ?? "");
-      if (!planData.approvalId) return;
-      const depRes = await fetch("/api/support/approvals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "approve", id: planData.approvalId }),
-      });
-      const depData = await depRes.json();
-      await loadProject(project.id);
-      setBuildOutput(depData.result?.detail ?? planData.explanation ?? "");
     } finally {
       setLoading(false);
     }
@@ -157,6 +234,37 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
         <p style={{ color: "var(--muted)" }}>
           Describe an app using Cyware APIs — the agent scaffolds, builds, and deploys with approval gates.
         </p>
+
+        {suggestedTemplateId && !project && (
+          <p data-testid="build-app-suggested-template" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+            Suggested template: <strong>{suggestedTemplateId.replace(/-/g, " ")}</strong>
+          </p>
+        )}
+
+        <label style={{ display: "block", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+          Jira ticket (optional)
+        </label>
+        <input
+          data-testid="build-app-ticket"
+          value={ticketId}
+          onChange={(e) => setTicketId(e.target.value)}
+          placeholder="AISUP-123"
+          style={{
+            width: "100%",
+            maxWidth: 200,
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            padding: "6px 10px",
+            color: "var(--text)",
+            marginBottom: 10,
+            fontFamily: "inherit",
+          }}
+        />
+
+        <label style={{ display: "block", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+          App description
+        </label>
         <textarea
           data-testid="build-app-input"
           value={message}
@@ -175,7 +283,7 @@ export function BuildAppEditor({ projectId: initialProjectId }: { projectId?: st
         />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <button type="button" data-testid="build-app-plan" onClick={() => void plan()} disabled={loading} style={btnPrimary}>
-            {project ? "Propose edit" : "Generate plan"}
+            {loading && autoStart ? "Generating plan…" : project ? "Propose edit" : "Generate plan"}
           </button>
           {approvalId && (
             <button type="button" data-testid="build-app-approve" onClick={() => void approveAndApply()} disabled={loading} style={btnPrimary}>

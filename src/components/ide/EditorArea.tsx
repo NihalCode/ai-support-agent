@@ -103,7 +103,14 @@ export function EditorArea({
         </div>
       )}
       {tab.kind === "build-app" && (
-        <BuildAppEditor projectId={tab.payload?.projectId as string | undefined} />
+        <BuildAppEditor
+          projectId={tab.payload?.projectId as string | undefined}
+          initialMessage={tab.payload?.initialMessage as string | undefined}
+          initialTicketId={tab.payload?.initialTicketId as string | undefined}
+          initialTemplateId={tab.payload?.initialTemplateId as string | undefined}
+          autoStart={tab.payload?.autoStart as boolean | undefined}
+          mode={tab.payload?.mode as "plan" | "edit" | "deploy" | undefined}
+        />
       )}
       {tab.kind === "deployments" && (
         <div style={{ padding: 16 }}>

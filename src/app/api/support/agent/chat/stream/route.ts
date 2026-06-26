@@ -13,7 +13,7 @@ import {
 } from "@/lib/support/investigation/ensure-investigation";
 import { extractNaturalLanguageDetails } from "@/lib/support/investigation/extract-query";
 import { shouldRouteToBuildApp } from "@/lib/support/build-app/chat-routing";
-import { streamBuildAppFromChat } from "@/lib/support/build-app/chat-stream";
+import { streamBuildAppHandoffFromChat } from "@/lib/support/build-app/chat-stream";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -66,14 +66,13 @@ export async function POST(req: Request) {
             sessionId,
           })
         ) {
-          const build = await streamBuildAppFromChat({
+          const build = await streamBuildAppHandoffFromChat({
             message,
             projectId: buildProjectId,
             messageId,
             send,
           });
           fullText = build.fullText;
-          buildProjectId = build.projectId ?? buildProjectId;
         } else if (!sessionId && isSupportLikeMessage(message)) {
           const createToolId = crypto.randomUUID();
           send({
