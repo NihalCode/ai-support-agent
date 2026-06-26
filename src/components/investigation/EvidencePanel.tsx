@@ -12,7 +12,7 @@ export function EvidencePanel({ context }: { context: InvestigationContext | nul
   if (!context) {
     return (
       <Card title="Evidence">
-        <p style={{ color: "var(--muted)", fontSize: 13 }}>Run an investigation to populate evidence tabs.</p>
+        <p style={{ color: "var(--muted)", fontSize: 13 }}>Start an investigation from chat or the form to populate evidence tabs.</p>
       </Card>
     );
   }

@@ -43,7 +43,7 @@ export function InvestigationObjectPanel({ investigationId }: { investigationId?
   if (!inv) {
     return (
       <div className="ide-empty" style={{ padding: 12, fontSize: 12 }}>
-        Run an investigation to manage pinned evidence and hypotheses.
+        Describe the problem in plain English. The agent will start an investigation, find the relevant APIs/tickets/logs, and ask only for missing details.
       </div>
     );
   }

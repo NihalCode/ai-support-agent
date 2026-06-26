@@ -65,7 +65,8 @@ export function planInvestigation(query: SupportQuery): SupervisorPlan {
 
   const needsCql =
     /\bcql\b/i.test(query.text) ||
-    /\b(malicious|indicator.*filter|query language)\b/i.test(query.text);
+    /\b(malicious|indicator.*filter|query language|block.*ip)\b/i.test(query.text) ||
+    Boolean(query.workflowName && /block|ip|indicator/i.test(query.workflowName));
   if (needsCql) agents.push("cql");
 
   const needsVersion =
@@ -76,11 +77,17 @@ export function planInvestigation(query: SupportQuery): SupervisorPlan {
 
   agents.push("rootCause", "fix", "response", "jiraTicket");
 
-  const canProceed = missingQuestions.length === 0 || Boolean(query.issueRef || query.endpoint);
+  // Natural-language support issues should always proceed — missing questions are follow-ups only.
+  const canProceed =
+    query.text.trim().length > 0 ||
+    Boolean(query.issueRef || query.endpoint || query.workflowName || query.feature);
 
   let routingReason = "Full investigation pipeline";
-  if (missingQuestions.length > 0 && !canProceed) {
-    routingReason = "Query too vague — ask targeted questions before expensive agent calls";
+  if (missingQuestions.length > 0) {
+    routingReason =
+      query.technicalLevel === "non-technical"
+        ? "Plain-language issue — running agents and asking simple follow-ups only if needed"
+        : "Running investigation with optional technical follow-ups";
   } else if (needsCql) {
     routingReason = "CQL-related query — include CQL agent";
   } else if (query.statusCode && query.statusCode >= 500) {

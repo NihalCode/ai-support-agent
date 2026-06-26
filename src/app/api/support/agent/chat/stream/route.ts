@@ -7,6 +7,11 @@ import { streamChatText, simulateStream } from "@/lib/support/openai-stream";
 import { encodeSseEvent } from "@/lib/support/chat/stream-events";
 import { isTestMode } from "@/lib/test-mode";
 import { redact } from "@/lib/support/redact";
+import {
+  ensureInvestigationSession,
+  isSupportLikeMessage,
+} from "@/lib/support/investigation/ensure-investigation";
+import { extractNaturalLanguageDetails } from "@/lib/support/investigation/extract-query";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -15,6 +20,13 @@ interface StreamBody {
   sessionId?: string;
   message: string;
   investigationId?: string;
+}
+
+function investigationTitle(message: string): string {
+  const details = extractNaturalLanguageDetails(message);
+  if (details.workflowName) return `${details.workflowName} — support issue`;
+  if (details.supportTicketId) return `Ticket ${details.supportTicketId} investigation`;
+  return message.slice(0, 72).trim() + (message.length > 72 ? "…" : "");
 }
 
 export async function POST(req: Request) {
@@ -40,32 +52,75 @@ export async function POST(req: Request) {
       try {
         send({ type: "message_start", messageId });
 
-        const toolId = crypto.randomUUID();
-        send({
-          type: "tool_call_start",
-          toolCallId: toolId,
-          agent: "support",
-          name: "investigate_context",
-          summary: "Searching investigation evidence…",
-        });
-
         let fullText = "";
+        let sessionId = body.sessionId;
+        let investigationId = body.investigationId;
 
-        if (isTestMode()) {
-          fullText =
-            "Based on the investigation evidence, the bulk tag API likely fails due to a missing required field in the payload. Check `name` and `type` fields per API docs.";
+        if (!sessionId && isSupportLikeMessage(message)) {
+          const createToolId = crypto.randomUUID();
+          send({
+            type: "tool_call_start",
+            toolCallId: createToolId,
+            agent: "support",
+            name: "create_investigation",
+            summary: "Starting investigation from your description…",
+          });
+
+          const auto = await ensureInvestigationSession({
+            userMessage: message,
+            currentSessionId: sessionId,
+            currentInvestigationId: investigationId,
+          });
+
+          sessionId = auto.sessionId;
+          investigationId = auto.investigationId ?? investigationId;
+
+          send({
+            type: "tool_call_result",
+            toolCallId: createToolId,
+            status: "success",
+            summary: `Started investigation: ${auto.report.title || investigationTitle(message)}`,
+          });
+
+          send({
+            type: "session_created",
+            sessionId,
+            investigationId,
+            title: auto.report.title || investigationTitle(message),
+          });
+
+          const toolId = crypto.randomUUID();
+          send({
+            type: "tool_call_start",
+            toolCallId: toolId,
+            agent: "support",
+            name: "investigate_context",
+            summary: "Extracting issue details and checking available evidence…",
+          });
           send({ type: "tool_call_update", toolCallId: toolId, status: "running" });
+
+          fullText = auto.introMarkdown;
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }
+
           send({
             type: "tool_call_result",
             toolCallId: toolId,
             status: "success",
-            summary: "Reviewed API docs and prior evidence (test mode)",
+            summary: "Checked docs, Jira, logs, and code where available",
           });
-        } else if (body.sessionId) {
-          const ctx = await getSession(body.sessionId);
+        } else if (sessionId) {
+          const toolId = crypto.randomUUID();
+          send({
+            type: "tool_call_start",
+            toolCallId: toolId,
+            agent: "support",
+            name: "investigate_context",
+            summary: "Searching investigation evidence…",
+          });
+
+          const ctx = await getSession(sessionId);
           if (!ctx) throw new Error("Investigation session not found");
 
           send({ type: "tool_call_update", toolCallId: toolId, status: "running" });
@@ -76,12 +131,12 @@ export async function POST(req: Request) {
             .map((e) => `[${e.sourceType}] ${e.title}: ${e.summary}`)
             .join("\n");
 
-          if (hasOpenAI(cfg) && cfg.openaiApiKey) {
+          if (hasOpenAI(cfg) && cfg.openaiApiKey && !isTestMode()) {
             const messages = [
               {
                 role: "system" as const,
                 content:
-                  "You are a support engineering copilot. Answer ONLY from investigation evidence. Be concise. No hidden reasoning.",
+                  "You are a support engineering copilot. Answer ONLY from investigation evidence. Use plain English unless the user is clearly technical. Be concise. No hidden reasoning.",
               },
               {
                 role: "user" as const,
@@ -106,7 +161,7 @@ export async function POST(req: Request) {
             ctx.updatedAt = new Date().toISOString();
             await saveSession(ctx);
           } else {
-            const { reply } = await runInvestigationChat(body.sessionId, message);
+            const { reply } = await runInvestigationChat(sessionId, message);
             fullText = reply;
             for await (const chunk of simulateStream(fullText)) {
               send({ type: "token", messageId, text: chunk });
@@ -119,25 +174,40 @@ export async function POST(req: Request) {
             status: "success",
             summary: "Used investigation evidence",
           });
-        } else {
+        } else if (isTestMode()) {
+          const toolId = crypto.randomUUID();
+          send({
+            type: "tool_call_start",
+            toolCallId: toolId,
+            agent: "support",
+            name: "investigate_context",
+            summary: "Extracting issue details and checking available evidence…",
+          });
           fullText =
-            "Start an investigation first, then I can answer follow-ups with streaming evidence-backed replies.";
+            "I'll investigate this from what you provided. Based on prior evidence, the bulk tag API likely fails due to a missing required field in the payload.";
+          send({ type: "tool_call_update", toolCallId: toolId, status: "running" });
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }
           send({
             type: "tool_call_result",
             toolCallId: toolId,
-            status: "skipped",
-            summary: "No active session",
+            status: "success",
+            summary: "Reviewed API docs and prior evidence (test mode)",
           });
+        } else {
+          fullText =
+            "Tell me a bit more about the problem — for example what you were trying to do, when it started, and any ticket number you have. I'll start an investigation automatically.";
+          for await (const chunk of simulateStream(fullText)) {
+            send({ type: "token", messageId, text: chunk });
+          }
         }
 
-        if (body.investigationId) {
+        if (investigationId) {
           send({
             type: "investigation_update",
-            investigationId: body.investigationId,
-            patch: { updatedAt: new Date().toISOString() },
+            investigationId,
+            patch: { updatedAt: new Date().toISOString(), sessionId },
           });
         }
 

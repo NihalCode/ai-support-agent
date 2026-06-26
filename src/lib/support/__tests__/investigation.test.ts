@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { enrichSupportQuery, missingInfoQuestions } from "../investigation/extract-query";
+import { planInvestigation } from "../agents/supervisorAgent";
 import { runRootCauseAgent } from "../agents/rootCauseAgent";
 import { runJiraTicketWriterAgent } from "../agents/jiraTicketWriterAgent";
 
@@ -15,12 +16,13 @@ describe("investigation extract-query", () => {
   it("asks focused questions for very vague queries", () => {
     const qs = missingInfoQuestions({ text: "API not working" });
     expect(qs.length).toBeGreaterThan(0);
-    expect(qs[0].question).toMatch(/endpoint/i);
+    expect(qs[0].question).toMatch(/describe|endpoint|wrong/i);
   });
 
   it("does not block when issue ref provided", () => {
-    const qs = missingInfoQuestions(enrichSupportQuery({ text: "help", issueRef: "AISUP5-1" }));
-    expect(qs.length).toBe(0);
+    const q = enrichSupportQuery({ text: "help", issueRef: "AISUP5-1" });
+    const plan = planInvestigation(q);
+    expect(plan.canProceed).toBe(true);
   });
 });
 

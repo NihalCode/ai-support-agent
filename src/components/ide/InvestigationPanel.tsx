@@ -9,7 +9,7 @@ export function InvestigationPanel({ context }: { context: InvestigationContext 
   if (!context) {
     return (
       <div className="ide-empty" style={{ padding: 16 }}>
-        Run an investigation to see evidence, API endpoints, logs, and Jira matches here.
+        Describe a support issue in chat or the investigation form — evidence, API endpoints, logs, and Jira matches will appear here.
       </div>
     );
   }

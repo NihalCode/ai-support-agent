@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
 import { useWorkspace } from "./WorkspaceProvider";
 import { SLASH_COMMANDS } from "./types";
@@ -13,7 +13,9 @@ export function AIChatPanel() {
     addChatMessage,
     updateChatMessage,
     handleSlashInput,
-    runCommand,
+    setInvestigationSession,
+    setActiveInvestigation,
+    openTab,
   } = useWorkspace();
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -64,6 +66,18 @@ export function AIChatPanel() {
               content += event.text;
               updateChatMessage(assistantId, { content });
             }
+            if (event.type === "session_created") {
+              setInvestigationSession(event.sessionId);
+              if (event.investigationId) {
+                setActiveInvestigation(event.investigationId);
+                openTab({
+                  id: `investigation-${event.investigationId}`,
+                  kind: "investigation",
+                  title: event.title,
+                  payload: { investigationId: event.investigationId },
+                });
+              }
+            }
             if (event.type === "tool_call_start") {
               toolCards.push({
                 id: event.toolCallId,
@@ -92,21 +106,26 @@ export function AIChatPanel() {
           updateChatMessage(assistantId, { content: `${content}\n[Stopped]` });
           return;
         }
-        // Fallback to non-streaming
         try {
-          if (state.investigationSessionId) {
-            const res = await fetch("/api/support/investigate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sessionId: state.investigationSessionId, message: text }),
-            });
-            const data = await res.json();
-            updateChatMessage(assistantId, { content: data.chatReply ?? "Done." });
-          } else {
-            updateChatMessage(assistantId, {
-              content: "Start an investigation from the editor or use /investigate.",
-            });
-          }
+          const res = await fetch("/api/support/investigate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              state.investigationSessionId
+                ? { sessionId: state.investigationSessionId, message: text }
+                : { query: { text } }
+            ),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Investigation failed");
+          if (data.sessionId) setInvestigationSession(data.sessionId);
+          updateChatMessage(assistantId, {
+            content:
+              data.chatReply ??
+              data.markdownReport ??
+              data.report?.plainEnglishSummary ??
+              "Investigation complete.",
+          });
         } catch {
           updateChatMessage(assistantId, {
             content: e instanceof Error ? e.message : "Request failed",
@@ -123,6 +142,9 @@ export function AIChatPanel() {
       updateChatMessage,
       state.investigationSessionId,
       state.activeInvestigationId,
+      setInvestigationSession,
+      setActiveInvestigation,
+      openTab,
     ]
   );
 
@@ -143,11 +165,14 @@ export function AIChatPanel() {
 
   return (
     <>
-      <div className="ide-chat-header">AI Support Agent · streaming</div>
+      <div className="ide-chat-header">AI Support Agent</div>
       <div className="ide-chat-messages">
         {state.chatMessages.length === 0 && (
           <div className="ide-empty" style={{ padding: 16 }}>
-            <p>Ask about an issue or use slash commands.</p>
+            <p>Describe the problem in plain English — the agent will start an investigation, find relevant APIs/tickets/logs, and ask only for missing details.</p>
+            <p style={{ fontSize: 11, color: "var(--muted)" }}>
+              Example: &quot;Our block malicious IP workflow stops after 30 seconds. Ticket AISUPS-1.&quot;
+            </p>
             <p style={{ fontSize: 11 }}>{SLASH_COMMANDS.slice(0, 5).map((c) => c.cmd).join(" · ")}</p>
           </div>
         )}
@@ -172,7 +197,7 @@ export function AIChatPanel() {
         <input
           className="ide-chat-input"
           data-testid="ai-chat-input"
-          placeholder="Message or /command…"
+          placeholder="Describe the issue in your own words…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -207,8 +232,4 @@ function btnStyle(bg: string): React.CSSProperties {
     cursor: "pointer",
     fontSize: 12,
   };
-}
-
-function contentOrAppend(current: string, extra: string) {
-  return current + extra;
 }

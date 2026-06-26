@@ -5,7 +5,7 @@ describe("supervisorAgent", () => {
   it("routes CQL queries to cql agent", () => {
     const plan = planInvestigation({ text: "Write a CQL query for malicious IPs" });
     expect(plan.agents).toContain("cql");
-    expect(plan.canProceed).toBe(false);
+    expect(plan.canProceed).toBe(true);
   });
 
   it("proceeds when endpoint provided", () => {

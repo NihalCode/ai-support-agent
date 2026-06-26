@@ -7,6 +7,8 @@ import { FinalReportView } from "./FinalReportView";
 import { EvidencePanel } from "./EvidencePanel";
 import { InvestigationChat } from "./InvestigationChat";
 
+const SIMPLE_MODE_KEY = "ai-support-investigation-simple-mode";
+
 const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: 12,
@@ -27,6 +29,27 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
+function applyExtractedFields(
+  data: InvestigateResponse,
+  setters: {
+    setIssueRef: (v: string) => void;
+    setEndpoint: (v: string) => void;
+    setTimestamp: (v: string) => void;
+    setRequestId: (v: string) => void;
+    setStatusCode: (v: string) => void;
+    setErrorMessage: (v: string) => void;
+  }
+) {
+  const q = data.context?.query;
+  if (!q) return;
+  if (q.issueRef) setters.setIssueRef(q.issueRef);
+  if (q.endpoint) setters.setEndpoint(q.endpoint);
+  if (q.timestamp || q.approximateStartTime) setters.setTimestamp(q.timestamp ?? q.approximateStartTime ?? "");
+  if (q.requestId) setters.setRequestId(q.requestId);
+  if (q.statusCode) setters.setStatusCode(String(q.statusCode));
+  if (q.errorMessage) setters.setErrorMessage(q.errorMessage);
+}
+
 export function InvestigationWorkspace({
   onResult,
   embedded = false,
@@ -34,6 +57,8 @@ export function InvestigationWorkspace({
   onResult?: (r: InvestigateResponse) => void;
   embedded?: boolean;
 } = {}) {
+  const [simpleMode, setSimpleMode] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [text, setText] = useState("");
   const [issueRef, setIssueRef] = useState("");
   const [endpoint, setEndpoint] = useState("");
@@ -42,12 +67,25 @@ export function InvestigationWorkspace({
   const [statusCode, setStatusCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [extractedPreview, setExtractedPreview] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InvestigateResponse | null>(null);
   const [chat, setChat] = useState<InvestigationChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(SIMPLE_MODE_KEY);
+    if (stored === "false") {
+      setSimpleMode(false);
+      setAdvancedOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(SIMPLE_MODE_KEY, simpleMode ? "true" : "false");
+  }, [simpleMode]);
 
   useEffect(() => {
     fetch("/api/support/status")
@@ -72,9 +110,23 @@ export function InvestigationWorkspace({
     };
   }
 
+  function previewExtraction() {
+    const lines: string[] = [];
+    const ticket = text.match(/\b([A-Z][A-Z0-9]+-\d+)\b/)?.[1];
+    const workflow = text.match(/\b([\w\s-]{4,60})\s+workflow\b/i)?.[1]?.trim();
+    const time = text.match(/\b(yesterday(?:\s+\w+)?|this morning|last night)\b/i)?.[0];
+    const symptom = text.match(/\b(hangs?|fail(?:s|ed)?|stops?|timeout)[^.?\n]{0,60}/i)?.[0];
+    if (ticket) lines.push(`Support ticket: ${ticket}`);
+    if (workflow) lines.push(`Workflow: ${workflow}`);
+    if (time) lines.push(`Timing: ${time}`);
+    if (symptom) lines.push(`Symptom: ${symptom.trim()}`);
+    setExtractedPreview(lines);
+    if (ticket && !issueRef) setIssueRef(ticket);
+  }
+
   async function investigate() {
     if (!text.trim() && !issueRef.trim()) {
-      setError("Enter a support query or Jira/GitHub issue ref.");
+      setError("Describe the problem in your own words, or mention a ticket ID.");
       return;
     }
     setLoading(true);
@@ -89,6 +141,14 @@ export function InvestigationWorkspace({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Investigation failed");
       setResult(data as InvestigateResponse);
+      applyExtractedFields(data as InvestigateResponse, {
+        setIssueRef,
+        setEndpoint,
+        setTimestamp,
+        setRequestId,
+        setStatusCode,
+        setErrorMessage,
+      });
       onResult?.(data as InvestigateResponse);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Investigation failed");
@@ -116,7 +176,7 @@ export function InvestigationWorkspace({
       if (!res.ok) {
         const msg = data.error ?? "Chat failed";
         if (res.status === 404 && /session/i.test(msg)) {
-          throw new Error("Session expired — click Investigate again, then retry your question.");
+          throw new Error("Session expired — describe the issue again to start a new investigation.");
         }
         throw new Error(msg);
       }
@@ -155,49 +215,141 @@ export function InvestigationWorkspace({
         minHeight: 520,
       }}
     >
-      {/* Left — query intake */}
       <div style={{ display: "grid", gap: 12 }}>
-        <Card title="Support query">
-          <label style={labelStyle}>Customer / support description</label>
+        <Card title="Support issue">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>Mode</span>
+            <button
+              type="button"
+              data-testid="investigation-mode-toggle"
+              onClick={() => {
+                setSimpleMode((s) => !s);
+                if (simpleMode) setAdvancedOpen(true);
+              }}
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "4px 8px",
+                fontSize: 11,
+                cursor: "pointer",
+                color: "var(--text)",
+              }}
+            >
+              {simpleMode ? "Simple mode" : "Technical mode"}
+            </button>
+          </div>
+
+          <label style={labelStyle}>Describe the problem in your own words</label>
           <textarea
+            data-testid="investigation-issue-input"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            rows={5}
-            placeholder="The customer says the indicator search API is failing with 500s since 10:30 AM…"
+            onBlur={previewExtraction}
+            rows={simpleMode ? 6 : 4}
+            placeholder="The workflow that blocks malicious IPs started hanging yesterday morning. Ticket AISUPS-1…"
             style={{ ...inputStyle, resize: "vertical" }}
           />
-          <label style={{ ...labelStyle, marginTop: 10 }}>Issue ref (optional)</label>
-          <input
-            value={issueRef}
-            onChange={(e) => setIssueRef(e.target.value)}
-            placeholder="AISUP5-2 or gh#1024"
-            style={inputStyle}
-          />
-          <label style={{ ...labelStyle, marginTop: 10 }}>Endpoint</label>
-          <input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="/v3/indicators/search/" style={inputStyle} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-            <div>
-              <label style={labelStyle}>Timestamp</label>
-              <input value={timestamp} onChange={(e) => setTimestamp(e.target.value)} placeholder="2026-06-21 10:30" style={inputStyle} />
+
+          {extractedPreview.length > 0 && simpleMode && (
+            <div
+              data-testid="investigation-extracted-preview"
+              style={{
+                marginTop: 10,
+                padding: 10,
+                background: "var(--surface-2)",
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Optional details we found</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {extractedPreview.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
             </div>
-            <div>
-              <label style={labelStyle}>Status code</label>
-              <input value={statusCode} onChange={(e) => setStatusCode(e.target.value)} placeholder="500" style={inputStyle} />
+          )}
+
+          <button
+            type="button"
+            data-testid="investigation-advanced-toggle"
+            onClick={() => setAdvancedOpen((o) => !o)}
+            style={{
+              marginTop: 10,
+              background: "none",
+              border: "none",
+              color: "var(--accent)",
+              cursor: "pointer",
+              fontSize: 12,
+              padding: 0,
+            }}
+          >
+            {advancedOpen ? "Hide advanced details" : "Advanced details (optional)"}
+          </button>
+
+          {advancedOpen && (
+            <div data-testid="investigation-advanced-fields" style={{ marginTop: 10 }}>
+              <label style={labelStyle}>Issue ref (optional)</label>
+              <input
+                value={issueRef}
+                onChange={(e) => setIssueRef(e.target.value)}
+                placeholder="AISUP5-2 or gh#1024"
+                style={inputStyle}
+              />
+              <label style={{ ...labelStyle, marginTop: 10 }}>Endpoint, if you know it</label>
+              <input
+                value={endpoint}
+                onChange={(e) => setEndpoint(e.target.value)}
+                placeholder="/v3/indicators/search/"
+                style={inputStyle}
+              />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                <div>
+                  <label style={labelStyle}>Timestamp</label>
+                  <input
+                    value={timestamp}
+                    onChange={(e) => setTimestamp(e.target.value)}
+                    placeholder="2026-06-21 10:30"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Status code</label>
+                  <input
+                    value={statusCode}
+                    onChange={(e) => setStatusCode(e.target.value)}
+                    placeholder="500"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              <label style={{ ...labelStyle, marginTop: 10 }}>Request or trace ID, if someone gave you one</label>
+              <input value={requestId} onChange={(e) => setRequestId(e.target.value)} style={inputStyle} />
+              <label style={{ ...labelStyle, marginTop: 10 }}>Error message</label>
+              <input value={errorMessage} onChange={(e) => setErrorMessage(e.target.value)} style={inputStyle} />
+              <label style={{ ...labelStyle, marginTop: 10 }}>GitHub repo (optional)</label>
+              <input
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="NihalCode/ai-support-agent"
+                style={inputStyle}
+              />
             </div>
-          </div>
-          <label style={{ ...labelStyle, marginTop: 10 }}>Request / trace ID</label>
-          <input value={requestId} onChange={(e) => setRequestId(e.target.value)} style={inputStyle} />
-          <label style={{ ...labelStyle, marginTop: 10 }}>Error message</label>
-          <input value={errorMessage} onChange={(e) => setErrorMessage(e.target.value)} style={inputStyle} />
-          <label style={{ ...labelStyle, marginTop: 10 }}>GitHub repo (optional)</label>
-          <input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="NihalCode/ai-support-agent" style={inputStyle} />
+          )}
+
           <div style={{ marginTop: 12, width: "100%" }}>
-            <Button variant="primary" onClick={investigate} disabled={loading}>
-              {loading ? "Investigating…" : "Investigate"}
+            <Button variant="primary" data-testid="investigation-start-button" onClick={investigate} disabled={loading}>
+              {loading ? "Investigating…" : simpleMode ? "Start from this description" : "Investigate"}
             </Button>
           </div>
           {loading && <Spinner label="Running agents…" />}
           {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 8 }}>{error}</p>}
+          {simpleMode && (
+            <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+              You can also paste this into chat — investigation starts automatically.
+            </p>
+          )}
         </Card>
         {result?.context.modes && (
           <Card title="Integration modes">
@@ -210,7 +362,6 @@ export function InvestigationWorkspace({
         )}
       </div>
 
-      {/* Center — chat + report */}
       <div style={{ display: "grid", gap: 12 }}>
         <InvestigationChat
           messages={chat}
@@ -219,7 +370,7 @@ export function InvestigationWorkspace({
           loading={chatLoading}
         />
         {result?.needsMoreInfo && (
-          <Card title="Missing information">
+          <Card title="A few things that would help">
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
               {result.missingQuestions.map((q) => (
                 <li key={q.id}>{q.question}</li>
@@ -246,7 +397,6 @@ export function InvestigationWorkspace({
         )}
       </div>
 
-      {/* Right — evidence (hidden when embedded in combined workspace) */}
       {!embedded && <EvidencePanel context={result?.context ?? null} />}
     </div>
   );

@@ -44,6 +44,19 @@ export interface SupportQuery {
   /** Optional linked ticket (Jira key or gh#123) */
   issueRef?: string;
   repoUrl?: string;
+  /** Extracted workflow or feature name (e.g. "block malicious IP") */
+  workflowName?: string;
+  /** Plain-language symptom description */
+  symptom?: string;
+  /** When the issue started (natural language, e.g. "yesterday morning") */
+  approximateStartTime?: string;
+  /** Inferred product area */
+  likelyCategory?: string;
+  /** Whether the reporter appears non-technical */
+  technicalLevel?: "non-technical" | "technical";
+  urgency?: string;
+  /** Endpoints inferred from docs/registry when not explicitly provided */
+  inferredEndpoints?: string[];
 }
 
 export interface MissingInformationQuestion {

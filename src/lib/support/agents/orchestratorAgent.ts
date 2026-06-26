@@ -10,6 +10,7 @@ import type {
   InvestigationChatMessage,
 } from "../investigation/types";
 import { enrichSupportQuery, missingInfoQuestions } from "../investigation/extract-query";
+import { enrichWithEndpointInference } from "../investigation/infer-api";
 import { newSessionId, saveSession, getSession } from "../investigation/session-store";
 import { runJiraAgent } from "../agents/jiraAgent";
 import { runCodeAgent } from "../agents/codeAgent";
@@ -142,7 +143,7 @@ function collectEvidence(ctx: Partial<InvestigationContext>): EvidenceItem[] {
 export async function runInvestigation(rawQuery: SupportQuery): Promise<InvestigateResponse> {
   await ensureAutoImported().catch(() => undefined);
 
-  const query = enrichSupportQuery(rawQuery);
+  const query = enrichWithEndpointInference(enrichSupportQuery(rawQuery));
   const plan = planInvestigation(query);
   const missing = plan.missingQuestions;
 
@@ -287,7 +288,9 @@ function emptyContext(
   const report: SupportTriageReport = {
     title: "More information needed",
     plainEnglishSummary:
-      "The query is too vague to investigate safely. Please provide an endpoint, timestamp, request ID, or error message.",
+      query.technicalLevel === "non-technical"
+        ? "I'm checking docs, tickets, and logs based on what you described. I'll ask simple follow-up questions only if something critical is missing."
+        : "Investigation started from your description. Optional technical details (endpoint, request ID) can refine results.",
     currentStatus: "needs-more-information",
     severity: "low",
     confidence: "low",

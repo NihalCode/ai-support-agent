@@ -12,6 +12,7 @@ export type ChatStreamEvent =
       summary: string;
       evidence?: unknown[];
     }
+  | { type: "session_created"; sessionId: string; investigationId?: string; title: string }
   | { type: "investigation_update"; investigationId: string; patch: unknown }
   | { type: "approval_required"; approvalId: string; action: unknown }
   | { type: "message_done"; messageId: string }

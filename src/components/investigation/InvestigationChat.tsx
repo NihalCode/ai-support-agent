@@ -54,7 +54,7 @@ export function InvestigationChat({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={disabled}
-          placeholder={disabled ? "Run Investigate first" : "Ask a follow-up question…"}
+          placeholder={disabled ? "Start an investigation from chat or the form above" : "Ask a follow-up question…"}
           style={{
             flex: 1,
             background: "var(--surface-2)",

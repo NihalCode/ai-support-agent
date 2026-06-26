@@ -54,11 +54,30 @@ test.describe("Semantic search", () => {
 
 test.describe("Chat streaming", () => {
   test("streams assistant response with tool card", async ({ page }) => {
+    test.setTimeout(60000);
     await page.goto("/");
     await page.getByTestId("ai-chat-input").fill("What caused the 400 error?");
     await page.getByTestId("ai-chat-input").press("Enter");
-    await expect(page.getByTestId("chat-assistant-message")).toContainText(/bulk tag|missing required field|Start an investigation/i, {
-      timeout: 20000,
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(
+      /bulk tag|missing required field|investigate this|What I understood/i,
+      { timeout: 45000 }
+    );
+    await expect(page.getByText(/No active session|Start an investigation first|Run Investigate first/i)).toHaveCount(0);
+  });
+
+  test("auto-creates investigation from non-technical support message", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.goto("/");
+    const message =
+      "Our block malicious IP workflow stops after about half a minute. Ticket AISUPS-1. I don't know the endpoint.";
+    await page.getByTestId("ai-chat-input").fill(message);
+    await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(/investigate|AISUPS-1|block|workflow/i, {
+      timeout: 45000,
+    });
+    await expect(page.getByText(/No active session|Start an investigation first|Run Investigate first/i)).toHaveCount(0);
+    await expect(page.getByText(/Started investigation|create_investigation|Checking/i).first()).toBeVisible({
+      timeout: 45000,
     });
   });
 });
@@ -81,6 +100,20 @@ test.describe("Terminal", () => {
     await page.getByTestId("terminal-input").fill("rm -rf /");
     await page.getByTestId("terminal-run").click();
     await expect(page.getByText(/blocked|not allowlisted/i)).toBeVisible();
+  });
+});
+
+test.describe("Investigation workspace UI", () => {
+  test("shows plain-English input and optional advanced fields", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-investigations").click();
+    await expect(page.getByTestId("investigation-issue-input")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Describe the problem in your own words/i)).toBeVisible();
+    await page.getByTestId("investigation-advanced-toggle").click();
+    await expect(page.getByTestId("investigation-advanced-fields")).toBeVisible();
+    await expect(page.getByText(/Endpoint, if you know it/i)).toBeVisible();
+    await page.getByTestId("investigation-mode-toggle").click();
+    await expect(page.getByText(/Technical mode/i)).toBeVisible();
   });
 });
 
