@@ -80,6 +80,15 @@ describe("build-app deployment", () => {
     expect(plan.requiresApproval).toBe(true);
     expect(plan.mock).toBe(true);
   });
+
+  it("uses real deploy when vercel token passed in request", () => {
+    const prev = process.env.TEST_MODE;
+    delete process.env.TEST_MODE;
+    const plan = createDeploymentPlan("missing-project", "preview", { vercelToken: "test-vercel-token" });
+    expect(plan.mock).toBe(false);
+    if (prev === undefined) delete process.env.TEST_MODE;
+    else process.env.TEST_MODE = prev;
+  });
 });
 
 describe("build-app approval gates", () => {

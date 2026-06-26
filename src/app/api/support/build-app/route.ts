@@ -16,6 +16,7 @@ import { executeAction } from "@/lib/support/executor";
 import { redact } from "@/lib/support/redact";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
+import type { BuildAppCredentials } from "@/lib/support/build-app/credentials";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -24,7 +25,8 @@ type Body =
   | { action: "plan"; message: string; templateOverride?: string }
   | { action: "apply"; projectId: string; approvalId?: string; force?: boolean; userConfirmed?: boolean }
   | { action: "build"; projectId: string }
-  | { action: "deploy"; projectId: string; target?: "preview" | "production"; approvalId?: string; userConfirmed?: boolean }
+  | { action: "deploy"; projectId: string; target?: "preview" | "production"; approvalId?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials }
+  | { action: "commit"; projectId: string; message?: string; branch?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials }
   | { action: "edit"; projectId: string; message: string }
   | { action: "approve-and-run"; approvalId: string };
 
@@ -130,7 +132,11 @@ export async function POST(req: Request) {
       }
 
       case "deploy": {
-        const deployPlan = await handleBuildAppDeploy(body.projectId, body.target ?? "preview");
+        const deployPlan = await handleBuildAppDeploy(
+          body.projectId,
+          body.target ?? "preview",
+          body.credentials
+        );
         const cfg = getConfig();
         if (cfg.readOnly) {
           return NextResponse.json({ error: "Read-only mode enabled." }, { status: 403 });
@@ -140,11 +146,14 @@ export async function POST(req: Request) {
           if (deployPlan.buildOk === false) {
             return NextResponse.json({ ...deployPlan, error: "Fix build errors before deploying." }, { status: 400 });
           }
-          const detail = await applyApprovedBuildAction({
-            type: "build-app-deploy",
-            projectId: body.projectId,
-            target: body.target ?? "preview",
-          });
+          const detail = await applyApprovedBuildAction(
+            {
+              type: "build-app-deploy",
+              projectId: body.projectId,
+              target: body.target ?? "preview",
+            },
+            body.credentials
+          );
           await audit({
             action: "write:build-app-deploy",
             target: body.projectId,
@@ -177,6 +186,29 @@ export async function POST(req: Request) {
         const exec = await executeAction(approval.action, { approved: true });
         setApprovalStatus(body.approvalId, "executed", exec.detail);
         return NextResponse.json(exec);
+      }
+
+      case "commit": {
+        const { commitBuildAppProject } = await import("@/lib/support/build-app/git");
+        const project = getProject(body.projectId);
+        if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        if (!body.userConfirmed) {
+          return NextResponse.json({ error: "userConfirmed required" }, { status: 403 });
+        }
+        const detail = await commitBuildAppProject(
+          body.projectId,
+          body.message ?? `Build App: ${project.name}`,
+          body.branch,
+          body.credentials
+        );
+        await audit({
+          action: "write:build-app-git-commit",
+          target: body.projectId,
+          approved: true,
+          provider: "build-app",
+          details: detail.slice(0, 200),
+        });
+        return NextResponse.json({ ok: true, detail, project: getProject(body.projectId) });
       }
 
       default:

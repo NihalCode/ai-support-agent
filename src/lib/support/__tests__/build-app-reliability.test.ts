@@ -9,6 +9,8 @@ import { canTransition } from "../build-app/workflow-state";
 import { handleBuildAppPlan } from "../build-app/orchestrate";
 import { applyFileChanges, getProject } from "../build-app/project-store";
 import { runProjectBuild } from "../build-app/deploy";
+import { resolveBuildAppCredentials, hasVercelDeployCredentials, hasGitHubPushCredentials } from "../build-app/credentials";
+import { collectProjectDeployFiles } from "../build-app/collect-files";
 
 describe("build-app preflight", () => {
   let tmp: string;
@@ -143,6 +145,33 @@ describe("runProjectBuild pipeline", () => {
     const result = await runProjectBuild(pid);
     expect(result.preflightOk).toBe(false);
     expect(result.buildOk).toBe(false);
+  });
+});
+
+describe("build-app deploy credentials", () => {
+  it("resolves request credentials over env", () => {
+    const prev = process.env.VERCEL_TOKEN;
+    process.env.VERCEL_TOKEN = "env-token";
+    expect(resolveBuildAppCredentials({ vercelToken: "req-token" }).vercelToken).toBe("req-token");
+    expect(hasVercelDeployCredentials(resolveBuildAppCredentials({ vercelToken: "x" }))).toBe(true);
+    expect(hasGitHubPushCredentials(resolveBuildAppCredentials({ githubToken: "g", githubRepo: "o/r" }))).toBe(true);
+    if (prev === undefined) delete process.env.VERCEL_TOKEN;
+    else process.env.VERCEL_TOKEN = prev;
+  });
+});
+
+describe("collect project deploy files", () => {
+  it("skips node_modules and includes package.json", () => {
+    const tmp = path.join(os.tmpdir(), `collect-${Date.now()}`);
+    mkdirSync(path.join(tmp, "node_modules", "x"), { recursive: true });
+    writeFileSync(path.join(tmp, "node_modules", "x", "a.js"), "x");
+    writeFileSync(path.join(tmp, "package.json"), "{}");
+    mkdirSync(path.join(tmp, "app"));
+    writeFileSync(path.join(tmp, "app", "page.tsx"), "export default function P(){}");
+    const files = collectProjectDeployFiles(tmp);
+    expect(files.some((f) => f.file === "package.json")).toBe(true);
+    expect(files.some((f) => f.file.includes("node_modules"))).toBe(false);
+    rmSync(tmp, { recursive: true, force: true });
   });
 });
 

@@ -76,6 +76,13 @@ export function BuildAppEditor({
   const [error, setError] = useState<string | null>(null);
   const [buildOutput, setBuildOutput] = useState("");
   const [showTechnical, setShowTechnical] = useState(false);
+  const [showDeployCreds, setShowDeployCreds] = useState(false);
+  const [deployCreds, setDeployCreds] = useState({
+    githubToken: "",
+    githubRepo: "",
+    githubBranch: "",
+    vercelToken: "",
+  });
   const autoStartedRef = useRef(false);
   const seededRef = useRef(false);
 
@@ -199,31 +206,55 @@ export function BuildAppEditor({
       setLoading(true);
       setError(null);
       try {
-        pushAssistant(target === "production" ? "Getting a live link ready…" : "Creating a preview link for you…");
+        const hasCreds = Boolean(deployCreds.vercelToken.trim() || deployCreds.githubToken.trim());
+        pushAssistant(
+          target === "production"
+            ? "Getting a live link ready…"
+            : hasCreds
+              ? "Pushing to GitHub (if configured) and creating your Vercel preview link…"
+              : "Creating a preview link for you…"
+        );
+        const credPayload = {
+          githubToken: deployCreds.githubToken.trim() || undefined,
+          githubRepo: deployCreds.githubRepo.trim() || undefined,
+          githubBranch: deployCreds.githubBranch.trim() || undefined,
+          vercelToken: deployCreds.vercelToken.trim() || undefined,
+        };
         const planRes = await fetch("/api/support/build-app", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deploy", projectId: project.id, target, userConfirmed: true }),
+          body: JSON.stringify({
+            action: "deploy",
+            projectId: project.id,
+            target,
+            userConfirmed: true,
+            credentials: credPayload,
+          }),
         });
         const planData = await planRes.json();
         if (!planRes.ok) throw new Error(planData.error ?? "Deploy failed");
         setBuildOutput(planData.buildOutput ?? planData.detail ?? planData.explanation ?? "");
         await loadProject(project.id);
         const url = planData.project?.previewUrl ?? project.previewUrl;
+        const isMock = planData.project?.deployments?.[0]?.mock;
         pushAssistant(
           url
-            ? `Your preview link is ready: ${url}\nShare this with your team to try the app.`
+            ? isMock
+              ? `Demo preview link (no Vercel token): ${url}\nPaste your Vercel token under **Deploy settings** for a real link.`
+              : `Your preview link is ready: ${url}\nShare this with your team to try the app.`
             : (planData.detail ?? "Deployment finished.")
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Deploy failed";
         setError(msg);
-        pushAssistant(`I couldn't deploy yet: ${msg}`);
+        pushAssistant(
+          `I couldn't deploy yet: ${msg}\n\nIf you haven't already, open **Deploy settings** and paste your GitHub + Vercel tokens.`
+        );
       } finally {
         setLoading(false);
       }
     },
-    [project, loadProject, pushAssistant]
+    [project, loadProject, pushAssistant, deployCreds]
   );
 
   useEffect(() => {
@@ -394,6 +425,66 @@ export function BuildAppEditor({
           />
         </div>
 
+        <details
+          open={showDeployCreds}
+          onToggle={(e) => setShowDeployCreds((e.target as HTMLDetailsElement).open)}
+          style={{ marginTop: 12 }}
+          data-testid="build-app-deploy-creds"
+        >
+          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>
+            Deploy settings — GitHub + Vercel tokens (memory only, never saved)
+          </summary>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "8px 0" }}>
+            Paste tokens here to push your app to GitHub and deploy a real Vercel preview. Tokens are sent only with
+            your deploy request and are not stored in the browser or on disk.
+          </p>
+          <label style={credLabelStyle}>
+            GitHub token
+            <input
+              type="password"
+              autoComplete="off"
+              data-testid="build-app-github-token"
+              value={deployCreds.githubToken}
+              onChange={(e) => setDeployCreds((c) => ({ ...c, githubToken: e.target.value }))}
+              placeholder="ghp_…"
+              style={credInputStyle}
+            />
+          </label>
+          <label style={credLabelStyle}>
+            GitHub repo (owner/name)
+            <input
+              type="text"
+              data-testid="build-app-github-repo"
+              value={deployCreds.githubRepo}
+              onChange={(e) => setDeployCreds((c) => ({ ...c, githubRepo: e.target.value }))}
+              placeholder="your-org/your-repo"
+              style={credInputStyle}
+            />
+          </label>
+          <label style={credLabelStyle}>
+            GitHub branch (optional)
+            <input
+              type="text"
+              value={deployCreds.githubBranch}
+              onChange={(e) => setDeployCreds((c) => ({ ...c, githubBranch: e.target.value }))}
+              placeholder="build-app/preview"
+              style={credInputStyle}
+            />
+          </label>
+          <label style={credLabelStyle}>
+            Vercel token
+            <input
+              type="password"
+              autoComplete="off"
+              data-testid="build-app-vercel-token"
+              value={deployCreds.vercelToken}
+              onChange={(e) => setDeployCreds((c) => ({ ...c, vercelToken: e.target.value }))}
+              placeholder="From vercel.com/account/tokens"
+              style={credInputStyle}
+            />
+          </label>
+        </details>
+
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {(approvalId || (pendingChanges.length > 0 && project)) && (
             <button
@@ -518,6 +609,7 @@ export function BuildAppEditor({
             <>
               <li>Files are created — ask for changes anytime in chat</li>
               <li>Click &quot;Test my app&quot; to verify</li>
+              <li>Open Deploy settings and paste GitHub + Vercel tokens</li>
               <li>Get a preview link to share</li>
             </>
           )}
@@ -591,4 +683,24 @@ const btnSecondary: React.CSSProperties = {
   padding: "8px 14px",
   cursor: "pointer",
   fontSize: 13,
+};
+
+const credLabelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  color: "var(--muted)",
+  marginBottom: 8,
+};
+
+const credInputStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  marginTop: 4,
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "6px 10px",
+  color: "var(--text)",
+  fontFamily: "inherit",
+  fontSize: 12,
 };

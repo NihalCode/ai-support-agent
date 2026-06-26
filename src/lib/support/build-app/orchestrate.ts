@@ -8,6 +8,7 @@ import { runAppDeployAgent, executeApprovedDeploy } from "./appDeployAgent";
 import { applyFileChanges, getProject } from "./project-store";
 import { isDeployRequest } from "./classify-request";
 import type { DeploymentTarget } from "./types";
+import type { BuildAppCredentials } from "./credentials";
 
 export function routeBuildAppRequest(req: BuildAppRequest) {
   if (req.projectId && isDeployRequest(req.message)) {
@@ -23,8 +24,12 @@ export function handleBuildAppPlan(req: BuildAppRequest) {
   return runAppBuilderAgent(req);
 }
 
-export async function handleBuildAppDeploy(projectId: string, target: DeploymentTarget = "preview") {
-  return runAppDeployAgent(projectId, target);
+export async function handleBuildAppDeploy(
+  projectId: string,
+  target: DeploymentTarget = "preview",
+  credentials?: BuildAppCredentials
+) {
+  return runAppDeployAgent(projectId, target, credentials);
 }
 
 export function requestScaffoldApproval(projectId: string, preview: string) {
@@ -67,7 +72,8 @@ export function requestDeployApproval(projectId: string, target: DeploymentTarge
 }
 
 export async function applyApprovedBuildAction(
-  action: { type: string; projectId: string; target?: DeploymentTarget }
+  action: { type: string; projectId: string; target?: DeploymentTarget },
+  credentials?: BuildAppCredentials
 ): Promise<string> {
   const project = getProject(action.projectId);
   if (!project) throw new Error("Project not found");
@@ -78,7 +84,7 @@ export async function applyApprovedBuildAction(
   }
 
   if (action.type === "build-app-deploy") {
-    const dep = await executeApprovedDeploy(action.projectId, action.target ?? "preview");
+    const dep = await executeApprovedDeploy(action.projectId, action.target ?? "preview", credentials);
     return dep.mock
       ? `Mock deployment ready: ${dep.url} (not a real Vercel URL)`
       : `Deployed to ${dep.url}`;

@@ -14,6 +14,14 @@ import {
   type CommandResult,
 } from "./command-runner";
 import { classifyBuildError } from "./error-classify";
+import {
+  type BuildAppCredentials,
+  hasGitHubPushCredentials,
+  hasVercelDeployCredentials,
+  resolveBuildAppCredentials,
+} from "./credentials";
+import { deployToVercelApi } from "./vercel-api-deploy";
+import { pushProjectToGitHub } from "./github-api-push";
 
 export interface ProjectBuildResult {
   ok: boolean;
@@ -25,9 +33,14 @@ export interface ProjectBuildResult {
   classification?: ReturnType<typeof classifyBuildError>;
 }
 
-export function createDeploymentPlan(projectId: string, target: DeploymentTarget): DeploymentPlan {
+export function createDeploymentPlan(
+  projectId: string,
+  target: DeploymentTarget,
+  credentials?: BuildAppCredentials
+): DeploymentPlan {
   const readiness = checkVercelReadiness(projectId);
-  const mock = isTestMode() || !process.env.VERCEL_TOKEN;
+  const resolved = resolveBuildAppCredentials(credentials);
+  const mock = isTestMode() || !hasVercelDeployCredentials(resolved);
 
   return {
     projectId,
@@ -37,7 +50,7 @@ export function createDeploymentPlan(projectId: string, target: DeploymentTarget
       "npm install in generated app directory",
       "npm run build (must exit 0)",
       "npm test if configured (must exit 0)",
-      mock ? "Mock Vercel deploy (TEST_MODE or missing VERCEL_TOKEN)" : `Vercel ${target} deploy via API`,
+      mock ? "Mock Vercel deploy (no Vercel token — paste one in Deploy settings)" : `Vercel ${target} deploy via REST API`,
       "Return deployment URL",
     ],
     risks: [
@@ -195,7 +208,8 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
 
 export async function deployProject(
   projectId: string,
-  target: DeploymentTarget
+  target: DeploymentTarget,
+  credentials?: BuildAppCredentials
 ): Promise<BuildAppDeployment> {
   const p = getProject(projectId);
   if (!p) throw new Error("Project not found");
@@ -204,13 +218,29 @@ export async function deployProject(
     throw new Error("Build must pass before deployment. Run Test my app first.");
   }
 
-  const plan = createDeploymentPlan(projectId, target);
+  const resolved = resolveBuildAppCredentials(credentials);
+  const plan = createDeploymentPlan(projectId, target, credentials);
   p.status = "deploying";
   saveProject(p);
 
   const mock = plan.mock;
   let url: string;
   let logs: string;
+  const logParts: string[] = [];
+
+  if (!mock && hasGitHubPushCredentials(resolved)) {
+    const push = await pushProjectToGitHub({
+      token: resolved.githubToken!,
+      repo: resolved.githubRepo!,
+      rootDir: p.rootDir,
+      message: `Build App: ${p.name}`,
+      branch: resolved.githubBranch ?? undefined,
+    });
+    p.gitBranch = push.branch;
+    p.lastCommit = push.commitSha;
+    logParts.push(`GitHub push: ${push.url}`, `Commit: ${push.commitSha.slice(0, 7)}`);
+    saveProject(p);
+  }
 
   if (mock) {
     url = `https://mock-preview.vercel.app/apps/${projectId.slice(0, 8)}`;
@@ -219,29 +249,28 @@ export async function deployProject(
       `Target: ${target}`,
       `Project: ${p.name}`,
       `Build: verified (exit 0)`,
-      `Set VERCEL_TOKEN to deploy for real.`,
+      `Paste a Vercel token in Deploy settings (or set VERCEL_TOKEN on the server) for a real preview link.`,
+      ...logParts,
     ].join("\n");
   } else {
     if (!existsSync(path.join(p.rootDir, "package.json"))) {
       throw new Error("Cannot deploy — generated app package.json missing.");
     }
     try {
-      const { execSync } = await import("node:child_process");
-      const flag = target === "production" ? " --prod" : "";
-      logs = execSync(`npx vercel deploy${flag} --yes`, {
-        cwd: p.rootDir,
-        encoding: "utf8",
-        timeout: 300_000,
-        env: { ...process.env },
+      const result = await deployToVercelApi({
+        token: resolved.vercelToken!,
+        teamId: resolved.vercelTeamId,
+        projectName: p.name,
+        rootDir: p.rootDir,
+        target,
       });
-      const match = logs.match(/https:\/\/[^\s]+\.vercel\.app/);
-      url = match?.[0] ?? `https://vercel.app/project/${projectId}`;
+      url = result.url;
+      logs = [...logParts, result.logs].filter(Boolean).join("\n");
     } catch (e) {
-      const err = e as { stdout?: string; stderr?: string; message?: string };
-      logs = [err.stdout, err.stderr, err.message].filter(Boolean).join("\n");
+      logs = [...logParts, e instanceof Error ? e.message : "Deploy failed"].join("\n");
       p.status = "failed";
       saveProject(p);
-      throw new Error(logs.slice(0, 500));
+      throw new Error(logs.slice(0, 800));
     }
   }
 

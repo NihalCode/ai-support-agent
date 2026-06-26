@@ -1,35 +1,41 @@
 import "server-only";
 
-import { execSync } from "node:child_process";
 import { isTestMode } from "@/lib/test-mode";
 import { getProject, saveProject } from "./project-store";
+import type { BuildAppCredentials } from "./credentials";
+import { hasGitHubPushCredentials, resolveBuildAppCredentials } from "./credentials";
+import { pushProjectToGitHub } from "./github-api-push";
 
 export async function commitBuildAppProject(
   projectId: string,
   message: string,
-  branch?: string
+  branch?: string,
+  credentials?: BuildAppCredentials
 ): Promise<string> {
   const p = getProject(projectId);
   if (!p) throw new Error("Project not found");
 
-  if (isTestMode() || !process.env.GITHUB_TOKEN) {
+  const resolved = resolveBuildAppCredentials(credentials);
+
+  if (isTestMode() || !hasGitHubPushCredentials(resolved)) {
     p.lastCommit = `[mock] ${message}`;
     p.gitBranch = branch ?? "feature/build-app";
     saveProject(p);
+    if (!hasGitHubPushCredentials(resolved)) {
+      return `[mock] Committed on branch ${p.gitBranch}: ${message} — paste GitHub token + repo for a real push.`;
+    }
     return `[mock] Committed on branch ${p.gitBranch}: ${message}`;
   }
 
-  try {
-    if (branch) {
-      execSync(`git checkout -b ${branch}`, { cwd: p.rootDir, stdio: "pipe" });
-    }
-    execSync("git add -A", { cwd: p.rootDir, stdio: "pipe" });
-    execSync(`git commit -m ${JSON.stringify(message)}`, { cwd: p.rootDir, stdio: "pipe" });
-    p.lastCommit = message;
-    p.gitBranch = branch;
-    saveProject(p);
-    return `Committed: ${message}`;
-  } catch (e) {
-    throw new Error(e instanceof Error ? e.message : "Git commit failed");
-  }
+  const push = await pushProjectToGitHub({
+    token: resolved.githubToken!,
+    repo: resolved.githubRepo!,
+    rootDir: p.rootDir,
+    message,
+    branch: branch ?? resolved.githubBranch ?? undefined,
+  });
+  p.lastCommit = push.commitSha;
+  p.gitBranch = push.branch;
+  saveProject(p);
+  return `Pushed to GitHub: ${push.url} (${push.commitSha.slice(0, 7)})`;
 }

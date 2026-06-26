@@ -1,9 +1,10 @@
 import "server-only";
 
-import type { DeploymentTarget } from "./types";
+import { resolveBuildAppCredentials, hasGitHubPushCredentials, type BuildAppCredentials } from "./credentials";
 import { createDeploymentPlan, deployProject, runProjectBuild } from "./deploy";
 import { checkVercelReadiness } from "./vercel-readiness";
 import { getProject } from "./project-store";
+import type { DeploymentTarget } from "./types";
 
 export interface AppDeployAgentResult {
   readiness: ReturnType<typeof checkVercelReadiness>;
@@ -16,24 +17,40 @@ export interface AppDeployAgentResult {
 
 export async function runAppDeployAgent(
   projectId: string,
-  target: DeploymentTarget = "preview"
+  target: DeploymentTarget = "preview",
+  credentials?: BuildAppCredentials
 ): Promise<AppDeployAgentResult> {
   const project = getProject(projectId);
   if (!project) throw new Error("Project not found");
 
   const readiness = checkVercelReadiness(projectId);
-  const plan = createDeploymentPlan(projectId, target);
+  const plan = createDeploymentPlan(projectId, target, credentials);
 
-  const build = await runProjectBuild(projectId);
+  const build =
+    project.buildOk === true
+      ? {
+          ok: true,
+          buildOk: true,
+          output: project.buildOutput ?? "Build already passed.",
+          preflightOk: true,
+          commands: [],
+        }
+      : await runProjectBuild(projectId);
 
+  const resolved = resolveBuildAppCredentials(credentials);
   const explanation = [
     `Deployment plan for **${project.name}** (${target}).`,
     build.ok ? "Build passed." : "Build failed — fix errors before deploying.",
     plan.mock
-      ? "**Mock deploy mode** — set VERCEL_TOKEN for real deployments."
-      : "Vercel credentials detected — real deploy available after approval.",
+      ? "**Mock deploy mode** — paste a Vercel token below (or set VERCEL_TOKEN on the server) for a real preview link."
+      : "Vercel token detected — deploy uses the Vercel REST API (no local npm/CLI).",
+    hasGitHubPushCredentials(resolved)
+      ? "GitHub token + repo detected — files will be pushed before deploy."
+      : "",
     readiness.issues.length ? `\nNotes:\n${readiness.issues.map((i) => `- ${i}`).join("\n")}` : "",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return {
     readiness,
@@ -45,6 +62,10 @@ export async function runAppDeployAgent(
   };
 }
 
-export async function executeApprovedDeploy(projectId: string, target: DeploymentTarget) {
-  return deployProject(projectId, target);
+export async function executeApprovedDeploy(
+  projectId: string,
+  target: DeploymentTarget,
+  credentials?: BuildAppCredentials
+) {
+  return deployProject(projectId, target, credentials);
 }
