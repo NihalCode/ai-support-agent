@@ -118,6 +118,7 @@ test.describe("Chat build app routing", () => {
     await expect(page.getByText(/open_build_app|appBuilder/i).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("build-app-input")).toHaveValue(msg, { timeout: 5000 });
+    await expect(page.getByTestId("build-app-chat-input")).toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId("build-app-suggested-template")).toContainText(/indicator search/i, {
       timeout: 15000,
     });
@@ -133,8 +134,8 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
     const msg =
       "Build me a simple indicator search dashboard using Cyware APIs. Search box, optional CQL filter, table results, and details panel. Prepare for Vercel deployment.";
-    await page.getByTestId("build-app-input").fill(msg);
-    await page.getByTestId("build-app-plan").click();
+    await page.getByTestId("build-app-chat-input").fill(msg);
+    await page.getByTestId("build-app-chat-send").click();
     await expect(page.getByTestId("build-app-explanation")).toContainText(/indicator-search-dashboard|indicator search/i, {
       timeout: 15000,
     });

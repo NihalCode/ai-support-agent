@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { BuildAppRequest, BuildAppAgentResult, BuildAppFileChange } from "./types";
+import type { BuildAppRequest, BuildAppAgentResult, BuildAppFileChange, BuildAppProject } from "./types";
 import { buildScaffoldPlan, createProjectFromPlan } from "./plan-scaffold";
 import { classifyBuildAppRequest, isDeployRequest } from "./classify-request";
 import { getProject, readProjectFile, setPendingChanges } from "./project-store";
@@ -48,9 +48,37 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
   };
 }
 
+function conversationalReply(message: string, project: BuildAppProject): string | null {
+  const m = message.toLowerCase().trim();
+  if (/\b(ctix|csap|orchestrate|cftr)\b/.test(m)) {
+    const product = m.match(/\b(ctix|csap|orchestrate|cftr)\b/i)?.[1]?.toUpperCase() ?? "CTIX";
+    return `Got it — I'll use ${product} APIs for this app. Tell me if you'd like search, a table, filters, or anything else added.`;
+  }
+  if (/\b(analyst|admin|customer|team)\b/.test(m)) {
+    return "Understood — I'll keep the interface simple for your team. Anything else you want on the main screen?";
+  }
+  if (/\bread[- ]?only\b|\bview only\b|\bno write\b/.test(m)) {
+    return "Perfect — I'll make this read-only so it only looks up data, with no changes to your Cyware tenant.";
+  }
+  if (/\b(search|table|filter|details|dashboard)\b/.test(m) && project.status === "pending_approval") {
+    return "Thanks — those features are already in the plan. Click \"Yes, create my app\" when you're ready, or tell me what to change.";
+  }
+  return null;
+}
+
 function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
   const project = getProject(projectId);
   if (!project) throw new Error("Project not found");
+
+  const conversational = conversationalReply(message, project);
+  if (conversational) {
+    return {
+      plan: project.plan!,
+      project,
+      explanation: conversational,
+      needsApproval: false,
+    };
+  }
 
   const m = message.toLowerCase();
   const changes: BuildAppFileChange[] = [];
@@ -104,7 +132,8 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
     return {
       plan: project.plan!,
       project,
-      explanation: "I couldn't infer a safe automatic edit — describe the UI or file you want changed.",
+      explanation:
+        "Tell me what you'd like changed — for example: \"make it cleaner\", \"add a filter\", or \"explain how this works in simple terms\".",
       needsApproval: false,
     };
   }

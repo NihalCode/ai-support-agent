@@ -16,7 +16,10 @@ export function BuildAppSidebar() {
 
   return (
     <div data-testid="build-app-sidebar" style={{ padding: 8, fontSize: 12 }}>
-      <p style={{ color: "var(--muted)" }}>Scaffold Cyware API apps from chat. Secrets stay server-side.</p>
+      <p style={{ color: "var(--muted)", lineHeight: 1.5 }}>
+        Describe an app in plain English — search dashboards, team portals, and more. Chat with the builder to refine
+        it.
+      </p>
       <button
         type="button"
         data-testid="build-app-new"
@@ -26,7 +29,7 @@ export function BuildAppSidebar() {
           openTab({ id: "build-app-new", kind: "build-app", title: "Build App" })
         }
       >
-        + New app
+        + New app project
       </button>
       {projects.map((p) => (
         <button
