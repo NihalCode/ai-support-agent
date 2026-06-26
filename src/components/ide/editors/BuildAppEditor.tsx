@@ -37,6 +37,18 @@ const STEP_LABELS: Record<BuildStep, string> = {
   share: "Share a link",
 };
 
+function looksLikeBuildErrorMessage(text: string, buildFailed?: boolean): boolean {
+  if (
+    /\b(npm run build|turbopack|ecmascript|parsing .+ failed|error occurred|exited with \d+|build error|command failed|tell me why.*error)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  if (buildFailed && /\b(error|fail|fix|why|broken|occurred|build)\b/i.test(text)) return true;
+  return false;
+}
+
 function plainExplanation(raw: string): string {
   return raw
     .replace(/\*\*/g, "")
@@ -93,6 +105,7 @@ export function BuildAppEditor({
   // in-memory only: never written to localStorage
   const [vercelToken, setVercelToken] = useState("");
   const autoStartedRef = useRef(false);
+  const redeployAfterFixRef = useRef(false);
   const seededRef = useRef(false);
 
   const step = stepFromProject(project, approvalId);
@@ -188,7 +201,12 @@ export function BuildAppEditor({
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Deploy failed";
         setError(msg);
-        pushAssistant(`Deploy failed: ${msg}`);
+        setBuildOutput(msg);
+        syncBuildProblem(msg.split("\n")[0] ?? msg);
+        if (project) {
+          setProject({ ...project, buildOk: false, buildOutput: msg, status: "failed" });
+        }
+        pushAssistant(`Deploy failed: ${msg}\n\nPaste the error here or ask me to fix the build — I'll patch the source, rebuild, and redeploy.`);
       } finally {
         setLoading(false);
       }
@@ -213,7 +231,13 @@ export function BuildAppEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             project
-              ? { action: "edit", projectId: project.id, message: userText, projectSnapshot: project }
+              ? {
+                  action: "edit",
+                  projectId: project.id,
+                  message: userText,
+                  projectSnapshot: project,
+                  buildOutput: buildOutput || project.buildOutput,
+                }
               : { action: "plan", message: text, templateOverride: suggestedTemplateId || undefined }
           ),
         });
@@ -248,7 +272,7 @@ export function BuildAppEditor({
         setLoading(false);
       }
     },
-    [conversationText, project, suggestedTemplateId, setActiveBuildProject, pushAssistant]
+    [conversationText, project, suggestedTemplateId, setActiveBuildProject, pushAssistant, buildOutput]
   );
 
   useEffect(() => {
@@ -276,6 +300,117 @@ export function BuildAppEditor({
     void runAgent(initialMessage.trim(), { silentUser: true });
   }, [autoStart, mode, initialMessage, runAgent, project, initialProjectId, loadProject, requestDeploy]);
 
+  async function runFixBuildRedeploy(userText: string) {
+    if (!project) return;
+    redeployAfterFixRef.current = Boolean(project.previewUrl || project.deployments.length > 0);
+
+    setChatMessages((prev) => [...prev, { role: "user", content: userText, at: new Date().toISOString() }]);
+    setLoading(true);
+    setError(null);
+
+    try {
+      let proj = project;
+      const editRes = await fetch("/api/support/build-app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "edit",
+          projectId: proj.id,
+          message: userText,
+          projectSnapshot: proj,
+          buildOutput: buildOutput || proj.buildOutput,
+        }),
+      });
+      const editData = (await editRes.json()) as {
+        ok?: boolean;
+        error?: string;
+        explanation?: string;
+        pendingChanges?: BuildAppFileChange[];
+        approvalId?: string;
+        project?: BuildAppProject;
+      };
+      if (!editRes.ok) throw new Error(editData.error ?? "Could not analyze build error");
+
+      pushAssistant(editData.explanation ?? "Analyzed the build failure.");
+      if (editData.project) {
+        proj = editData.project;
+        setProject(proj);
+      }
+
+      if (!editData.pendingChanges?.length) return;
+
+      setPendingChanges(editData.pendingChanges);
+      pushAssistant("Applying the fix and re-running the build…");
+
+      proj = { ...proj, pendingChanges: editData.pendingChanges };
+      const applyRes = await fetch("/api/support/build-app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "apply",
+          projectId: proj.id,
+          userConfirmed: true,
+          projectSnapshot: proj,
+        }),
+      });
+      const applyData = (await applyRes.json()) as { ok?: boolean; error?: string; project?: BuildAppProject };
+      if (!applyRes.ok) throw new Error(applyData.error ?? "Could not apply fix");
+      if (applyData.project) {
+        proj = applyData.project;
+        setProject(proj);
+      }
+      setPendingChanges([]);
+      setApprovalId(null);
+
+      const buildRes = await fetch("/api/support/build-app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "build", projectId: proj.id, projectSnapshot: proj }),
+      });
+      const buildData = (await buildRes.json()) as {
+        ok?: boolean;
+        error?: string;
+        output?: string;
+        buildOk?: boolean;
+        classification?: { summary?: string; suggestedFix?: string };
+        project?: BuildAppProject;
+      };
+      setBuildOutput(buildData.output ?? buildData.error ?? "");
+      if (buildData.project) {
+        proj = buildData.project;
+        setProject(proj);
+      }
+
+      const passed = buildRes.ok && buildData.ok === true && buildData.buildOk === true;
+      if (!passed) {
+        const summary = buildData.classification?.summary ?? buildData.error ?? "Build still failing.";
+        setError(summary);
+        syncBuildProblem(summary);
+        pushAssistant(
+          `The fix didn't fully resolve the build:\n\n${summary}\n\nPaste any new error lines from the log and I'll try again.`
+        );
+        return;
+      }
+
+      syncBuildProblem(null);
+      pushAssistant("Build passed after the fix.");
+
+      if (redeployAfterFixRef.current || /\b(redeploy|deploy again|push.*live)\b/i.test(userText)) {
+        redeployAfterFixRef.current = false;
+        pushAssistant("Redeploying the preview…");
+        await requestDeploy("preview");
+      } else {
+        pushAssistant('Say "deploy" when you want me to publish the fixed preview link.');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Fix pipeline failed";
+      setError(msg);
+      pushAssistant(`Sorry — ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // --- chat send: routes deploy, approval, token, and normal messages ---
   async function handleChatSend(text: string) {
     const wsIntent = classifyBuildAppWorkspaceMessage(text, {
@@ -284,6 +419,11 @@ export function BuildAppEditor({
       pendingChanges: Boolean(approvalId || pendingChanges.length > 0),
       awaitingToken: awaitingVercelToken,
     });
+
+    if (project && looksLikeBuildErrorMessage(text, project.buildOk === false)) {
+      await runFixBuildRedeploy(text);
+      return;
+    }
 
     // Detect a pasted Vercel token (in context of deploying)
     const tok = looksLikeToken(text);
@@ -327,7 +467,12 @@ export function BuildAppEditor({
       return;
     }
 
-    if (project && ["edit_app", "fix_error", "explain_app"].includes(wsIntent.primaryIntent)) {
+    if (project && wsIntent.primaryIntent === "fix_error") {
+      await runFixBuildRedeploy(text);
+      return;
+    }
+
+    if (project && ["edit_app", "explain_app"].includes(wsIntent.primaryIntent)) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       pushAssistant(`Understood — ${wsIntent.planSummary ?? "I'll update the app."}`);
       await runAgent(text);
@@ -400,6 +545,10 @@ export function BuildAppEditor({
 
       syncBuildProblem(null);
       pushAssistant("Done. Build passed — preview is ready when you want to deploy.");
+      if (redeployAfterFixRef.current) {
+        redeployAfterFixRef.current = false;
+        await requestDeploy("preview");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Build failed";
       setError(msg);

@@ -8,6 +8,12 @@ import { listSpecs } from "@/lib/support/api-specs/registry";
 import { classifyEditIntent, isEditIntent } from "./edit-intent";
 import { classifyUserIntent } from "../intent/classify-intent";
 import { generateUiEditChanges } from "./ui-edits";
+import {
+  isBuildErrorDiscussion,
+  mergeBuildLog,
+  proposeBuildErrorFixes,
+  formatBuildErrorExplanation,
+} from "./build-error-fix";
 
 const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
   "scaffolded",
@@ -21,7 +27,7 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
   const { isEdit } = classifyBuildAppRequest(req);
 
   if (isEdit && req.projectId) {
-    return proposeEdits(req.projectId, req.message);
+    return proposeEdits(req.projectId, req.message, req.buildOutput);
   }
 
   const specs = listSpecs();
@@ -86,9 +92,12 @@ function hasActiveApp(project: BuildAppProject): boolean {
   return ACTIVE_APP_STATUSES.has(project.status) || (project.appliedChanges?.length ?? 0) > 0;
 }
 
-function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
+function proposeEdits(projectId: string, message: string, clientBuildOutput?: string): BuildAppAgentResult {
   const project = getProject(projectId);
   if (!project) throw new Error("Project not found");
+
+  const buildLog = mergeBuildLog(message, clientBuildOutput ?? project.buildOutput);
+  const buildFailed = project.buildOk === false;
 
   const intent = classifyEditIntent(message);
   const nlIntent = classifyUserIntent({
@@ -96,10 +105,56 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
     context: {
       buildProjectId: projectId,
       buildOk: project.buildOk,
-      buildFailed: project.buildOk === false,
+      buildFailed,
     },
   });
   const activeApp = hasActiveApp(project);
+
+  const wantsErrorFix =
+    nlIntent.primaryIntent === "fix_error" ||
+    nlIntent.primaryIntent === "run_tests" ||
+    isBuildErrorDiscussion(message, buildFailed);
+
+  if (wantsErrorFix && activeApp) {
+    const errorFix = proposeBuildErrorFixes({
+      project,
+      message,
+      buildOutput: buildLog,
+      readFile: (path) => readProjectFile(projectId, path),
+    });
+
+    if (errorFix.changes.length > 0) {
+      const fileList = errorFix.changes.map((c) => c.path).join(", ");
+      const explanation = [
+        formatBuildErrorExplanation(errorFix.analysis),
+        "",
+        `I'll patch **${fileList}** to fix this, then re-run the build.`,
+        "",
+        "Review the diff below and approve — I'll rebuild automatically and redeploy if the build passes.",
+      ].join("\n");
+
+      setPendingChanges(projectId, errorFix.changes);
+      return {
+        plan: project.plan!,
+        project: getProject(projectId)!,
+        explanation,
+        needsApproval: true,
+        approvalPreview: `Fix build error — ${fileList}`,
+        pendingChanges: errorFix.changes,
+      };
+    }
+
+    return {
+      plan: project.plan!,
+      project,
+      explanation: [
+        formatBuildErrorExplanation(errorFix.analysis),
+        "",
+        "I couldn't auto-patch the source from this log alone. Open **Show technical details** for the full output, or paste the file/line from the error if you have it.",
+      ].join("\n"),
+      needsApproval: false,
+    };
+  }
 
   if (nlIntent.primaryIntent === "explain_app" || intent.kind === "explain") {
     return {
@@ -137,8 +192,16 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
       return {
         plan: project.plan!,
         project,
-        explanation:
-          "I reviewed the app files — the landing page already uses professional copy and layout. Tell me a specific change (e.g. add a filter, change the title) if you want more.",
+        explanation: buildFailed
+          ? formatBuildErrorExplanation(
+              proposeBuildErrorFixes({
+                project,
+                message,
+                buildOutput: buildLog,
+                readFile: (path) => readProjectFile(projectId, path),
+              }).analysis
+            )
+          : "I reviewed the app files — the landing page already uses professional copy and layout. Tell me a specific change (e.g. add a filter, change the title) if you want more.",
         needsApproval: false,
       };
     }

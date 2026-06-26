@@ -97,6 +97,8 @@ export interface BuildAppRequest {
   message: string;
   projectId?: string;
   templateOverride?: BuildAppTemplateId;
+  /** Latest build command output (client or stored on project). */
+  buildOutput?: string;
 }
 
 export interface BuildAppAgentResult {

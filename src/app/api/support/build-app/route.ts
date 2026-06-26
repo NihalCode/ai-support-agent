@@ -49,7 +49,7 @@ type Body =
   | { action: "build"; projectId: string; projectSnapshot?: BuildAppProject }
   | { action: "deploy"; projectId: string; target?: "preview" | "production"; approvalId?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials; projectSnapshot?: BuildAppProject }
   | { action: "commit"; projectId: string; message?: string; branch?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials; projectSnapshot?: BuildAppProject }
-  | { action: "edit"; projectId: string; message: string; projectSnapshot?: BuildAppProject }
+  | { action: "edit"; projectId: string; message: string; buildOutput?: string; projectSnapshot?: BuildAppProject }
   | { action: "approve-and-run"; approvalId: string };
 
 export async function GET(req: Request) {
@@ -90,7 +90,11 @@ export async function POST(req: Request) {
         const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
         ensureProject(body.projectId, snapshot);
 
-        const result = handleBuildAppPlan({ message: body.message, projectId: body.projectId });
+        const result = handleBuildAppPlan({
+          message: body.message,
+          projectId: body.projectId,
+          buildOutput: body.buildOutput,
+        });
         if (result.needsApproval && result.pendingChanges?.length) {
           const approval = requestWriteApproval(
             body.projectId,

@@ -279,6 +279,8 @@ export async function deployProject(
     } catch (e) {
       logs = [...logParts, e instanceof Error ? e.message : "Deploy failed"].join("\n");
       p.status = "failed";
+      p.buildOk = false;
+      p.buildOutput = logs;
       saveProject(p);
       throw new Error(logs.slice(0, 800));
     }

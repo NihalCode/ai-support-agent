@@ -240,8 +240,8 @@ export const INTENT_RULES: IntentRule[] = [
   // Fix / tests
   {
     intent: "fix_error",
-    weight: 9,
-    re: /\b(fix (that|this|it|the error)|fix that error|why did (the )?build fail|build failed|preview (is )?not opening|it broke again)\b/i,
+    weight: 10,
+    re: /\b(fix (that|this|it|the error)|fix that error|why did (the )?build fail|build failed|preview (is )?not opening|it broke again|why (the|this) error|tell me why.*error|error occurred|npm run build exited|parsing ecmascript|turbopack build failed|build error occurred|command failed)\b/i,
     label: "fix error",
   },
   {
@@ -373,6 +373,11 @@ export function applyContextBoosts(
   if (ctx.buildFailed || ctx.buildOk === false) {
     add("fix_error", 6, "build failed");
     add("run_tests", 3, "build failed");
+  }
+
+  if (/\b(npm run build|turbopack|ecmascript|parsing .+ failed|exited with \d+|command failed)\b/i.test(message)) {
+    add("fix_error", 8, "build log in message");
+    add("edit_app", -4, "not UI edit");
   }
 
   if (ctx.sessionId || ctx.investigationId) {

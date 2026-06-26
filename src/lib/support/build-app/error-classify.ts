@@ -1,7 +1,7 @@
 import "server-only";
 
 export interface BuildErrorClassification {
-  kind: "missing_command" | "missing_module" | "typescript" | "env_var" | "preflight" | "unknown";
+  kind: "missing_command" | "missing_module" | "typescript" | "syntax" | "env_var" | "preflight" | "unknown";
   summary: string;
   suggestedFix: string;
 }
@@ -30,6 +30,15 @@ export function classifyBuildError(output: string): BuildErrorClassification {
       kind: "typescript",
       summary: "TypeScript reported compile errors.",
       suggestedFix: "Fix the reported type errors in the generated source files, then re-run the build.",
+    };
+  }
+
+  if (/parsing ecmascript|parse error|unexpected token|syntax error|failed to parse/.test(text)) {
+    return {
+      kind: "syntax",
+      summary: "A generated source file has invalid JavaScript/JSX syntax.",
+      suggestedFix:
+        "Fix duplicate JSX attributes, unfinished template placeholders, or the cited syntax error in the source file, then re-run the build.",
     };
   }
 
