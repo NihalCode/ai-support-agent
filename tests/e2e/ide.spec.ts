@@ -143,11 +143,56 @@ test.describe("Build App workspace", () => {
     await page.getByTestId("build-app-approve").click();
     await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
     await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-output")).toContainText(/mock|passed/i, { timeout: 15000 });
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|mock mode/i, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("build-app-deploy-preview")).toBeVisible({ timeout: 5000 });
     await page.getByTestId("build-app-deploy-preview").click();
     await expect(page.getByTestId("build-app-preview-url")).toContainText(/mock-preview\.vercel\.app|mock/i, {
       timeout: 20000,
     });
+  });
+
+  test("shows build failure and hides preview when build fails", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.route("**/api/support/build-app", async (route, request) => {
+      if (request.method() === "POST") {
+        const body = request.postDataJSON() as { action?: string };
+        if (body.action === "build") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: false,
+              buildOk: false,
+              preflightOk: true,
+              output: "sh: line 1: next: command not found\nCommand failed: npm run build",
+              classification: {
+                kind: "missing_command",
+                summary: "The Next.js CLI is not installed in the generated app.",
+                suggestedFix: "Run npm install in the generated app folder.",
+              },
+              project: { id: "test", status: "failed", buildOk: false },
+            }),
+          });
+          return;
+        }
+      }
+      await route.continue();
+    });
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-new").click();
+    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await page.getByTestId("build-app-build").click();
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build/i, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
+    await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
   });
 });
 

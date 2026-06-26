@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BuildAppFileChange, BuildAppProject } from "@/lib/support/build-app/types";
 import type { BuildAppHandoffMode } from "@/lib/support/build-app/handoff";
+import { workflowLabel, workflowStateFromProject } from "@/lib/support/build-app/workflow-state";
 import { useWorkspace } from "../WorkspaceProvider";
 import { BuildAppChat, type BuildAppChatMessage } from "./BuildAppChat";
 
@@ -20,7 +21,9 @@ type BuildStep = "describe" | "review" | "create" | "test" | "share";
 function stepFromProject(project: BuildAppProject | null, approvalId: string | null): BuildStep {
   if (!project) return approvalId ? "review" : "describe";
   if (project.previewUrl) return "share";
-  if (project.status === "scaffolded" || project.status === "ready") return "test";
+  if (project.buildOk === false) return "test";
+  if (project.status === "ready" && project.buildOk) return "share";
+  if (project.status === "scaffolded" || project.status === "ready" || project.status === "failed") return "test";
   if (approvalId || project.status === "pending_approval") return "review";
   return "describe";
 }
@@ -61,7 +64,7 @@ export function BuildAppEditor({
   autoStart,
   mode = "plan",
 }: BuildAppEditorProps) {
-  const { setActiveBuildProject } = useWorkspace();
+  const { setActiveBuildProject, setProblems, state } = useWorkspace();
   const [chatMessages, setChatMessages] = useState<BuildAppChatMessage[]>([]);
   const [ticketId, setTicketId] = useState(initialTicketId ?? "");
   const [suggestedTemplateId, setSuggestedTemplateId] = useState(initialTemplateId ?? "");
@@ -77,6 +80,19 @@ export function BuildAppEditor({
   const seededRef = useRef(false);
 
   const step = stepFromProject(project, approvalId);
+  const workflowState = workflowStateFromProject(project, { awaitingApproval: Boolean(approvalId) });
+
+  const syncBuildProblem = useCallback(
+    (message: string | null) => {
+      const rest = state.problems.filter((p) => p.id !== "build-app-build");
+      if (message) {
+        setProblems([...rest, { id: "build-app-build", severity: "error", message }]);
+      } else {
+        setProblems(rest);
+      }
+    },
+    [setProblems, state.problems]
+  );
 
   const loadProject = useCallback(async (id: string) => {
     const res = await fetch(`/api/support/build-app?projectId=${encodeURIComponent(id)}`);
@@ -175,6 +191,11 @@ export function BuildAppEditor({
   const requestDeploy = useCallback(
     async (target: "preview" | "production") => {
       if (!project) return;
+      if (project.buildOk !== true) {
+        setError("Build must pass before getting a preview link.");
+        pushAssistant("Build must pass before deploy. Click **Test my app** first and fix any errors.");
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -274,7 +295,8 @@ export function BuildAppEditor({
   async function runBuild() {
     if (!project) return;
     setLoading(true);
-    pushAssistant("Running a quick test build to make sure everything works…");
+    setError(null);
+    pushAssistant("Installing dependencies and running a test build in your generated app folder…");
     try {
       const res = await fetch("/api/support/build-app", {
         method: "POST",
@@ -282,13 +304,35 @@ export function BuildAppEditor({
         body: JSON.stringify({ action: "build", projectId: project.id }),
       });
       const data = await res.json();
-      setBuildOutput(data.output ?? "");
+      setBuildOutput(data.output ?? data.error ?? "");
       if (data.project) setProject(data.project);
+
+      const passed = res.ok && data.ok === true && data.buildOk === true;
+      if (!passed) {
+        const summary =
+          data.classification?.summary ??
+          data.error ??
+          "Build failed. I found the failure and will try to help you fix it.";
+        const fix = data.classification?.suggestedFix;
+        setError(summary);
+        syncBuildProblem(summary);
+        pushAssistant(
+          [summary, fix, "Open **Show technical details** below for the full command log."].filter(Boolean).join("\n\n")
+        );
+        return;
+      }
+
+      syncBuildProblem(null);
       pushAssistant(
-        data.buildOk === false
-          ? "The test build found issues — see the technical details below. Tell me what you'd like fixed."
+        data.output?.includes("[MOCK]")
+          ? "Test build passed (mock mode). Ask me for a preview link when you're ready — it will be a demo URL until Vercel credentials are configured."
           : "Test build passed. Ask me for a preview link whenever you want to share it with your team."
       );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Build failed";
+      setError(msg);
+      syncBuildProblem(msg);
+      pushAssistant(`Build failed: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -328,6 +372,10 @@ export function BuildAppEditor({
               </span>
             ))}
           </div>
+          <p data-testid="build-app-workflow-state" style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+            Status: {workflowLabel(workflowState)}
+            {project?.buildOk === false ? " — fix build errors before preview or deploy." : ""}
+          </p>
         </header>
 
         {templateLabel && !project && (
@@ -358,20 +406,22 @@ export function BuildAppEditor({
               Yes, create my app ({pendingChanges.length} files)
             </button>
           )}
-          {(project?.status === "scaffolded" || project?.status === "ready") && (
+          {(project?.status === "scaffolded" || project?.status === "ready" || project?.status === "failed") && (
             <>
               <button type="button" data-testid="build-app-build" onClick={() => void runBuild()} disabled={loading} style={btnSecondary}>
                 Test my app
               </button>
-              <button
-                type="button"
-                data-testid="build-app-deploy-preview"
-                onClick={() => void requestDeploy("preview")}
-                disabled={loading}
-                style={btnSecondary}
-              >
-                Get a preview link
-              </button>
+              {project.buildOk === true && (
+                <button
+                  type="button"
+                  data-testid="build-app-deploy-preview"
+                  onClick={() => void requestDeploy("preview")}
+                  disabled={loading}
+                  style={btnSecondary}
+                >
+                  Get a preview link
+                </button>
+              )}
             </>
           )}
         </div>
@@ -427,7 +477,21 @@ export function BuildAppEditor({
           {chatMessages.filter((m) => m.role === "assistant").map((m) => m.content).join("\n")}
         </pre>
         {buildOutput && (
-          <pre data-testid="build-app-output" style={{ display: showTechnical ? "block" : "none", whiteSpace: "pre-wrap", background: "var(--surface-2)", padding: 12, borderRadius: 8, marginTop: 12, maxHeight: 160, overflow: "auto", fontSize: 11 }}>
+          <pre
+            data-testid="build-app-output"
+            style={{
+              display: showTechnical || project?.buildOk === false ? "block" : "none",
+              whiteSpace: "pre-wrap",
+              background: "var(--surface-2)",
+              padding: 12,
+              borderRadius: 8,
+              marginTop: 12,
+              maxHeight: 160,
+              overflow: "auto",
+              fontSize: 11,
+              border: project?.buildOk === false ? "1px solid var(--red)" : "1px solid var(--border)",
+            }}
+          >
             {buildOutput}
           </pre>
         )}

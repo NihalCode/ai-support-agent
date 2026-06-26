@@ -118,7 +118,15 @@ export async function POST(req: Request) {
 
       case "build": {
         const build = await runProjectBuild(body.projectId);
-        return NextResponse.json({ ...build, project: getProject(body.projectId) });
+        return NextResponse.json({
+          ok: build.ok,
+          buildOk: build.buildOk,
+          testOk: build.testOk,
+          preflightOk: build.preflightOk,
+          output: build.output,
+          classification: build.classification,
+          project: getProject(body.projectId),
+        });
       }
 
       case "deploy": {
