@@ -5,6 +5,7 @@ import { buildScaffoldPlan, createProjectFromPlan } from "./plan-scaffold";
 import { classifyBuildAppRequest, isDeployRequest } from "./classify-request";
 import { getProject, readProjectFile, setPendingChanges } from "./project-store";
 import { listSpecs } from "@/lib/support/api-specs/registry";
+import { addMainShellClass } from "./jsx-edit";
 
 export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
   const { isBuild, isEdit } = classifyBuildAppRequest(req);
@@ -83,22 +84,12 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
   const m = message.toLowerCase();
   const changes: BuildAppFileChange[] = [];
 
-  if (/cleaner|modern|ui|look|design|dashboard/i.test(m)) {
+  if (/cleaner|modern|ui|look|design|layout|style|prettier/i.test(m)) {
     const pagePath = project.files.find((f) => f.endsWith("app/page.tsx")) ?? "app/page.tsx";
     const existing = readProjectFile(projectId, pagePath) ?? "";
-    const updated = existing.replace(
-      /className="container"/,
-      'className="container dashboard-shell"'
-    );
-    if (updated !== existing) {
+    const updated = addMainShellClass(existing);
+    if (updated && updated !== existing) {
       changes.push({ path: pagePath, action: "update", content: updated, previousContent: existing });
-    } else {
-      changes.push({
-        path: pagePath,
-        action: "update",
-        content: existing.replace("<main", '<main className="dashboard-shell"'),
-        previousContent: existing,
-      });
     }
   }
 

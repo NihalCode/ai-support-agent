@@ -22,6 +22,7 @@ import {
 } from "./credentials";
 import { deployToVercelApi } from "./vercel-api-deploy";
 import { pushProjectToGitHub } from "./github-api-push";
+import { validateAndFixProjectSources, formatSourceValidationReport } from "./source-validation";
 
 export interface ProjectBuildResult {
   ok: boolean;
@@ -256,6 +257,15 @@ export async function deployProject(
     if (!existsSync(path.join(p.rootDir, "package.json"))) {
       throw new Error("Cannot deploy — generated app package.json missing.");
     }
+
+    const sourceCheck = validateAndFixProjectSources(p.rootDir);
+    if (!sourceCheck.ok) {
+      const msg = formatSourceValidationReport(sourceCheck);
+      p.status = "failed";
+      saveProject(p);
+      throw new Error(msg);
+    }
+
     try {
       const result = await deployToVercelApi({
         token: resolved.vercelToken!,

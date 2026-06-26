@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import type { BuildAppFileChange, BuildAppProject, BuildAppProjectStatus } from "./types";
 import { supportDataRoot } from "../data-root";
+import { validateAndFixProjectSources } from "./source-validation";
 
 const g = globalThis as unknown as { __buildAppProjects?: Map<string, BuildAppProject> };
 
@@ -149,6 +150,13 @@ export function applyFileChanges(projectId: string, changes: BuildAppFileChange[
   p.pendingChanges = [];
   p.files = listProjectFiles(projectId);
   p.status = "scaffolded";
+
+  const validation = validateAndFixProjectSources(p.rootDir);
+  if (!validation.ok) {
+    const summary = validation.issues.map((i) => `${i.file}: ${i.message}`).join("; ");
+    throw new Error(`Scaffolded files failed validation: ${summary}`);
+  }
+
   return saveProject(p);
 }
 
@@ -186,6 +194,13 @@ export function restoreProjectFromSnapshot(snapshot: BuildAppProject): BuildAppP
   }
 
   restored.files = listProjectFilesFromDir(correctRoot);
+
+  const validation = validateAndFixProjectSources(correctRoot);
+  if (!validation.ok) {
+    const summary = validation.issues.map((i) => `${i.file}: ${i.message}`).join("; ");
+    throw new Error(`Restored project failed source validation: ${summary}`);
+  }
+
   return saveProject(restored);
 }
 

@@ -12,6 +12,27 @@ function vercelApiUrl(path: string, teamId?: string | null): string {
   return url.toString();
 }
 
+async function fetchDeploymentBuildError(
+  deploymentId: string,
+  token: string,
+  teamId?: string | null
+): Promise<string> {
+  try {
+    const res = await fetch(vercelApiUrl(`/v2/deployments/${deploymentId}/events?limit=40&direction=backward`, teamId), {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    });
+    if (!res.ok) return "";
+    const events = (await res.json()) as Array<{ type?: string; payload?: { text?: string; message?: string } }>;
+    const lines = events
+      .map((e) => e.payload?.text ?? e.payload?.message ?? "")
+      .filter((t) => /error|failed|Type error|exit(ed)? with/i.test(t))
+      .slice(0, 8);
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+
 export async function deployToVercelApi(opts: {
   token: string;
   teamId?: string | null;
@@ -80,7 +101,9 @@ export async function deployToVercelApi(opts: {
       return { url, deploymentId, logs: logLines.join("\n") };
     }
     if (status.readyState === "ERROR" || status.readyState === "CANCELED") {
-      throw new Error(status.errorMessage ?? `Vercel deployment ${status.readyState}`);
+      const buildLog = await fetchDeploymentBuildError(deploymentId, opts.token, opts.teamId);
+      const detail = [status.errorMessage, buildLog].filter(Boolean).join("\n");
+      throw new Error(detail || `Vercel deployment ${status.readyState}`);
     }
     logLines.push(`Poll ${attempt + 1}: ${status.readyState ?? "BUILDING"}`);
   }

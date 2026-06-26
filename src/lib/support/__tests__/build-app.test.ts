@@ -8,6 +8,7 @@ import { handleBuildAppPlan } from "../build-app/orchestrate";
 import { getProject, applyFileChanges } from "../build-app/project-store";
 import { shouldRouteToBuildApp } from "../build-app/chat-routing";
 import { extractBuildAppHandoff } from "../build-app/handoff";
+import { runAppBuilderAgent } from "../build-app/appBuilderAgent";
 import { createDeploymentPlan } from "../build-app/deploy";
 import { classifyAction } from "../safety";
 
@@ -71,6 +72,23 @@ describe("build-app templates", () => {
     });
     expect(files.some((f) => f.path === "components/SearchBox.tsx")).toBe(true);
     expect(files.some((f) => f.path === "app/page.tsx")).toBe(true);
+  });
+});
+
+describe("build-app UI edits", () => {
+  it("does not duplicate className when user asks to clean up dashboard UI", () => {
+    const plan = handleBuildAppPlan({ message: "Build indicator search dashboard" });
+    const pid = plan.project!.id;
+    applyFileChanges(pid, plan.pendingChanges!);
+
+    const edit = runAppBuilderAgent({ message: "Make the dashboard look cleaner", projectId: pid });
+    const pageChange = edit.pendingChanges?.find((c) => c.path === "app/page.tsx");
+    if (pageChange?.content) {
+      expect(pageChange.content).not.toMatch(/className="[^"]*"[^>]*className="/);
+    } else {
+      // Already has dashboard-shell — no change needed
+      expect(edit.needsApproval).toBe(false);
+    }
   });
 });
 
