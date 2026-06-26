@@ -109,6 +109,22 @@ export async function executeAction(
       return { ok: true, detail: redact(typeof r.content === "string" ? r.content : JSON.stringify(r.content)) };
     }
 
+    case "build-app-scaffold":
+    case "build-app-write":
+    case "build-app-deploy": {
+      const { applyApprovedBuildAction } = await import("./build-app/orchestrate");
+      const detail = await applyApprovedBuildAction(action);
+      await audit({ action: `write:${action.type}`, target: action.projectId, approved: true, provider: "build-app", safetyClass: "WRITE_MEDIUM_RISK", details: detail.slice(0, 200) });
+      return { ok: true, detail };
+    }
+
+    case "build-app-git-commit": {
+      const { commitBuildAppProject } = await import("./build-app/git");
+      const detail = await commitBuildAppProject(action.projectId, action.message, action.branch);
+      await audit({ action: "write:build-app-git-commit", target: action.projectId, approved: true, provider: "git", safetyClass: "WRITE_MEDIUM_RISK", details: detail.slice(0, 200) });
+      return { ok: true, detail };
+    }
+
     default: {
       const _exhaustive: never = action;
       throw new Error(`Unknown action type: ${JSON.stringify(_exhaustive)}`);

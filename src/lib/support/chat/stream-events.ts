@@ -13,6 +13,15 @@ export type ChatStreamEvent =
       evidence?: unknown[];
     }
   | { type: "session_created"; sessionId: string; investigationId?: string; title: string }
+  | {
+      type: "build_app_created";
+      projectId: string;
+      title: string;
+      templateId: string;
+      approvalId?: string;
+      fileCount: number;
+    }
+  | { type: "build_app_updated"; projectId: string; patch: unknown }
   | { type: "investigation_update"; investigationId: string; patch: unknown }
   | { type: "approval_required"; approvalId: string; action: unknown }
   | { type: "message_done"; messageId: string }

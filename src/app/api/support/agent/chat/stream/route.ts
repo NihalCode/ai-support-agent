@@ -12,6 +12,8 @@ import {
   isSupportLikeMessage,
 } from "@/lib/support/investigation/ensure-investigation";
 import { extractNaturalLanguageDetails } from "@/lib/support/investigation/extract-query";
+import { shouldRouteToBuildApp } from "@/lib/support/build-app/chat-routing";
+import { streamBuildAppFromChat } from "@/lib/support/build-app/chat-stream";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -20,6 +22,7 @@ interface StreamBody {
   sessionId?: string;
   message: string;
   investigationId?: string;
+  buildProjectId?: string;
 }
 
 function investigationTitle(message: string): string {
@@ -55,8 +58,23 @@ export async function POST(req: Request) {
         let fullText = "";
         let sessionId = body.sessionId;
         let investigationId = body.investigationId;
+        let buildProjectId = body.buildProjectId;
 
-        if (!sessionId && isSupportLikeMessage(message)) {
+        if (
+          shouldRouteToBuildApp(message, {
+            buildProjectId,
+            sessionId,
+          })
+        ) {
+          const build = await streamBuildAppFromChat({
+            message,
+            projectId: buildProjectId,
+            messageId,
+            send,
+          });
+          fullText = build.fullText;
+          buildProjectId = build.projectId ?? buildProjectId;
+        } else if (!sessionId && isSupportLikeMessage(message)) {
           const createToolId = crypto.randomUUID();
           send({
             type: "tool_call_start",
@@ -201,6 +219,14 @@ export async function POST(req: Request) {
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }
+        }
+
+        if (buildProjectId) {
+          send({
+            type: "build_app_updated",
+            projectId: buildProjectId,
+            patch: { updatedAt: new Date().toISOString() },
+          });
         }
 
         if (investigationId) {

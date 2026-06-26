@@ -35,6 +35,10 @@ export function activityToDefaultTab(activity: ActivityId): EditorTab | null {
       return { id: "api-registry", kind: "api-registry", title: "API Registry" };
     case "cql":
       return { id: "cql-workspace", kind: "cql", title: "CQL" };
+    case "build-app":
+      return { id: "build-app-new", kind: "build-app", title: "Build App" };
+    case "deployments":
+      return { id: "deployments", kind: "deployments", title: "Deployments" };
     case "mcp":
       return { id: "mcp-config", kind: "mcp-config", title: "MCP" };
     case "settings":
@@ -62,6 +66,7 @@ export function initialWorkspaceState(): WorkspaceState {
     chatMessages: [],
     investigationSessionId: null,
     activeInvestigationId: null,
+    activeBuildProjectId: null,
     problems: [],
   };
 }

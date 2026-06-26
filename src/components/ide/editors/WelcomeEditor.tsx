@@ -12,6 +12,7 @@ export function WelcomeEditor() {
         investigation. All existing agent and import capabilities are preserved.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 20 }}>
+        <ActionBtn onClick={() => runCommand("build-app")}>Build App</ActionBtn>
         <ActionBtn onClick={() => runCommand("investigate")}>Start investigation</ActionBtn>
         <ActionBtn onClick={() => runCommand("diagnose")}>Quick diagnose</ActionBtn>
         <ActionBtn onClick={() => runCommand("import-api")}>Import API</ActionBtn>

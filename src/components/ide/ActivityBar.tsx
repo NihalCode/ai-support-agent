@@ -11,6 +11,8 @@ const ITEMS: { id: ActivityId; icon: string; title: string }[] = [
   { id: "investigations", icon: "🔬", title: "Investigations" },
   { id: "api-registry", icon: "📡", title: "API Registry" },
   { id: "cql", icon: "⌗", title: "CQL" },
+  { id: "build-app", icon: "🛠", title: "Build App" },
+  { id: "deployments", icon: "🚀", title: "Deployments" },
   { id: "jira", icon: "🎫", title: "Jira" },
   { id: "logs", icon: "📋", title: "Logs" },
   { id: "mcp", icon: "🔌", title: "MCP" },

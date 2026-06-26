@@ -106,5 +106,10 @@ function previewTarget(action: ApprovalAction): string {
       return action.url;
     case "mcp-call":
       return `${action.server}:${action.tool}`;
+    case "build-app-scaffold":
+    case "build-app-write":
+    case "build-app-deploy":
+    case "build-app-git-commit":
+      return action.projectId;
   }
 }

@@ -59,6 +59,7 @@ type Action =
   | { type: "UPDATE_CHAT"; id: string; patch: Partial<ChatMessage> }
   | { type: "SET_INVESTIGATION"; sessionId: string | null }
   | { type: "SET_ACTIVE_INVESTIGATION"; id: string | null }
+  | { type: "SET_ACTIVE_BUILD_PROJECT"; id: string | null }
   | { type: "SET_PROBLEMS"; problems: WorkspaceState["problems"] }
   | { type: "HYDRATE"; state: Partial<WorkspaceState> };
 
@@ -136,6 +137,8 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
       return { ...state, investigationSessionId: action.sessionId };
     case "SET_ACTIVE_INVESTIGATION":
       return { ...state, activeInvestigationId: action.id };
+    case "SET_ACTIVE_BUILD_PROJECT":
+      return { ...state, activeBuildProjectId: action.id };
     case "SET_PROBLEMS":
       return { ...state, problems: action.problems };
     case "HYDRATE":
@@ -173,6 +176,7 @@ export interface WorkspaceContextValue {
   updateChatMessage: (id: string, patch: Partial<ChatMessage>) => void;
   setInvestigationSession: (id: string | null) => void;
   setActiveInvestigation: (id: string | null) => void;
+  setActiveBuildProject: (id: string | null) => void;
   pinEvidenceToInvestigation: (evidenceId: string, evidence?: Record<string, unknown>) => Promise<void>;
   setProblems: (p: WorkspaceState["problems"]) => void;
   runCommand: (commandId: string) => void;
@@ -265,6 +269,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       case "cql":
         dispatch({ type: "OPEN_TAB", tab: { id: "cql-workspace", kind: "cql", title: "CQL" } });
         dispatch({ type: "SET_ACTIVITY", activity: "cql" });
+        break;
+      case "build-app":
+        dispatch({ type: "OPEN_TAB", tab: { id: "build-app-new", kind: "build-app", title: "Build App" } });
+        dispatch({ type: "SET_ACTIVITY", activity: "build-app" });
+        break;
+      case "deployments":
+        dispatch({ type: "OPEN_TAB", tab: { id: "deployments", kind: "deployments", title: "Deployments" } });
+        dispatch({ type: "SET_ACTIVITY", activity: "deployments" });
         break;
       case "jira":
         dispatch({ type: "SET_ACTIVITY", activity: "jira" });
@@ -400,6 +412,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updateChatMessage: (id, patch) => dispatch({ type: "UPDATE_CHAT", id, patch }),
       setInvestigationSession: (id) => dispatch({ type: "SET_INVESTIGATION", sessionId: id }),
       setActiveInvestigation: (id) => dispatch({ type: "SET_ACTIVE_INVESTIGATION", id: id }),
+      setActiveBuildProject: (id) => dispatch({ type: "SET_ACTIVE_BUILD_PROJECT", id: id }),
       pinEvidenceToInvestigation,
       setProblems: (p) => dispatch({ type: "SET_PROBLEMS", problems: p }),
       runCommand,

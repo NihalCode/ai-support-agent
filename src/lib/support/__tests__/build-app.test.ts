@@ -1,0 +1,130 @@
+import { describe, it, expect } from "vitest";
+import { selectTemplate, isBuildAppRequest, inferFeatures } from "../build-app/classify-request";
+import { buildScaffoldPlan, planToFileChanges } from "../build-app/plan-scaffold";
+import { generateEnvSnippet } from "../build-app/env-snippet";
+import { listTemplates, resolveTemplateFiles } from "../build-app/templates";
+import { checkVercelReadiness } from "../build-app/vercel-readiness";
+import { shouldRouteToBuildApp } from "../build-app/chat-routing";
+import { createDeploymentPlan } from "../build-app/deploy";
+import { classifyAction } from "../safety";
+
+describe("build-app classify", () => {
+  it("detects build app requests", () => {
+    expect(isBuildAppRequest("Build me a CTIX indicator search dashboard")).toBe(true);
+    expect(isBuildAppRequest("hello")).toBe(false);
+  });
+
+  it("selects indicator-search-dashboard template", () => {
+    const { templateId } = selectTemplate(
+      "Build me a simple indicator search dashboard using Cyware API with CQL filter and table results"
+    );
+    expect(templateId).toBe("indicator-search-dashboard");
+  });
+
+  it("infers features from message", () => {
+    const f = inferFeatures("search box, table results, details panel, deploy to vercel");
+    expect(f.some((x) => /search/i.test(x))).toBe(true);
+    expect(f.some((x) => /table/i.test(x))).toBe(true);
+  });
+});
+
+describe("build-app scaffold plan", () => {
+  it("generates plan with env snippet", () => {
+    const plan = buildScaffoldPlan({
+      message:
+        "Build me a simple indicator search dashboard using Cyware APIs. Search box, CQL filter, table, details panel.",
+    });
+    expect(plan.templateId).toBe("indicator-search-dashboard");
+    expect(plan.envSnippet).toMatch(/CYWARE_BASE_URL/);
+    expect(plan.envSnippet).not.toMatch(/NEXT_PUBLIC_[A-Z]/);
+  });
+
+  it("generates file changes from template", () => {
+    const plan = buildScaffoldPlan({ message: "Build indicator search dashboard" });
+    const changes = planToFileChanges(plan, "test-app");
+    expect(changes.length).toBeGreaterThan(3);
+    expect(changes.some((c) => c.path === "package.json")).toBe(true);
+    expect(changes.some((c) => c.path === ".env.local.example")).toBe(true);
+    expect(changes.some((c) => c.path.includes("api/indicators"))).toBe(true);
+  });
+});
+
+describe("build-app templates", () => {
+  it("lists all 8 templates", () => {
+    expect(listTemplates().length).toBe(8);
+  });
+
+  it("merges indicator template with blank base", () => {
+    const files = resolveTemplateFiles("indicator-search-dashboard", {
+      APP_TITLE: "Test",
+      APP_NAME: "test",
+      SEARCH_METHOD: "GET",
+      SEARCH_ENDPOINT: "/v3/indicators/",
+      DETAIL_METHOD: "GET",
+      DETAIL_ENDPOINT: "/v3/indicators/{id}/",
+      PRODUCT: "CTIX",
+      READ_ONLY: "true",
+      ENV_SNIPPET: "# test",
+    });
+    expect(files.some((f) => f.path === "components/SearchBox.tsx")).toBe(true);
+    expect(files.some((f) => f.path === "app/page.tsx")).toBe(true);
+  });
+});
+
+describe("build-app deployment", () => {
+  it("creates mock deployment plan in test mode", () => {
+    const plan = createDeploymentPlan("missing-project", "preview");
+    expect(plan.requiresApproval).toBe(true);
+    expect(plan.mock).toBe(true);
+  });
+});
+
+describe("build-app approval gates", () => {
+  it("requires approval for scaffold writes", () => {
+    const v = classifyAction({
+      kind: "api",
+      method: "POST",
+      summary: "Scaffold build-app project abc",
+    });
+    expect(v.requiresApproval).toBe(true);
+  });
+});
+
+describe("env snippet", () => {
+  it("never uses NEXT_PUBLIC for secrets", () => {
+    const s = generateEnvSnippet("indicator-search-dashboard", ["CTIX"]);
+    expect(s).not.toMatch(/NEXT_PUBLIC_.*KEY/);
+    expect(s).toMatch(/CYWARE_SECRET_KEY/);
+  });
+});
+
+describe("build-app chat routing", () => {
+  it("routes build requests ahead of investigation", () => {
+    expect(
+      shouldRouteToBuildApp("Build me a CTIX indicator search dashboard", { sessionId: null })
+    ).toBe(true);
+    expect(
+      shouldRouteToBuildApp("Our workflow fails after 30 seconds", { sessionId: null })
+    ).toBe(false);
+  });
+
+  it("routes follow-up edits when build project active", () => {
+    expect(
+      shouldRouteToBuildApp("Make the dashboard look cleaner", { buildProjectId: "abc" })
+    ).toBe(true);
+  });
+
+  it("routes deploy when project active", () => {
+    expect(
+      shouldRouteToBuildApp("Deploy this to Vercel preview", { buildProjectId: "abc" })
+    ).toBe(true);
+  });
+});
+
+describe("vercel readiness", () => {
+  it("reports issues for missing project", () => {
+    const r = checkVercelReadiness("nonexistent-id");
+    expect(r.ready).toBe(false);
+    expect(r.issues.length).toBeGreaterThan(0);
+  });
+});

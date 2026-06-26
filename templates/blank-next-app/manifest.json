@@ -1,0 +1,7 @@
+{
+  "id": "blank-next-app",
+  "name": "Blank Next.js App",
+  "description": "Minimal Next.js starter with server-side Cyware API route pattern.",
+  "products": ["CTIX", "CSAP", "Orchestrate", "CFTR"],
+  "keywords": ["blank", "starter"]
+}

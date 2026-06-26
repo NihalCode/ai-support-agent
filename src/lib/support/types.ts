@@ -427,7 +427,11 @@ export type ApprovalAction =
   | { type: "jira-link"; from: string; to: string; linkType: string }
   | { type: "jira-create"; projectKey: string; summary: string; description: string; issueType: string }
   | { type: "api-call"; provider: string; method: string; url: string; headers?: Record<string, string>; body?: string }
-  | { type: "mcp-call"; server: string; tool: string; args: Record<string, unknown> };
+  | { type: "mcp-call"; server: string; tool: string; args: Record<string, unknown> }
+  | { type: "build-app-scaffold"; projectId: string }
+  | { type: "build-app-write"; projectId: string; paths: string[] }
+  | { type: "build-app-deploy"; projectId: string; target: "preview" | "production" }
+  | { type: "build-app-git-commit"; projectId: string; message: string; branch?: string };
 
 /* ----------------------------- MCP (Phase 4) ------------------------------ */
 

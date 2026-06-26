@@ -8,6 +8,8 @@ export type ActivityId =
   | "investigations"
   | "api-registry"
   | "cql"
+  | "build-app"
+  | "deployments"
   | "jira"
   | "logs"
   | "mcp"
@@ -23,6 +25,8 @@ export type EditorTabKind =
   | "endpoint"
   | "api-runner"
   | "cql"
+  | "build-app"
+  | "deployments"
   | "jira-ticket"
   | "logs"
   | "markdown-report"
@@ -104,6 +108,7 @@ export interface WorkspaceState {
   chatMessages: ChatMessage[];
   investigationSessionId: string | null;
   activeInvestigationId: string | null;
+  activeBuildProjectId: string | null;
   problems: { id: string; severity: "error" | "warn"; message: string }[];
 }
 
@@ -117,6 +122,8 @@ export const DEFAULT_LAYOUT: LayoutState = {
 };
 
 export const SLASH_COMMANDS = [
+  { cmd: "/build-app", label: "Build Cyware app", action: "build-app" },
+  { cmd: "/deploy-app", label: "Deployments", action: "deployments" },
   { cmd: "/diagnose", label: "Diagnose issue", action: "diagnose" },
   { cmd: "/investigate", label: "Start investigation", action: "investigate" },
   { cmd: "/import-api", label: "Import API source", action: "import-api" },

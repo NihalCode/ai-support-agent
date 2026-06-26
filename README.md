@@ -66,7 +66,7 @@ The UI is a **multi-panel investigation IDE** inspired by modern AI coding tools
 
 | Region | Purpose |
 |--------|---------|
-| **Activity bar** | Explorer, Search, Source Control, Investigations, API Registry, CQL, Jira, Logs, MCP, Settings |
+| **Activity bar** | Explorer, Search, Source Control, Investigations, API Registry, CQL, **Build App**, **Deployments**, Jira, Logs, MCP, Settings |
 | **Primary sidebar** | Context for the active activity (imports, search, tickets, MCP status) |
 | **Editor tabs** | Investigation, diagnose, API registry, endpoint detail, API runner, integrations, CQL, MCP config |
 | **AI chat panel** | Support agent chat, slash commands (`/investigate`, `/validate-cql`, …), follow-ups when a session exists |
@@ -89,6 +89,17 @@ See **[docs/IDE-FEATURES.md](docs/IDE-FEATURES.md)** for:
 
 **E2E tests:** `npm run test:e2e` (uses `TEST_MODE=true` — no real credentials required).
 
+### Build App + Deploy (v0 / Cursor-style)
+
+Describe a Cyware API app in natural language — the **App Builder Agent** selects a template, picks endpoints from the API Registry, generates server-side API routes, and prepares Vercel deployment with approval gates.
+
+See **[docs/BUILD-APP.md](docs/BUILD-APP.md)** · **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** · **[docs/SECURITY-BUILD-APP.md](docs/SECURITY-BUILD-APP.md)**
+
+```bash
+# Activity bar → Build App (🛠), or /build-app in chat
+# API: POST /api/support/build-app { "action": "plan", "message": "Build indicator search dashboard…" }
+```
+
 ```bash
 # Force refresh auto-import
 curl -X POST http://localhost:3000/api/support/bootstrap
@@ -104,7 +115,7 @@ Set `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` for live deployment/log correlation (mo
 ### Validate the build
 
 ```bash
-npm test          # 125 unit + integration tests (offline)
+npm test          # 175 unit + integration tests (offline)
 npm run mcp:check # validate MCP server files + env hints
 npm run typecheck # tsc --noEmit
 npm run lint      # eslint (flat config)

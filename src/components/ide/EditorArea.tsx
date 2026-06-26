@@ -13,6 +13,7 @@ import { WelcomeEditor } from "./editors/WelcomeEditor";
 import { DiagnoseEditor } from "./editors/DiagnoseEditor";
 import { EndpointEditor } from "./editors/EndpointEditor";
 import { InvestigationObjectPanel } from "../investigation/InvestigationObjectPanel";
+import { BuildAppEditor } from "./editors/BuildAppEditor";
 import { JiraTicketEditor } from "./editors/JiraTicketEditor";
 
 export function EditorArea({
@@ -99,6 +100,15 @@ export function EditorArea({
             Copy <code>.cursor/mcp.json.example</code> → <code>.cursor/mcp.json</code>. See <code>mcp/README.md</code>.
           </p>
           <IntegrationsPanel />
+        </div>
+      )}
+      {tab.kind === "build-app" && (
+        <BuildAppEditor projectId={tab.payload?.projectId as string | undefined} />
+      )}
+      {tab.kind === "deployments" && (
+        <div style={{ padding: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Deployments</h2>
+          <p style={{ color: "var(--muted)" }}>Use the Deployments sidebar to view Build App deployment history.</p>
         </div>
       )}
       {tab.kind === "jira-ticket" && (

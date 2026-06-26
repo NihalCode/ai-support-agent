@@ -103,6 +103,49 @@ test.describe("Terminal", () => {
   });
 });
 
+test.describe("Chat build app routing", () => {
+  test("routes build request from main chat to app builder", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto("/");
+    const msg =
+      "Build me a simple indicator search dashboard using Cyware APIs with search box and table results.";
+    await page.getByTestId("ai-chat-input").fill(msg);
+    await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(
+      /indicator-search-dashboard|Build App|template/i,
+      { timeout: 20000 }
+    );
+    await expect(page.getByText(/appBuilder|plan_app/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
+  });
+});
+
+test.describe("Build App workspace", () => {
+  test("generates scaffold plan and approves in test mode", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-new").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    const msg =
+      "Build me a simple indicator search dashboard using Cyware APIs. Search box, optional CQL filter, table results, and details panel. Prepare for Vercel deployment.";
+    await page.getByTestId("build-app-input").fill(msg);
+    await page.getByTestId("build-app-plan").click();
+    await expect(page.getByTestId("build-app-explanation")).toContainText(/indicator-search-dashboard|indicator search/i, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("build-app-approve").click();
+    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-build").click();
+    await expect(page.getByTestId("build-app-output")).toContainText(/mock|passed/i, { timeout: 15000 });
+    await page.getByTestId("build-app-deploy-preview").click();
+    await expect(page.getByTestId("build-app-preview-url")).toContainText(/mock-preview\.vercel\.app|mock/i, {
+      timeout: 20000,
+    });
+  });
+});
+
 test.describe("Investigation workspace UI", () => {
   test("shows plain-English input and optional advanced fields", async ({ page }) => {
     await page.goto("/");

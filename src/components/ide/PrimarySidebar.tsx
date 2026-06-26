@@ -11,6 +11,8 @@ import { McpSidebar } from "./sidebars/McpSidebar";
 import { SettingsSidebar } from "./sidebars/SettingsSidebar";
 import { InvestigationsSidebar } from "./sidebars/InvestigationsSidebar";
 import { SourceControlSidebar } from "./sidebars/SourceControlSidebar";
+import { BuildAppSidebar } from "./sidebars/BuildAppSidebar";
+import { DeploymentsSidebar } from "./sidebars/DeploymentsSidebar";
 
 const TITLES: Record<string, string> = {
   explorer: "Explorer",
@@ -19,6 +21,8 @@ const TITLES: Record<string, string> = {
   investigations: "Investigations",
   "api-registry": "API Registry",
   cql: "CQL",
+  "build-app": "Build App",
+  deployments: "Deployments",
   jira: "Jira",
   logs: "Logs",
   mcp: "MCP",
@@ -39,6 +43,8 @@ export function PrimarySidebar() {
       {activity === "investigations" && <InvestigationsSidebar />}
       {activity === "api-registry" && <ApiRegistrySidebar />}
       {activity === "cql" && <CqlSidebar />}
+      {activity === "build-app" && <BuildAppSidebar />}
+      {activity === "deployments" && <DeploymentsSidebar />}
       {activity === "jira" && <JiraSidebar />}
       {activity === "logs" && <LogsSidebar />}
       {activity === "mcp" && <McpSidebar />}
