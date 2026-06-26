@@ -22,7 +22,8 @@
     "test:ide-api": "node scripts/test-ide-api.mjs",
     "build:app": "npm run build",
     "deploy:preview": "vercel",
-    "deploy:prod": "vercel --prod"
+    "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",
+    "deploy:public": "node scripts/ensure-public-deploy.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",
