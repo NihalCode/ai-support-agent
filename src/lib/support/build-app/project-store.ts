@@ -136,6 +136,8 @@ export function applyFileChanges(projectId: string, changes: BuildAppFileChange[
   const p = getProject(projectId);
   if (!p) throw new Error("Project not found");
 
+  const isEditApply = p.appliedChanges.length > 0;
+
   for (const ch of changes) {
     const full = path.join(p.rootDir, ch.path);
     if (ch.action === "delete") {
@@ -149,6 +151,12 @@ export function applyFileChanges(projectId: string, changes: BuildAppFileChange[
 
   p.pendingChanges = [];
   p.files = listProjectFiles(projectId);
+
+  if (isEditApply) {
+    p.buildOk = undefined;
+    p.testOk = undefined;
+    p.previewUrl = undefined;
+  }
   p.status = "scaffolded";
 
   const validation = validateAndFixProjectSources(p.rootDir);

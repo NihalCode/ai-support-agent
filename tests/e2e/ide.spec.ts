@@ -194,6 +194,39 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
     await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
   });
+
+  test("edit after scaffold: no raw prompt, make it cleaner runs edit pipeline", async ({ page }) => {
+    test.setTimeout(120000);
+    const scaffoldMsg =
+      "Build me an indicator search dashboard. I want a simple page where I can type in an indicator or CQL query, search, see a table, and open details.";
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("build-app-new").click();
+    await page.getByTestId("build-app-chat-input").fill(scaffoldMsg);
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("build-app-approve").click();
+    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
+
+    // Scaffolded page must not contain raw prompt in explanation/diff
+    await page.getByText("Show technical details").click();
+    const diffPanel = page.getByTestId("build-app-diff-panel");
+    await expect(diffPanel).toBeVisible({ timeout: 5000 });
+    await expect(diffPanel).not.toContainText(/Build me an indicator search dashboard\. I want a simple page/i);
+
+    await page.getByTestId("build-app-chat-input").fill("make it cleaner");
+    await page.getByTestId("build-app-chat-send").click();
+    await expect(page.getByTestId("build-app-chat-assistant").first()).not.toContainText(
+      /Tell me what you'd like changed/i,
+      { timeout: 15000 }
+    );
+    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("build-app-approve")).toContainText(/Apply changes/i);
+    await page.getByTestId("build-app-approve").click();
+    await expect(page.getByTestId("build-app-chat-assistant").last()).toContainText(/Build passed|Changes applied|test build/i, {
+      timeout: 30000,
+    });
+  });
 });
 
 test.describe("Investigation workspace UI", () => {

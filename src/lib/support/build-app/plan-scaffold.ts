@@ -7,6 +7,7 @@ import { generateEnvSnippet } from "./env-snippet";
 import { getTemplate, resolveTemplateFiles } from "./templates";
 import { createProject, setPendingChanges } from "./project-store";
 import type { BuildAppFileChange } from "./types";
+import { deriveAppCopy } from "./app-copy";
 
 export function buildScaffoldPlan(req: BuildAppRequest): BuildAppPlan {
   const { templateId, reason } = selectTemplate(req.message, req.templateOverride);
@@ -14,16 +15,14 @@ export function buildScaffoldPlan(req: BuildAppRequest): BuildAppPlan {
   const endpoints = selectEndpointsForApp(req.message, templateId);
   const features = inferFeatures(req.message);
   const products = template?.products ?? ["CTIX"];
+  const copy = deriveAppCopy(req.message, templateId, template?.name);
 
-  const title =
-    req.message.slice(0, 80).trim() ||
-    template?.name ||
-    "Cyware App";
+  const title = copy.title;
 
   return {
     id: crypto.randomUUID(),
     title,
-    summary: `Scaffold ${template?.name ?? templateId} with ${features.join(", ")}.`,
+    summary: copy.subtitle,
     templateId,
     templateReason: reason,
     endpoints,
@@ -40,6 +39,7 @@ export function planToFileChanges(plan: BuildAppPlan, projectName: string): Buil
   const primary = plan.endpoints[0];
   const vars: Record<string, string> = {
     APP_TITLE: plan.title,
+    APP_SUBTITLE: plan.summary,
     APP_NAME: projectName,
     SEARCH_METHOD: primary?.method ?? "GET",
     SEARCH_ENDPOINT: primary?.path ?? "/v3/indicators/",

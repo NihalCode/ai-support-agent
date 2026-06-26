@@ -39,6 +39,7 @@ describe("build-app scaffold plan", () => {
         "Build me a simple indicator search dashboard using Cyware APIs. Search box, CQL filter, table, details panel.",
     });
     expect(plan.templateId).toBe("indicator-search-dashboard");
+    expect(plan.title).not.toMatch(/^Build me/i);
     expect(plan.envSnippet).toMatch(/CYWARE_BASE_URL/);
     expect(plan.envSnippet).not.toMatch(/NEXT_PUBLIC_[A-Z]/);
   });
@@ -61,6 +62,7 @@ describe("build-app templates", () => {
   it("merges indicator template with blank base", () => {
     const files = resolveTemplateFiles("indicator-search-dashboard", {
       APP_TITLE: "Test",
+      APP_SUBTITLE: "Test subtitle",
       APP_NAME: "test",
       SEARCH_METHOD: "GET",
       SEARCH_ENDPOINT: "/v3/indicators/",
@@ -76,18 +78,18 @@ describe("build-app templates", () => {
 });
 
 describe("build-app UI edits", () => {
-  it("does not duplicate className when user asks to clean up dashboard UI", () => {
+  it("proposes page updates when user asks to clean up dashboard UI", () => {
     const plan = handleBuildAppPlan({ message: "Build indicator search dashboard" });
     const pid = plan.project!.id;
     applyFileChanges(pid, plan.pendingChanges!);
 
     const edit = runAppBuilderAgent({ message: "Make the dashboard look cleaner", projectId: pid });
+    expect(edit.explanation).not.toMatch(/Tell me what you'd like changed/i);
+    expect(edit.needsApproval).toBe(true);
+    expect(edit.pendingChanges?.length).toBeGreaterThan(0);
     const pageChange = edit.pendingChanges?.find((c) => c.path === "app/page.tsx");
     if (pageChange?.content) {
       expect(pageChange.content).not.toMatch(/className="[^"]*"[^>]*className="/);
-    } else {
-      // Already has dashboard-shell — no change needed
-      expect(edit.needsApproval).toBe(false);
     }
   });
 });

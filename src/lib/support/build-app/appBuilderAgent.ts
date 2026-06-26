@@ -1,14 +1,23 @@
 import "server-only";
 
-import type { BuildAppRequest, BuildAppAgentResult, BuildAppFileChange, BuildAppProject } from "./types";
+import type { BuildAppRequest, BuildAppAgentResult, BuildAppProject } from "./types";
 import { buildScaffoldPlan, createProjectFromPlan } from "./plan-scaffold";
-import { classifyBuildAppRequest, isDeployRequest } from "./classify-request";
+import { classifyBuildAppRequest } from "./classify-request";
 import { getProject, readProjectFile, setPendingChanges } from "./project-store";
 import { listSpecs } from "@/lib/support/api-specs/registry";
-import { addMainShellClass } from "./jsx-edit";
+import { classifyEditIntent, isEditIntent } from "./edit-intent";
+import { generateUiEditChanges } from "./ui-edits";
+
+const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
+  "scaffolded",
+  "building",
+  "ready",
+  "deployed",
+  "failed",
+]);
 
 export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
-  const { isBuild, isEdit } = classifyBuildAppRequest(req);
+  const { isEdit } = classifyBuildAppRequest(req);
 
   if (isEdit && req.projectId) {
     return proposeEdits(req.projectId, req.message);
@@ -50,6 +59,11 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
 }
 
 function conversationalReply(message: string, project: BuildAppProject): string | null {
+  // Only intercept clarifying chat during initial plan review — never block edits on a live app.
+  if (project.status !== "pending_approval" && project.status !== "planning") {
+    return null;
+  }
+
   const m = message.toLowerCase().trim();
   if (/\b(ctix|csap|orchestrate|cftr)\b/.test(m)) {
     const product = m.match(/\b(ctix|csap|orchestrate|cftr)\b/i)?.[1]?.toUpperCase() ?? "CTIX";
@@ -61,56 +75,24 @@ function conversationalReply(message: string, project: BuildAppProject): string 
   if (/\bread[- ]?only\b|\bview only\b|\bno write\b/.test(m)) {
     return "Perfect — I'll make this read-only so it only looks up data, with no changes to your Cyware tenant.";
   }
-  if (/\b(search|table|filter|details|dashboard)\b/.test(m) && project.status === "pending_approval") {
+  if (/\b(search|table|filter|details|dashboard)\b/.test(m)) {
     return "Thanks — those features are already in the plan. Click \"Yes, create my app\" when you're ready, or tell me what to change.";
   }
   return null;
+}
+
+function hasActiveApp(project: BuildAppProject): boolean {
+  return ACTIVE_APP_STATUSES.has(project.status) || (project.appliedChanges?.length ?? 0) > 0;
 }
 
 function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
   const project = getProject(projectId);
   if (!project) throw new Error("Project not found");
 
-  const conversational = conversationalReply(message, project);
-  if (conversational) {
-    return {
-      plan: project.plan!,
-      project,
-      explanation: conversational,
-      needsApproval: false,
-    };
-  }
+  const intent = classifyEditIntent(message);
+  const activeApp = hasActiveApp(project);
 
-  const m = message.toLowerCase();
-  const changes: BuildAppFileChange[] = [];
-
-  if (/cleaner|modern|ui|look|design|layout|style|prettier/i.test(m)) {
-    const pagePath = project.files.find((f) => f.endsWith("app/page.tsx")) ?? "app/page.tsx";
-    const existing = readProjectFile(projectId, pagePath) ?? "";
-    const updated = addMainShellClass(existing);
-    if (updated && updated !== existing) {
-      changes.push({ path: pagePath, action: "update", content: updated, previousContent: existing });
-    }
-  }
-
-  if (/filter|table filter/i.test(m)) {
-    const tablePath =
-      project.files.find((f) => f.includes("ResultsTable")) ?? "components/ResultsTable.tsx";
-    const existing = readProjectFile(projectId, tablePath);
-    if (existing && !existing.includes("filterText")) {
-      changes.push({
-        path: tablePath,
-        action: "update",
-        content: existing.replace(
-          "export function ResultsTable",
-          'import { useState } from "react";\n\nexport function ResultsTable'
-        ),
-        previousContent: existing,
-      });
-    }
-  }
-
-  if (/explain|simple terms|what does/i.test(m)) {
+  if (intent.kind === "explain") {
     return {
       plan: project.plan!,
       project,
@@ -119,24 +101,72 @@ function proposeEdits(projectId: string, message: string): BuildAppAgentResult {
     };
   }
 
-  if (changes.length === 0) {
+  const conversational = conversationalReply(message, project);
+  if (conversational && !activeApp) {
     return {
       plan: project.plan!,
       project,
-      explanation:
-        "Tell me what you'd like changed — for example: \"make it cleaner\", \"add a filter\", or \"explain how this works in simple terms\".",
+      explanation: conversational,
       needsApproval: false,
     };
   }
 
-  setPendingChanges(projectId, changes);
+  const wantsEdit = intent.isEdit || isEditIntent(message);
+
+  if (activeApp && wantsEdit) {
+    const { changes, summary, understoodRequest } = generateUiEditChanges({
+      project,
+      message,
+      intent: intent.kind === "unknown" ? { kind: "clean_ui", isEdit: true, label: "Clean up UI" } : intent,
+      readFile: (path) => readProjectFile(projectId, path),
+    });
+
+    if (changes.length === 0) {
+      return {
+        plan: project.plan!,
+        project,
+        explanation:
+          "I reviewed the app files — the landing page already uses professional copy and layout. Tell me a specific change (e.g. add a filter, change the title) if you want more.",
+        needsApproval: false,
+      };
+    }
+
+    const fileList = changes.map((c) => c.path).join(", ");
+    const explanation = [
+      `Got it. ${understoodRequest}`,
+      "",
+      `I'm updating: ${fileList}`,
+      "",
+      "Review the diff below, then approve to apply. I'll run a test build afterward.",
+    ].join("\n");
+
+    setPendingChanges(projectId, changes);
+    return {
+      plan: project.plan!,
+      project: getProject(projectId)!,
+      explanation,
+      needsApproval: true,
+      approvalPreview: `Update ${fileList} — ${summary}`,
+      pendingChanges: changes,
+    };
+  }
+
+  if (!activeApp) {
+    return {
+      plan: project.plan!,
+      project,
+      explanation:
+        'Describe the app you want to build. I\'ll pick the right template, connect the right APIs, generate files, test it, and prepare a preview.',
+      needsApproval: false,
+    };
+  }
+
   return {
     plan: project.plan!,
-    project: getProject(projectId)!,
-    explanation: `Proposed ${changes.length} file change(s). Review diffs and approve to apply.`,
-    needsApproval: true,
-    approvalPreview: `Update ${changes.map((c) => c.path).join(", ")}`,
-    pendingChanges: changes,
+    project,
+    explanation:
+      'Tell me what to change in this app. You can say things like "make it cleaner," "add a filter," "remove that text," or "deploy this."',
+    needsApproval: false,
   };
 }
 

@@ -59,6 +59,7 @@ describe("indicator-search-dashboard template", () => {
   it("resolves without duplicate attributes or unresolved vars", () => {
     const files = resolveTemplateFiles("indicator-search-dashboard", {
       APP_TITLE: "Indicator Search",
+      APP_SUBTITLE: "Search indicators and review matches in one place.",
       APP_NAME: "indicator-search",
       SEARCH_METHOD: "GET",
       SEARCH_ENDPOINT: "/v3/indicators/",
@@ -71,8 +72,8 @@ describe("indicator-search-dashboard template", () => {
     const page = files.find((f) => f.path === "app/page.tsx");
     expect(page).toBeTruthy();
     expect(validateSourceContent("app/page.tsx", page!.content)).toHaveLength(0);
-    expect(page!.content).toMatch(/className="container dashboard-shell"/);
-    expect(page!.content.match(/className=/g)?.length).toBe(1);
+    expect(page!.content).toMatch(/className="dashboard-page"/);
+    expect(page!.content).toMatch(/className="dashboard-title"/);
   });
 });
 

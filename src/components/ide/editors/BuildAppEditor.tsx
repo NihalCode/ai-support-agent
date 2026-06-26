@@ -232,8 +232,11 @@ export function BuildAppEditor({
         }
 
         if (data.approvalId && data.pendingChanges?.length) {
+          const isEditFlow = Boolean(project) && (project?.appliedChanges?.length ?? 0) > 0;
           pushAssistant(
-            `When you're happy with the plan, click "Yes, create my app" below. I'll set up ${data.pendingChanges.length} file(s) — nothing goes live until you approve.`
+            isEditFlow
+              ? `Review the ${data.pendingChanges.length} file change(s) below and click "Apply changes" when ready.`
+              : `When you're happy with the plan, click "Yes, create my app" below. I'll set up ${data.pendingChanges.length} file(s) — nothing goes live until you approve.`
           );
         }
       } catch (e) {
@@ -323,6 +326,7 @@ export function BuildAppEditor({
 
   async function approveAndApply() {
     if (!project) return;
+    const isEdit = (project.appliedChanges?.length ?? 0) > 0;
     setLoading(true);
     setError(null);
     try {
@@ -332,15 +336,62 @@ export function BuildAppEditor({
         body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true, projectSnapshot: project }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; project?: BuildAppProject };
-      if (!res.ok) throw new Error(data.error ?? "Could not create files");
-      if (data.project) setProject(data.project);
+      if (!res.ok) throw new Error(data.error ?? "Could not apply changes");
+      const fresh = data.project;
+      if (fresh) setProject(fresh);
       setPendingChanges([]);
       setApprovalId(null);
+
+      if (isEdit) {
+        pushAssistant("Changes applied. Running a test build…");
+        setLoading(false);
+        await runBuildAfterEdit(fresh ?? project);
+        return;
+      }
+
       pushAssistant("Done — your app files are created. Click Test my app when you're ready, or ask me to change anything.");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not create files";
+      const msg = e instanceof Error ? e.message : "Could not apply changes";
       setError(msg);
-      pushAssistant(`Sorry, I couldn't create the files: ${msg}`);
+      pushAssistant(`Sorry, I couldn't apply the changes: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runBuildAfterEdit(proj: BuildAppProject) {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/support/build-app", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "build", projectId: proj.id, projectSnapshot: proj }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean; error?: string; output?: string;
+        buildOk?: boolean; classification?: { summary?: string; suggestedFix?: string };
+        project?: BuildAppProject;
+      };
+      setBuildOutput(data.output ?? data.error ?? "");
+      if (data.project) setProject(data.project);
+
+      const passed = res.ok && data.ok === true && data.buildOk === true;
+      if (!passed) {
+        const summary = data.classification?.summary ?? data.error ?? "Build failed.";
+        setError(summary);
+        syncBuildProblem(summary);
+        pushAssistant(`I updated the UI, but the build failed: ${summary}`);
+        return;
+      }
+
+      syncBuildProblem(null);
+      pushAssistant("Done. Build passed — preview is ready when you want to deploy.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Build failed";
+      setError(msg);
+      syncBuildProblem(msg);
+      pushAssistant(`Build failed after edit: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -405,6 +456,22 @@ export function BuildAppEditor({
     [chatMessages, project?.plan?.clarifyingQuestions]
   );
 
+  const isEditApproval =
+    Boolean(project) &&
+    (project?.appliedChanges?.length ?? 0) > 0 &&
+    pendingChanges.length > 0;
+
+  const headerHint = !project
+    ? "Describe the app you want to build. I'll pick the right template, connect APIs, generate files, test, and prepare a preview."
+    : isEditApproval || pendingChanges.length > 0
+      ? "Review the proposed changes and apply when ready."
+      : "Tell me what to change — e.g. \"make it cleaner,\" \"add a filter,\" or \"remove that text.\"";
+
+  const chatPlaceholder = !project
+    ? "Describe the app you want to build…"
+    : awaitingVercelToken
+      ? "Paste Vercel token here, or say skip for a demo link…"
+      : "Tell me what to change in this app…";
   const files = project?.files ?? pendingChanges.map((c) => c.path);
   const diffContent = pendingChanges.find((c) => c.path === selectedFile);
   const templateLabel = (suggestedTemplateId || project?.templateId)?.replace(/-/g, " ");
@@ -415,7 +482,7 @@ export function BuildAppEditor({
         <header style={{ marginBottom: 12 }}>
           <h2 style={{ margin: "0 0 4px" }}>App Builder</h2>
           <p style={{ color: "var(--muted)", margin: 0, fontSize: 13 }}>
-            Describe what you need — I&apos;ll build it step by step.
+            {headerHint}
           </p>
           <div data-testid="build-app-steps" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {(Object.keys(STEP_LABELS) as BuildStep[]).map((s) => (
@@ -452,11 +519,7 @@ export function BuildAppEditor({
             onSend={(t) => void handleChatSend(t)}
             loading={loading}
             quickReplies={approvalId ? undefined : quickReplies}
-            placeholder={
-              awaitingVercelToken
-                ? "Paste Vercel token here, or say skip for a demo link…"
-                : "Tell me about the app, or answer a question…"
-            }
+            placeholder={chatPlaceholder}
           />
         </div>
 
@@ -469,7 +532,7 @@ export function BuildAppEditor({
               disabled={loading}
               style={btnPrimary}
             >
-              Yes, create my app ({pendingChanges.length} files)
+              {isEditApproval ? "Apply changes" : `Yes, create my app (${pendingChanges.length} files)`}
             </button>
           )}
           {(project?.status === "scaffolded" || project?.status === "ready" || project?.status === "failed") && (

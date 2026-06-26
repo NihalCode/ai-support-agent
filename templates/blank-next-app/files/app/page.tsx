@@ -10,11 +10,13 @@ export default async function Home() {
   }
 
   return (
-    <main className="container" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
-      <h1>{{APP_TITLE}}</h1>
-      <p style={{ color: "#8b949e" }}>{{PRODUCT}} integration — {status}</p>
-      <p style={{ fontSize: 14 }}>
-        Endpoint: {{SEARCH_METHOD}} {{SEARCH_ENDPOINT}}
+    <main className="dashboard-page">
+      <header className="dashboard-hero">
+        <h1 className="dashboard-title">{{APP_TITLE}}</h1>
+        <p className="dashboard-subtitle">{{APP_SUBTITLE}}</p>
+      </header>
+      <p style={{ fontSize: 14, color: "var(--muted)" }}>
+        {status} · Endpoint: {{SEARCH_METHOD}} {{SEARCH_ENDPOINT}}
       </p>
     </main>
   );

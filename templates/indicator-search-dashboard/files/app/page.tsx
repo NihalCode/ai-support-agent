@@ -35,11 +35,11 @@ export default function Home() {
   }
 
   return (
-    <main className="container dashboard-shell" style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
-      <h1>{{APP_TITLE}}</h1>
-      <p style={{ color: "#8b949e", marginBottom: 16 }}>
-        {{PRODUCT}} indicator search — credentials stay server-side via <code>/api/indicators/search</code>
-      </p>
+    <main className="dashboard-page">
+      <header className="dashboard-hero">
+        <h1 className="dashboard-title">{{APP_TITLE}}</h1>
+        <p className="dashboard-subtitle">{{APP_SUBTITLE}}</p>
+      </header>
       <SearchBox
         query={query}
         cql={cql}
@@ -48,8 +48,8 @@ export default function Home() {
         onSearch={() => void runSearch()}
         loading={loading}
       />
-      {error && <p style={{ color: "#f85149" }}>{error}</p>}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, marginTop: 16 }}>
+      {error && <p className="dashboard-error">{error}</p>}
+      <div className="dashboard-grid">
         <ResultsTable rows={rows} onSelect={setSelected} selectedId={String(selected?.id ?? "")} />
         <DetailsPanel item={selected} />
       </div>
