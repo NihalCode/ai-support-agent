@@ -60,10 +60,52 @@ Open the app, leave the repo field blank (uses the mock `acme/checkout-service`)
 type a problem like *"After upgrading, /api/charge returns 404"*, and click
 **Analyze issue**. You'll get the full structured triage report with citations.
 
+### AI Support Investigation IDE (Cursor-style workspace)
+
+The UI is a **multi-panel investigation IDE** inspired by modern AI coding tools (without copying proprietary branding):
+
+| Region | Purpose |
+|--------|---------|
+| **Activity bar** | Explorer, Search, Source Control, Investigations, API Registry, CQL, Jira, Logs, MCP, Settings |
+| **Primary sidebar** | Context for the active activity (imports, search, tickets, MCP status) |
+| **Editor tabs** | Investigation, diagnose, API registry, endpoint detail, API runner, integrations, CQL, MCP config |
+| **AI chat panel** | Support agent chat, slash commands (`/investigate`, `/validate-cql`, …), follow-ups when a session exists |
+| **Bottom panel** | Problems, MCP status, import jobs, agent trace summary, terminal hints |
+| **Command palette** | `Ctrl+K` / `Ctrl+Shift+P` — import APIs, start investigation, toggle panels |
+
+Keyboard shortcuts: `Ctrl+B` sidebar · `Ctrl+J` bottom panel · `Ctrl+Shift+I` investigation · `Ctrl+Shift+C` CQL · `Ctrl+Shift+M` MCP.
+
+On first load, **Cyware APIs (CTIX, CSAP, CFTR, Orchestrate) and CQL docs auto-import** from bundled specs (`data/cyware-specs/`) into Pinecone/memory — no manual script required.
+
+### IDE features (split editor, RAG search, streaming, terminal)
+
+See **[docs/IDE-FEATURES.md](docs/IDE-FEATURES.md)** for:
+
+- Split editor (`Ctrl+\`, compare side-by-side, persisted layout)
+- Semantic/hybrid workspace search (`POST /api/support/search`)
+- Streaming AI chat (`POST /api/support/agent/chat/stream`)
+- Allowlisted terminal runner (bottom panel)
+- Investigation object (pinned evidence, hypotheses, export)
+
+**E2E tests:** `npm run test:e2e` (uses `TEST_MODE=true` — no real credentials required).
+
+```bash
+# Force refresh auto-import
+curl -X POST http://localhost:3000/api/support/bootstrap
+```
+
+Investigation returns a **Markdown report** (`markdownReport`) matching the spec format.
+
+API: `POST /api/support/investigate` with `{ "query": { "text": "..." } }`.  
+Follow-up chat: `{ "sessionId": "...", "message": "..." }`.
+
+Set `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` for live deployment/log correlation (mock data used when unset).
+
 ### Validate the build
 
 ```bash
-npm test          # 85 unit + integration tests (offline)
+npm test          # 125 unit + integration tests (offline)
+npm run mcp:check # validate MCP server files + env hints
 npm run typecheck # tsc --noEmit
 npm run lint      # eslint (flat config)
 npm run build     # next build
@@ -292,7 +334,7 @@ scripts/ingest-cli.ts
   cross-instance state (serverless resets memory between cold starts).
 - **Secrets are env-first.** The UI shows masked status but does not yet accept
   per-session secret entry; set credentials in `.env.local` / your host.
-- MCP support is **remote HTTP/SSE only** (no local stdio).
+- MCP support includes **local stdio stubs** (`mcp/servers/`) + **remote HTTP/SSE** (`MCP_SERVER_CONFIG_JSON`). Copy `.cursor/mcp.json.example` for Cursor integration.
 - CQL generation depends on the live docs page being fetchable; if it is a
   JS-rendered SPA returning thin HTML, generation honestly reports missing
   syntax instead of guessing.

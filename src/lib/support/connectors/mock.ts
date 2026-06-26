@@ -98,6 +98,9 @@ export class MockJiraTicketConnector implements TicketConnector {
     const source = matched.length ? matched : scored;
     return source.slice(0, limit).map((x) => x.i);
   }
+  async listRecentIssues(limit = 8): Promise<NormalizedIssue[]> {
+    return MOCK_JIRA_ISSUES.slice(0, limit);
+  }
   async addComment(ref: string, _body: string) {
     return { ok: true, mock: true, url: `https://acme.atlassian.net/browse/${ref}#mock-comment` };
   }

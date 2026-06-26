@@ -12,6 +12,7 @@ export const runtime = "nodejs";
  * Search GitHub + Jira tickets, or fetch a single one by ref.
  * GET /api/support/tickets?q=...&repoUrl=...  -> search both sources
  * GET /api/support/tickets?ref=PROJ-1&repoUrl=...  -> fetch one
+ * GET /api/support/tickets  -> recent Jira issues (when Jira live)
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -19,6 +20,8 @@ export async function GET(req: Request) {
   const ref = url.searchParams.get("ref")?.trim();
   const repoUrl = url.searchParams.get("repoUrl")?.trim() || undefined;
   const { ref: repoRef } = resolveRepoRef(repoUrl);
+  const gh = getGitHubTickets(repoRef);
+  const jira = getJiraTickets();
 
   try {
     if (ref) {
@@ -27,10 +30,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ issue, source: connector.id, mock });
     }
     if (!q) {
+      if (!jira.mock) {
+        const recent = jira.connector.listRecentIssues
+          ? await jira.connector.listRecentIssues(8).catch(() => [])
+          : await jira.connector.searchIssues("support", 8).catch(() => []);
+        return NextResponse.json({
+          jira: { issues: recent, mock: false },
+          github: { issues: [], mock: gh.mock },
+          hint: "Pass ?q= to search or ?ref=KEY-1 for a single ticket.",
+        });
+      }
       return NextResponse.json({ error: "Provide ?q= or ?ref=" }, { status: 400 });
     }
-    const gh = getGitHubTickets(repoRef);
-    const jira = getJiraTickets();
     const [ghIssues, jiraIssues] = await Promise.all([
       gh.connector.searchIssues(q, 5).catch(() => []),
       jira.connector.searchIssues(q, 5).catch(() => []),

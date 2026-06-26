@@ -2,6 +2,7 @@ import "server-only";
 
 import type { CywareProductId } from "../cyware-products";
 import { getCywareProductConfig, type CywareProductConfig } from "../config";
+import { generateCtixAuthQuery } from "../ctix-auth";
 import { redactHeaders } from "../redact";
 import { classifyHttp } from "../safety";
 import { listSpecs } from "../api-specs/registry";
@@ -52,10 +53,26 @@ export class CywareProductConnector {
 
   get configured(): boolean {
     const c = this.cfg();
-    return Boolean(c.baseUrl && (c.apiKey || c.clientSecret));
+    return Boolean(c.baseUrl && (c.apiKey || c.clientSecret || (c.clientId && c.clientSecret)));
+  }
+
+  /** CTIX Open API uses HMAC query params (AccessID / Signature / Expires). */
+  private usesCtixOpenApi(): boolean {
+    if (this.id !== "ctix") return false;
+    const c = this.cfg();
+    if (c.authType === "basic" || c.authType === "bearer") return false;
+    if (c.authType === "ctix_open_api") return Boolean(c.clientId && c.clientSecret);
+    return Boolean(c.clientId && c.clientSecret && !c.apiKey);
+  }
+
+  private ctixAuthQuery(): Record<string, string> | null {
+    if (!this.usesCtixOpenApi()) return null;
+    const c = this.cfg();
+    return { ...generateCtixAuthQuery(c.clientId!, c.clientSecret!) };
   }
 
   private applyAuth(headers: Record<string, string>): Record<string, string> {
+    if (this.usesCtixOpenApi()) return headers;
     const c = this.cfg();
     switch (c.authType) {
       case "bearer":
@@ -87,10 +104,20 @@ export class CywareProductConnector {
     }
     try {
       const { safeFetch } = await import("../../ssrf");
-      const res = await safeFetch(c.baseUrl!.replace(/\/$/, ""), {
+      const base = c.baseUrl!.replace(/\/$/, "");
+      const authQ = this.ctixAuthQuery();
+      const testPath = this.id === "ctix" ? "/ping/" : "";
+      const qs = authQ ? `?${new URLSearchParams(authQ).toString()}` : "";
+      const res = await safeFetch(`${base}${testPath}${qs}`, {
         headers: this.applyAuth({ Accept: "application/json" }),
       });
-      return { ok: res.status < 500, detail: `Reachable (HTTP ${res.status})` };
+      const ok = res.status < 500 && res.status !== 401 && res.status !== 403;
+      return {
+        ok,
+        detail: ok
+          ? `CTIX reachable (HTTP ${res.status})`
+          : `Reachable but auth may be wrong (HTTP ${res.status})`,
+      };
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : "unreachable" };
     }
@@ -103,9 +130,11 @@ export class CywareProductConnector {
   ): CywareRequestPlan {
     const c = this.cfg();
     const base = c.baseUrl!.replace(/\/$/, "");
+    const authQ = this.ctixAuthQuery();
+    const mergedQuery = { ...(opts.query ?? {}), ...(authQ ?? {}) };
     const qs =
-      opts.query && Object.keys(opts.query).length
-        ? "?" + new URLSearchParams(opts.query).toString()
+      Object.keys(mergedQuery).length > 0
+        ? "?" + new URLSearchParams(mergedQuery).toString()
         : "";
     const url = `${base}${path.startsWith("/") ? path : `/${path}`}${qs}`;
     const headers = this.applyAuth({ Accept: "application/json", "Content-Type": "application/json" });

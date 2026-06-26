@@ -147,19 +147,50 @@ export class JiraConnector implements TicketConnector {
       const clean = query.replace(/["\\]/g, " ").trim();
       const scope = this.projectKey ? `project = "${this.projectKey}" AND ` : "";
       const jql = encodeURIComponent(`${scope}text ~ "${clean}" ORDER BY updated DESC`);
-      const fields = "summary,description,status,labels,assignee,reporter,priority,created,updated";
-      const res = await withRetry(() =>
-        safeFetch(
-          `${this.baseUrl}/rest/api/3/search?jql=${jql}&maxResults=${Math.min(limit, 20)}&fields=${fields}`,
-          { headers: this.headers() }
-        )
-      );
-      if (!res.ok) return [];
-      const data = JSON.parse(res.text) as { issues?: JiraIssue[] };
-      return (data.issues ?? []).map((i) => this.normalize(i));
+      return this.searchJql(jql, limit);
     } catch {
       return [];
     }
+  }
+
+  /** Recent issues in the configured project (no text filter). */
+  async listRecentIssues(limit = 8): Promise<NormalizedIssue[]> {
+    try {
+      const scope = this.projectKey ? `project = "${this.projectKey}"` : "updated >= -90d";
+      const jql = encodeURIComponent(`${scope} ORDER BY updated DESC`);
+      return this.searchJql(jql, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  private async searchJql(encodedJql: string, limit: number): Promise<NormalizedIssue[]> {
+    const fields = "summary,description,status,labels,assignee,reporter,priority,created,updated";
+    const res = await withRetry(() =>
+      safeFetch(`${this.baseUrl}/rest/api/3/search/jql`, {
+        method: "POST",
+        headers: { ...this.headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jql: decodeURIComponent(encodedJql),
+          maxResults: Math.min(limit, 20),
+          fields: fields.split(","),
+        }),
+      })
+    );
+    if (!res.ok) {
+      // Fallback for older Jira Cloud tenants.
+      const legacy = await withRetry(() =>
+        safeFetch(
+          `${this.baseUrl}/rest/api/3/search?jql=${encodedJql}&maxResults=${Math.min(limit, 20)}&fields=${fields}`,
+          { headers: this.headers() }
+        )
+      );
+      if (!legacy.ok) return [];
+      const data = JSON.parse(legacy.text) as { issues?: JiraIssue[] };
+      return (data.issues ?? []).map((i) => this.normalize(i));
+    }
+    const data = JSON.parse(res.text) as { issues?: JiraIssue[] };
+    return (data.issues ?? []).map((i) => this.normalize(i));
   }
 
   async addComment(ref: string, body: string) {

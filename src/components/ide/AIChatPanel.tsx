@@ -1,0 +1,214 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
+import { useWorkspace } from "./WorkspaceProvider";
+import { SLASH_COMMANDS } from "./types";
+import { IdeToolCallCard } from "./IdeToolCallCard";
+import type { ToolCallCardState } from "./types";
+
+export function AIChatPanel() {
+  const {
+    state,
+    addChatMessage,
+    updateChatMessage,
+    handleSlashInput,
+    runCommand,
+  } = useWorkspace();
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendStream = useCallback(
+    async (text: string) => {
+      const userId = addChatMessage({ role: "user", content: text });
+      const assistantId = addChatMessage({ role: "assistant", content: "", toolCards: [] });
+      setStreaming(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const toolCards: ToolCallCardState[] = [];
+      let content = "";
+
+      try {
+        const res = await fetch("/api/support/agent/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            sessionId: state.investigationSessionId ?? undefined,
+            investigationId: state.activeInvestigationId ?? undefined,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok || !res.body) {
+          throw new Error("Stream unavailable — falling back");
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith("data:")) continue;
+            const event = JSON.parse(line.slice(5).trim()) as ChatStreamEvent;
+            if (event.type === "token") {
+              content += event.text;
+              updateChatMessage(assistantId, { content });
+            }
+            if (event.type === "tool_call_start") {
+              toolCards.push({
+                id: event.toolCallId,
+                agent: event.agent,
+                action: event.name,
+                status: "running",
+                summary: event.summary ?? event.name,
+              });
+              updateChatMessage(assistantId, { toolCards: [...toolCards] });
+            }
+            if (event.type === "tool_call_result") {
+              const card = toolCards.find((c) => c.id === event.toolCallId);
+              if (card) {
+                card.status = event.status;
+                card.summary = event.summary;
+              }
+              updateChatMessage(assistantId, { toolCards: [...toolCards] });
+            }
+            if (event.type === "error") {
+              updateChatMessage(assistantId, { content: event.error });
+            }
+          }
+        }
+      } catch (e) {
+        if ((e as Error).name === "AbortError") {
+          updateChatMessage(assistantId, { content: `${content}\n[Stopped]` });
+          return;
+        }
+        // Fallback to non-streaming
+        try {
+          if (state.investigationSessionId) {
+            const res = await fetch("/api/support/investigate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: state.investigationSessionId, message: text }),
+            });
+            const data = await res.json();
+            updateChatMessage(assistantId, { content: data.chatReply ?? "Done." });
+          } else {
+            updateChatMessage(assistantId, {
+              content: "Start an investigation from the editor or use /investigate.",
+            });
+          }
+        } catch {
+          updateChatMessage(assistantId, {
+            content: e instanceof Error ? e.message : "Request failed",
+          });
+        }
+      } finally {
+        setStreaming(false);
+        abortRef.current = null;
+        void userId;
+      }
+    },
+    [
+      addChatMessage,
+      updateChatMessage,
+      state.investigationSessionId,
+      state.activeInvestigationId,
+    ]
+  );
+
+  async function send() {
+    const text = input.trim();
+    if (!text || streaming) return;
+    if (handleSlashInput(text)) {
+      setInput("");
+      return;
+    }
+    setInput("");
+    await sendStream(text);
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  return (
+    <>
+      <div className="ide-chat-header">AI Support Agent · streaming</div>
+      <div className="ide-chat-messages">
+        {state.chatMessages.length === 0 && (
+          <div className="ide-empty" style={{ padding: 16 }}>
+            <p>Ask about an issue or use slash commands.</p>
+            <p style={{ fontSize: 11 }}>{SLASH_COMMANDS.slice(0, 5).map((c) => c.cmd).join(" · ")}</p>
+          </div>
+        )}
+        {state.chatMessages.map((m) => (
+          <div key={m.id} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", marginBottom: 4 }}>
+              {m.role}
+            </div>
+            <div
+              style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13 }}
+              data-testid={m.role === "assistant" ? "chat-assistant-message" : undefined}
+            >
+              {m.content}
+            </div>
+            {m.toolCards?.map((c) => (
+              <IdeToolCallCard key={c.id} card={c} />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="ide-chat-input-row">
+        <input
+          className="ide-chat-input"
+          data-testid="ai-chat-input"
+          placeholder="Message or /command…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          disabled={streaming}
+        />
+        {streaming ? (
+          <button type="button" onClick={stop} style={btnStyle("#f85149")}>
+            Stop
+          </button>
+        ) : (
+          <button type="button" onClick={() => void send()} style={btnStyle("var(--accent)")}>
+            Send
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function btnStyle(bg: string): React.CSSProperties {
+  return {
+    background: bg,
+    border: "none",
+    borderRadius: 6,
+    color: "#fff",
+    padding: "0 12px",
+    cursor: "pointer",
+    fontSize: 12,
+  };
+}
+
+function contentOrAppend(current: string, extra: string) {
+  return current + extra;
+}

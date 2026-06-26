@@ -61,6 +61,20 @@ const SIGNALS: Signal[] = [
   },
   {
     category: "documentation",
+    weight: 3,
+    patterns: [
+      /\bwhich api\b/i,
+      /\bapi to call\b/i,
+      /\bwhat api\b/i,
+      /\bplaybook\b/i,
+      /\borchestrate\b/i,
+      /\bhow to (check|retry|get)\b/i,
+      /\brun status\b/i,
+      /\bplaybook run\b/i,
+    ],
+  },
+  {
+    category: "documentation",
     weight: 2,
     patterns: [/\bdocs?\b/i, /\breadme\b/i, /\bhow do i\b/i, /\bunclear\b/i, /\binstructions?\b/i],
   },
@@ -105,6 +119,10 @@ function detectCategory(text: string): { category: IssueCategory; score: number 
     }
   }
   return { category: best, score: bestScore };
+}
+
+function apiSpecChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
+  return chunks.filter((c) => c.metadata.sourceType === "openapi" || c.metadata.sourceType === "postman");
 }
 
 function ticketChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
@@ -178,7 +196,12 @@ export function classifyHeuristic(
   const detected = detectCategory(combined);
   let category = detected.category;
   const score = detected.score;
+  const apiSpecs = apiSpecChunks(chunks);
   const lowInfo = isLowInfo(description) && !issue;
+
+  if (apiSpecs.length > 0 && (category === "unknown" || category === "new-bug")) {
+    category = "documentation";
+  }
 
   if (lowInfo) {
     category = "unknown";
@@ -193,7 +216,12 @@ export function classifyHeuristic(
     Boolean(closedFix) && category !== "feature-request" && !lowInfo;
   const confidence: Confidence =
     lowInfo || score === 0 ? "Low" : score >= 4 || fixedAlready ? "High" : "Medium";
-  const fixability = lowInfo ? "not-enough-info" : fixabilityFor(category, fixedAlready);
+  const fixability =
+    lowInfo && apiSpecs.length === 0
+      ? "not-enough-info"
+      : apiSpecs.length > 0 && category === "documentation"
+        ? "support-can-fix"
+        : fixabilityFor(category, fixedAlready);
 
   const evidence: string[] = [];
   if (fixedAlready && closedFix) {
@@ -214,6 +242,11 @@ export function classifyHeuristic(
   }
   const topDoc = chunks.find((c) => c.metadata.sourceType === "docs");
   if (topDoc) evidence.push(`Relevant docs: ${topDoc.metadata.filePath}.`);
+  for (const ep of apiSpecs.slice(0, 3)) {
+    evidence.push(
+      `${ep.metadata.title ?? ep.metadata.filePath}: ${ep.metadata.http_method ?? ""} ${ep.metadata.endpoint_path ?? ep.metadata.filePath} — ${snippet(ep.text)}`
+    );
+  }
   if (evidence.length === 0) evidence.push("No strongly matching code or tickets were retrieved.");
 
   const rootCause = buildRootCause(category, combined, closedFix, duplicate);
@@ -326,6 +359,12 @@ function buildFixSteps(
       ];
     }
     case "documentation":
+      if (apiSpecChunks(chunks).length > 0) {
+        return apiSpecChunks(chunks).slice(0, 4).map((c, i) => {
+          const title = c.metadata.title ?? c.metadata.filePath;
+          return `${i + 1}. Use ${title} (${c.metadata.filePath}) per the imported API docs.`;
+        });
+      }
       return [
         "Point the client to the relevant docs section.",
         "Clarify the missing step in the docs for future users.",

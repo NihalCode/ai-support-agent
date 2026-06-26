@@ -1,17 +1,25 @@
 import { describe, it, expect } from "vitest";
-import { htmlToText } from "../cql/ingest-docs";
+import { htmlToText, discoverCqlPagePaths, CQL_DOC_PAGES } from "../cql/ingest-docs";
 import { validateCqlStructure } from "../cql/validate";
 import { generateCql } from "../cql/generate";
 
 describe("CQL doc HTML → text", () => {
-  it("strips tags, scripts, and decodes entities", () => {
+  it("strips tags, scripts, nav, and decodes entities", () => {
     const html = `<html><head><style>.x{}</style><script>var a=1;</script></head>
-      <body><h1>CQL</h1><p>Use field &amp; value &lt;op&gt;</p></body></html>`;
+      <body><nav>skip</nav><h1>CQL</h1><p>Use field &amp; value &lt;op&gt;</p></body></html>`;
     const text = htmlToText(html);
     expect(text).toContain("CQL");
     expect(text).toContain("field & value <op>");
     expect(text).not.toContain("var a=1");
-    expect(text).not.toContain("<p>");
+    expect(text).not.toMatch(/skip/i);
+  });
+
+  it("discovers all known CQL pages from landing HTML", () => {
+    const html = CQL_DOC_PAGES.map((p) => `<a href="${p}">link</a>`).join(" ");
+    const paths = discoverCqlPagePaths(html);
+    expect(paths.length).toBeGreaterThanOrEqual(CQL_DOC_PAGES.length);
+    expect(paths).toContain("understand-cql-grammar.html");
+    expect(paths).toContain("apply-conditions-based-on-operators.html");
   });
 });
 

@@ -18,6 +18,8 @@ interface CqlBody {
   /** Paste CQL doc text directly when the live URL is JS-rendered. */
   content?: string;
   query?: string;
+  /** Alias for query (legacy / external callers). */
+  prompt?: string;
 }
 
 export async function POST(req: Request) {
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
         target: result.url,
         approved: true,
         provider: "cyware-cql",
-        details: `${result.chunks} chunks (${result.fetchedChars} chars)`,
+        details: `${result.chunks} chunks, ${result.pagesFetched} pages (${result.fetchedChars} chars)`,
       });
       return NextResponse.json({ result });
     } catch (err) {
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const query = body.query?.trim();
+  const query = body.query?.trim() ?? body.prompt?.trim();
   if (!query) {
     return NextResponse.json({ error: "Provide a `query` to convert to CQL." }, { status: 400 });
   }

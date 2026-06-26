@@ -392,7 +392,7 @@ function CqlSection() {
         body: JSON.stringify({ intent: "index", url: docUrl || undefined, content: docContent || undefined }),
       });
       const data = await res.json();
-      setMsg(res.ok ? `Indexed ${data.result.chunks} CQL doc chunks (${data.result.fetchedChars} chars).${data.result.warnings?.length ? " ⚠ " + data.result.warnings.join("; ") : ""}` : (data.error ?? "Index failed"));
+      setMsg(res.ok ? `Indexed ${data.result.chunks} CQL doc chunks from ${data.result.pagesFetched} pages (${data.result.fetchedChars} chars).${data.result.warnings?.length ? " ⚠ " + data.result.warnings.join("; ") : ""}` : (data.error ?? "Index failed"));
     } finally {
       setIndexing(false);
     }

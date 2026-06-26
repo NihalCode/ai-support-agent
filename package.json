@@ -12,16 +12,23 @@
     "test:watch": "vitest",
     "ingest": "tsx --conditions=react-server scripts/ingest-cli.ts",
     "vendor:cyware-specs": "tsx --conditions=react-server scripts/vendor-cyware-specs.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mcp:check": "node scripts/check-mcp.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.0",
     "next": "16.2.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "redis": "^4.7.1",
     "server-only": "^0.0.1",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

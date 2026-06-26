@@ -48,6 +48,11 @@ export interface SupportConfig {
     token: string | null;
     defaultRepo: string;
   };
+  vercel: {
+    token: string | null;
+    teamId: string | null;
+    projectId: string | null;
+  };
   jira: {
     baseUrl: string | null;
     email: string | null;
@@ -67,6 +72,10 @@ export interface SupportConfig {
   /** Optional durable backends. When unset the app uses file/in-memory. */
   databaseUrl: string | null;
   redisUrl: string | null;
+  upstash: {
+    restUrl: string | null;
+    restToken: string | null;
+  };
   encryptionKey: string | null;
   appEnv: string;
   appBaseUrl: string | null;
@@ -176,6 +185,11 @@ export function getConfig(): SupportConfig {
       token: clean(process.env.GITHUB_TOKEN),
       defaultRepo: clean(process.env.DEFAULT_GITHUB_REPO) ?? "vercel/next.js",
     },
+    vercel: {
+      token: clean(process.env.VERCEL_TOKEN),
+      teamId: clean(process.env.VERCEL_TEAM_ID),
+      projectId: clean(process.env.VERCEL_PROJECT_ID),
+    },
     jira: {
       baseUrl: clean(process.env.JIRA_BASE_URL),
       email: clean(process.env.JIRA_EMAIL),
@@ -187,6 +201,10 @@ export function getConfig(): SupportConfig {
     mcpServers: parseMcpServers(clean(process.env.MCP_SERVER_CONFIG_JSON)),
     databaseUrl: clean(process.env.DATABASE_URL),
     redisUrl: clean(process.env.REDIS_URL),
+    upstash: {
+      restUrl: clean(process.env.UPSTASH_REDIS_REST_URL),
+      restToken: clean(process.env.UPSTASH_REDIS_REST_TOKEN),
+    },
     encryptionKey: clean(process.env.ENCRYPTION_KEY),
     appEnv: clean(process.env.APP_ENV) ?? clean(process.env.NODE_ENV) ?? "development",
     appBaseUrl: clean(process.env.APP_BASE_URL),
@@ -205,6 +223,9 @@ export function hasPinecone(c = getConfig()): boolean {
 export function hasGitHub(c = getConfig()): boolean {
   return Boolean(c.github.token);
 }
+export function hasVercel(c = getConfig()): boolean {
+  return Boolean(c.vercel.token && c.vercel.projectId);
+}
 export function hasJira(c = getConfig()): boolean {
   return Boolean(c.jira.baseUrl && c.jira.email && c.jira.apiToken);
 }
@@ -214,7 +235,7 @@ export function hasCyware(c = getConfig()): boolean {
 
 export function hasCywareProduct(id: CywareProductId, c = getConfig()): boolean {
   const p = c.cywareProducts[id];
-  return Boolean(p.baseUrl && (p.apiKey || p.clientSecret));
+  return Boolean(p.baseUrl && (p.apiKey || p.clientSecret || (p.clientId && p.clientSecret)));
 }
 
 export function configuredCywareProducts(c = getConfig()): CywareProductId[] {

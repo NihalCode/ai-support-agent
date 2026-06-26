@@ -1,0 +1,66 @@
+{
+  "mcpServers": {
+    "jira": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@atlassian/jira-mcp-server"],
+      "env": {
+        "JIRA_BASE_URL": "${env:JIRA_BASE_URL}",
+        "JIRA_EMAIL": "${env:JIRA_EMAIL}",
+        "JIRA_API_TOKEN": "${env:JIRA_API_TOKEN}"
+      }
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
+      }
+    },
+    "logs": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/mcp/servers/logs_server.py"],
+      "env": {
+        "LOG_PROVIDER": "${env:LOG_PROVIDER}",
+        "LOG_API_KEY": "${env:LOG_API_KEY}",
+        "LOG_BASE_URL": "${env:LOG_BASE_URL}"
+      }
+    },
+    "cyware-api": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/mcp/servers/cyware_api_server.py"],
+      "env": {
+        "CTIX_BASE_URL": "${env:CTIX_BASE_URL}",
+        "CTIX_CLIENT_ID": "${env:CTIX_CLIENT_ID}",
+        "CTIX_CLIENT_SECRET": "${env:CTIX_CLIENT_SECRET}",
+        "CSAP_BASE_URL": "${env:CSAP_BASE_URL}",
+        "CSAP_API_KEY": "${env:CSAP_API_KEY}",
+        "CFTR_BASE_URL": "${env:CFTR_BASE_URL}",
+        "CFTR_API_KEY": "${env:CFTR_API_KEY}",
+        "ORCHESTRATE_BASE_URL": "${env:ORCHESTRATE_BASE_URL}",
+        "ORCHESTRATE_API_KEY": "${env:ORCHESTRATE_API_KEY}"
+      }
+    },
+    "api-importer": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/mcp/servers/api_importer_server.py"],
+      "env": {
+        "PINECONE_API_KEY": "${env:PINECONE_API_KEY}",
+        "PINECONE_INDEX_NAME": "${env:PINECONE_INDEX_NAME}",
+        "OPENAI_API_KEY": "${env:OPENAI_API_KEY}"
+      }
+    },
+    "pinecone": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@pinecone-database/mcp"],
+      "env": {
+        "PINECONE_API_KEY": "${env:PINECONE_API_KEY}"
+      }
+    }
+  }
+}

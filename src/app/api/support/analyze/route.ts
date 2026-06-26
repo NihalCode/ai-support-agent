@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     }
 
     const { ref } = resolveRepoRef(body.repoUrl);
+    const repoUrlProvided = Boolean(body.repoUrl?.trim());
 
     // Optionally pull in a linked ticket for richer context.
     let issue: NormalizedIssue | null = null;
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
       ref,
       description: body.description ?? "",
       issue,
+      repoUrlProvided,
     });
 
     await audit({

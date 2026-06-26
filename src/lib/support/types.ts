@@ -149,6 +149,7 @@ export interface TicketConnector {
   readonly isMock: boolean;
   getIssue(ref: string): Promise<NormalizedIssue | null>;
   searchIssues(query: string, limit?: number): Promise<NormalizedIssue[]>;
+  listRecentIssues?(limit?: number): Promise<NormalizedIssue[]>;
   /**
    * Write a comment. MUST only be called after explicit user approval; the
    * route layer enforces this. Returns the created comment URL (or a mock id).

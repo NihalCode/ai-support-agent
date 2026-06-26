@@ -64,6 +64,7 @@ export async function runTestCase(tc: SupportTestCase): Promise<TestCaseResult> 
     ref: MOCK_REPO,
     description: tc.description,
     issue,
+    evalMode: true,
   });
   const { pass, reasons } = evaluate(tc, analysis);
   return { id: tc.id, name: tc.name, description: tc.description, pass, reasons, analysis };
