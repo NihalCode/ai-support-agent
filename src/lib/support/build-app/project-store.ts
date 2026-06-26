@@ -11,22 +11,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 import type { BuildAppFileChange, BuildAppProject, BuildAppProjectStatus } from "./types";
+import { supportDataRoot } from "../data-root";
 
 const g = globalThis as unknown as { __buildAppProjects?: Map<string, BuildAppProject> };
 
-function resolveDataRoot(): string {
-  if (process.env.BUILD_APPS_DATA_DIR) return process.env.BUILD_APPS_DATA_DIR;
-  const cwd = process.cwd();
-  if (process.env.VERCEL === "1" || cwd === "/var/task" || cwd.startsWith("/var/task/")) {
-    return path.join("/tmp", "build-apps");
-  }
-  return path.join(/* turbopackIgnore: true */ cwd, ".data", "build-apps");
-}
-
 function dataRoot(): string {
-  const root = resolveDataRoot();
-  mkdirSync(root, { recursive: true });
-  return root;
+  return supportDataRoot("build-apps");
 }
 
 function store(): Map<string, BuildAppProject> {

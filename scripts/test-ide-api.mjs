@@ -81,6 +81,39 @@ await check("GET /api/support/terminal/commands → commands[]", async () => {
   if (!Array.isArray(body.commands)) throw new Error("commands must be array");
 });
 
+await check("POST /api/support/build-app plan + userConfirmed apply", async () => {
+  const plan = await json("/api/support/build-app", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "plan", message: "Build indicator search dashboard with table" }),
+  });
+  if (!plan.res.ok) throw new Error(`plan HTTP ${plan.res.status}: ${plan.body.error ?? ""}`);
+  const projectId = plan.body.project?.id;
+  if (!projectId) throw new Error("plan missing project.id");
+  const apply = await json("/api/support/build-app", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "apply", projectId, userConfirmed: true }),
+  });
+  if (!apply.res.ok) throw new Error(`apply HTTP ${apply.res.status}: ${apply.body.error ?? ""}`);
+  if (apply.body.project?.status !== "scaffolded") throw new Error(`expected scaffolded, got ${apply.body.project?.status}`);
+});
+
+await check("POST /api/support/investigations create + GET by id", async () => {
+  const created = await json("/api/support/investigations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Smoke test investigation", userIssue: "API timeout" }),
+  });
+  if (!created.res.ok) throw new Error(`create HTTP ${created.res.status}`);
+  const id = created.body.id;
+  if (!id) throw new Error("missing investigation id");
+  const listed = await json("/api/support/investigations");
+  if (!listed.body.investigations?.some((i) => i.id === id)) {
+    throw new Error("created investigation not in list");
+  }
+});
+
 const failed = checks.filter((c) => !c.ok);
 console.log(`\n${checks.length - failed.length}/${checks.length} passed\n`);
 if (failed.length) process.exit(1);

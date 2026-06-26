@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface BuildAppChatMessage {
   role: "user" | "assistant" | "system";
@@ -24,11 +24,18 @@ export function BuildAppChat({
   placeholder?: string;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [input, setInput] = useState("");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  function submit() {
+    const val = input.trim();
+    if (!val || disabled || loading) return;
+    onSend(val);
+    setInput("");
+  }
 
   return (
     <div data-testid="build-app-chat" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 360 }}>
@@ -108,9 +115,10 @@ export function BuildAppChat({
 
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
         <textarea
-          ref={inputRef}
           data-testid="build-app-chat-input"
           disabled={disabled || loading}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           placeholder={placeholder ?? "Describe your app or answer a question…"}
           rows={2}
           style={{
@@ -128,24 +136,15 @@ export function BuildAppChat({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              const val = (e.target as HTMLTextAreaElement).value.trim();
-              if (val && !disabled && !loading) {
-                onSend(val);
-                (e.target as HTMLTextAreaElement).value = "";
-              }
+              submit();
             }
           }}
         />
         <button
           type="button"
           data-testid="build-app-chat-send"
-          disabled={disabled || loading}
-          onClick={() => {
-            const val = inputRef.current?.value.trim();
-            if (!val) return;
-            onSend(val);
-            if (inputRef.current) inputRef.current.value = "";
-          }}
+          disabled={disabled || loading || !input.trim()}
+          onClick={submit}
           style={{
             background: "var(--accent)",
             border: "none",

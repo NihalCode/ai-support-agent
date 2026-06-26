@@ -116,15 +116,15 @@ export function BuildAppEditor({
 
   const runAgent = useCallback(
     async (userText: string, opts?: { silentUser?: boolean }) => {
+      const text = conversationText(userText);
+      if (!text.trim()) return;
+
       if (!opts?.silentUser) {
         setChatMessages((prev) => [
           ...prev,
           { role: "user", content: userText, at: new Date().toISOString() },
         ]);
       }
-
-      const text = conversationText(opts?.silentUser ? userText : undefined);
-      if (!text.trim()) return;
 
       setLoading(true);
       setError(null);
@@ -182,25 +182,17 @@ export function BuildAppEditor({
         const planRes = await fetch("/api/support/build-app", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deploy", projectId: project.id, target }),
+          body: JSON.stringify({ action: "deploy", projectId: project.id, target, userConfirmed: true }),
         });
         const planData = await planRes.json();
         if (!planRes.ok) throw new Error(planData.error ?? "Deploy failed");
-        setBuildOutput(planData.buildOutput ?? planData.explanation ?? "");
-        if (!planData.approvalId) return;
-        const depRes = await fetch("/api/support/approvals", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intent: "approve", id: planData.approvalId }),
-        });
-        const depData = await depRes.json();
-        if (!depRes.ok) throw new Error(depData.error ?? "Deploy failed");
+        setBuildOutput(planData.buildOutput ?? planData.detail ?? planData.explanation ?? "");
         await loadProject(project.id);
-        const url = depData.result?.url ?? project.previewUrl;
+        const url = planData.project?.previewUrl ?? project.previewUrl;
         pushAssistant(
           url
             ? `Your preview link is ready: ${url}\nShare this with your team to try the app.`
-            : (depData.result?.detail ?? "Deployment finished.")
+            : (planData.detail ?? "Deployment finished.")
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Deploy failed";
@@ -246,7 +238,7 @@ export function BuildAppEditor({
       await requestDeploy(target);
       return;
     }
-    if (/\b(yes|build it|create it|go ahead|approve)\b/i.test(lower) && approvalId) {
+    if (/\b(yes|build it|create it|go ahead|approve)\b/i.test(lower) && (approvalId || pendingChanges.length > 0)) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       await approveAndApply();
       return;
@@ -255,14 +247,14 @@ export function BuildAppEditor({
   }
 
   async function approveAndApply() {
-    if (!project || !approvalId) return;
+    if (!project) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/support/approvals", {
+      const res = await fetch("/api/support/build-app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "approve", id: approvalId }),
+        body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not create files");
@@ -271,7 +263,9 @@ export function BuildAppEditor({
       await loadProject(project.id);
       pushAssistant("Done — your app files are created. Click **Test my app** when you're ready, or ask me to change anything.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create files");
+      const msg = e instanceof Error ? e.message : "Could not create files";
+      setError(msg);
+      pushAssistant(`Sorry, I couldn't create the files: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -353,7 +347,7 @@ export function BuildAppEditor({
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          {approvalId && (
+          {(approvalId || (pendingChanges.length > 0 && project)) && (
             <button
               type="button"
               data-testid="build-app-approve"

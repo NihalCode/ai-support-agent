@@ -4,6 +4,8 @@ import { buildScaffoldPlan, planToFileChanges } from "../build-app/plan-scaffold
 import { generateEnvSnippet } from "../build-app/env-snippet";
 import { listTemplates, resolveTemplateFiles } from "../build-app/templates";
 import { checkVercelReadiness } from "../build-app/vercel-readiness";
+import { handleBuildAppPlan } from "../build-app/orchestrate";
+import { getProject, applyFileChanges } from "../build-app/project-store";
 import { shouldRouteToBuildApp } from "../build-app/chat-routing";
 import { extractBuildAppHandoff } from "../build-app/handoff";
 import { createDeploymentPlan } from "../build-app/deploy";
@@ -96,6 +98,26 @@ describe("env snippet", () => {
     const s = generateEnvSnippet("indicator-search-dashboard", ["CTIX"]);
     expect(s).not.toMatch(/NEXT_PUBLIC_.*KEY/);
     expect(s).toMatch(/CYWARE_SECRET_KEY/);
+  });
+});
+
+describe("build-app serverless persistence", () => {
+  it("plan and apply survive memory cache clear (simulates new Vercel invocation)", () => {
+    const result = handleBuildAppPlan({ message: "Build indicator search dashboard" });
+    const pid = result.project?.id;
+    expect(pid).toBeTruthy();
+    expect(result.pendingChanges?.length).toBeGreaterThan(0);
+
+    const g = globalThis as unknown as { __buildAppProjects?: Map<string, unknown> };
+    g.__buildAppProjects?.clear();
+
+    const reloaded = getProject(pid!);
+    expect(reloaded?.id).toBe(pid);
+    expect(reloaded?.pendingChanges.length).toBeGreaterThan(0);
+
+    applyFileChanges(pid!, reloaded!.pendingChanges);
+    expect(getProject(pid!)?.status).toBe("scaffolded");
+    expect(getProject(pid!)?.files.length).toBeGreaterThan(0);
   });
 });
 

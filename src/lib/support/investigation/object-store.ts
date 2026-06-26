@@ -1,5 +1,7 @@
 import "server-only";
 
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type {
   InvestigationObject,
   InvestigationPatch,
@@ -8,6 +10,7 @@ import type {
   InvestigationTimelineEvent,
 } from "./object-types";
 import { isTestMode } from "@/lib/test-mode";
+import { supportDataRoot } from "../data-root";
 
 const g = globalThis as unknown as {
   __investigationObjects?: Map<string, InvestigationObject>;
@@ -18,14 +21,54 @@ function store(): Map<string, InvestigationObject> {
   return g.__investigationObjects;
 }
 
+function investigationsDir(): string {
+  return supportDataRoot("investigations");
+}
+
+function investigationPath(id: string): string {
+  return path.join(investigationsDir(), `${id}.json`);
+}
+
+function persistInvestigation(inv: InvestigationObject): void {
+  writeFileSync(investigationPath(inv.id), JSON.stringify(inv, null, 2));
+  store().set(inv.id, inv);
+}
+
+function loadFromDisk(id: string): InvestigationObject | null {
+  const file = investigationPath(id);
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as InvestigationObject;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateFromDisk(): void {
+  const dir = investigationsDir();
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue;
+    const id = name.slice(0, -5);
+    if (store().has(id)) continue;
+    const loaded = loadFromDisk(id);
+    if (loaded) store().set(id, loaded);
+  }
+}
+
 export function listInvestigations(): InvestigationObject[] {
+  hydrateFromDisk();
   return [...store().values()].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
 export function getInvestigation(id: string): InvestigationObject | null {
-  return store().get(id) ?? null;
+  const mem = store().get(id);
+  if (mem) return mem;
+  const disk = loadFromDisk(id);
+  if (disk) store().set(id, disk);
+  return disk;
 }
 
 export function createInvestigation(
@@ -67,7 +110,7 @@ export function createInvestigation(
     customerFacingResponse: partial.customerFacingResponse,
     developerHandoff: partial.developerHandoff,
   };
-  store().set(id, inv);
+  persistInvestigation(inv);
   return inv;
 }
 
@@ -80,7 +123,7 @@ function addTimeline(inv: InvestigationObject, event: Omit<InvestigationTimeline
 }
 
 export function patchInvestigation(id: string, patch: InvestigationPatch): InvestigationObject | null {
-  const inv = store().get(id);
+  const inv = getInvestigation(id);
   if (!inv) return null;
   const now = new Date().toISOString();
 
@@ -129,7 +172,7 @@ export function patchInvestigation(id: string, patch: InvestigationPatch): Inves
 
   const { pinEvidence, unpinEvidence, addHypothesis, updateHypothesis, addTimeline: _at, ...rest } = patch;
   Object.assign(inv, rest, { updatedAt: now });
-  store().set(id, inv);
+  persistInvestigation(inv);
   return inv;
 }
 

@@ -33,4 +33,17 @@ describe("approval queue", () => {
     expect(getApproval("nope")).toBeNull();
     expect(setApprovalStatus("nope", "rejected")).toBeNull();
   });
+
+  it("loads approvals from disk after memory cache is cleared", () => {
+    const safety = classifyAction({ kind: "api", method: "POST", summary: "scaffold app" });
+    const req = enqueueApproval({
+      action: { type: "build-app-scaffold", projectId: "proj-disk-test" },
+      safety,
+      preview: "scaffold files",
+    });
+    const g = globalThis as unknown as { __approvalQueue?: Map<string, unknown> };
+    g.__approvalQueue?.clear();
+    expect(getApproval(req.id)?.id).toBe(req.id);
+    expect(getApproval(req.id)?.action.type).toBe("build-app-scaffold");
+  });
 });
