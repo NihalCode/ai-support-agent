@@ -24,8 +24,13 @@ yarn-error.log*
 .env*
 !.env.example
 
-# Cursor MCP (local config — commit .cursor/mcp.json.example only)
-.cursor/mcp.json
+# Cursor local config (commit .cursor/mcp.json.example only)
+.cursor/*
+!.cursor/mcp.json.example
+
+# local runtime / credential artifacts
+.audit-log.jsonl
+.data/
 
 # vercel
 .vercel
@@ -36,11 +41,7 @@ yarn-error.log*
 # test coverage
 /coverage
 
-# local audit log (runtime artifact)
-/.audit-log.jsonl
-
-# local API spec cache + e2e artifacts
-/.data/
+# e2e artifacts
 /test-results/
 
 .vercel

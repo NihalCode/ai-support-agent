@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   const id = url.searchParams.get("id");
   const format = url.searchParams.get("format");
 
-  if (isTestMode() && !id && listInvestigations().length === 0) {
+  if (isTestMode() && !id) {
     ensureTestInvestigation();
   }
 

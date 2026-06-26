@@ -40,6 +40,11 @@ export function SearchSidebar() {
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setResults([]);
+        setDegraded(data.error ?? `Search failed (${res.status})`);
+        return;
+      }
       setResults(data.results ?? []);
       if (data.degradedReason) setDegraded(data.degradedReason);
     } finally {

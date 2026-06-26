@@ -2,6 +2,7 @@ import "server-only";
 
 import type { RepoConnector, TicketConnector, RepoRef } from "../types";
 import { getConfig, hasGitHub, hasJira } from "../config";
+import { isTestMode } from "@/lib/test-mode";
 import { GitHubConnector, parseRepoUrl } from "./github";
 import { JiraConnector } from "./jira";
 import {
@@ -56,6 +57,9 @@ export function getGitHubTickets(ref: RepoRef): { connector: TicketConnector; mo
 }
 
 export function getJiraTickets(): { connector: TicketConnector; mock: boolean } {
+  if (isTestMode()) {
+    return { connector: new MockJiraTicketConnector(), mock: true };
+  }
   const cfg = getConfig();
   if (hasJira(cfg) && cfg.jira.baseUrl && cfg.jira.email && cfg.jira.apiToken) {
     return {

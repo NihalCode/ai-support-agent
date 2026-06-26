@@ -13,6 +13,7 @@ import { WelcomeEditor } from "./editors/WelcomeEditor";
 import { DiagnoseEditor } from "./editors/DiagnoseEditor";
 import { EndpointEditor } from "./editors/EndpointEditor";
 import { InvestigationObjectPanel } from "../investigation/InvestigationObjectPanel";
+import { JiraTicketEditor } from "./editors/JiraTicketEditor";
 
 export function EditorArea({
   groupId,
@@ -101,10 +102,7 @@ export function EditorArea({
         </div>
       )}
       {tab.kind === "jira-ticket" && (
-        <div>
-          <h3>{String(tab.payload?.key ?? tab.title)}</h3>
-          <p>{String(tab.payload?.title ?? "Open Jira sidebar to search tickets.")}</p>
-        </div>
+        <JiraTicketEditor ticketKey={String(tab.payload?.key ?? tab.title)} />
       )}
       {tab.kind === "markdown-report" && (
         <pre className="ide-code-block">{String(tab.payload?.content ?? "")}</pre>

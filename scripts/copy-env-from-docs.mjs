@@ -1,7 +1,9 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const src = path.join("C:/Users/nihal/Projects/intel-exchange-runnable-docs", ".env.local");
+const src =
+  process.env.DOCS_ENV_FILE?.trim() ||
+  path.join(process.cwd(), "..", "intel-exchange-runnable-docs", ".env.local");
 const dst = ".env.local";
 const map = { PINECONE_INDEX: "PINECONE_INDEX_NAME" };
 const want = new Set([

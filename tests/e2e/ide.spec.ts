@@ -110,3 +110,41 @@ test.describe("Degraded mode", () => {
     await expect(page.getByTestId("problems-panel")).toBeVisible();
   });
 });
+
+test.describe("Jira sidebar", () => {
+  test("finds mock ticket by key and opens editor", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-jira").click();
+    await expect(page.getByTestId("jira-sidebar")).toBeVisible();
+    await page.getByTestId("jira-search-input").fill("PAY-101");
+    await page.getByTestId("jira-search-submit").click();
+    await expect(page.getByTestId("jira-result-PAY-101")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("jira-ticket-editor")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("jira-ticket-editor")).toContainText(/PAY-101|Stripe|webhook/i);
+  });
+
+  test("shows error for empty search", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-jira").click();
+    await page.getByTestId("jira-search-submit").click();
+    await expect(page.getByTestId("jira-search-error")).toBeVisible();
+  });
+});
+
+test.describe("MCP sidebar", () => {
+  test("shows MCP status note", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-mcp").click();
+    await expect(page.getByTestId("mcp-sidebar")).toBeVisible();
+    await expect(page.getByTestId("mcp-sidebar-note")).toBeVisible();
+  });
+});
+
+test.describe("Investigations sidebar", () => {
+  test("lists saved investigations in test mode", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-investigations").click();
+    await expect(page.getByTestId("investigations-sidebar")).toBeVisible();
+    await expect(page.locator('[data-testid^="investigation-"]').first()).toBeVisible({ timeout: 10000 });
+  });
+});

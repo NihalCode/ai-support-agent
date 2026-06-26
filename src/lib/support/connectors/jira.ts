@@ -145,6 +145,10 @@ export class JiraConnector implements TicketConnector {
   async searchIssues(query: string, limit = 5): Promise<NormalizedIssue[]> {
     try {
       const clean = query.replace(/["\\]/g, " ").trim();
+      if (/^[A-Z][A-Z0-9]+-\d+$/.test(clean)) {
+        const direct = await this.getIssue(clean);
+        if (direct) return [direct];
+      }
       const scope = this.projectKey ? `project = "${this.projectKey}" AND ` : "";
       const jql = encodeURIComponent(`${scope}text ~ "${clean}" ORDER BY updated DESC`);
       return this.searchJql(jql, limit);

@@ -16,7 +16,8 @@
     "mcp:check": "node scripts/check-mcp.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "test:ide-api": "node scripts/test-ide-api.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.0",
