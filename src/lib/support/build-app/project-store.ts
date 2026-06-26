@@ -159,3 +159,47 @@ export function setPendingChanges(projectId: string, changes: BuildAppFileChange
   p.status = "pending_approval";
   return saveProject(p);
 }
+
+/**
+ * Restore a project from a client-supplied snapshot when the server-side store
+ * has lost it (e.g. different Vercel serverless container). Re-writes all
+ * scaffolded source files from appliedChanges so build/deploy can proceed.
+ */
+export function restoreProjectFromSnapshot(snapshot: BuildAppProject): BuildAppProject {
+  // Fix rootDir to point at *this* container's /tmp (or .data in dev).
+  const correctRoot = path.join(dataRoot(), snapshot.id, "app");
+  const restored: BuildAppProject = {
+    ...snapshot,
+    rootDir: correctRoot,
+    updatedAt: new Date().toISOString(),
+  };
+
+  mkdirSync(correctRoot, { recursive: true });
+
+  // Re-write every applied file so build tools can find them.
+  for (const ch of restored.appliedChanges ?? []) {
+    if (ch.action === "delete") continue;
+    if (ch.content === undefined) continue;
+    const full = path.join(correctRoot, ch.path);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, ch.content, "utf8");
+  }
+
+  restored.files = listProjectFilesFromDir(correctRoot);
+  return saveProject(restored);
+}
+
+function listProjectFilesFromDir(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  function walk(d: string, prefix: string) {
+    for (const name of readdirSync(d)) {
+      const full = path.join(d, name);
+      const rel = prefix ? `${prefix}/${name}` : name;
+      if (statSync(full).isDirectory()) walk(full, rel);
+      else out.push(rel.replace(/\\/g, "/"));
+    }
+  }
+  walk(dir, "");
+  return out;
+}

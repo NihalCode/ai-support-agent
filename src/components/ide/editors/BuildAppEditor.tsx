@@ -56,6 +56,17 @@ function extractQuickReplies(explanation: string, planQuestions?: string[]): str
   return replies.slice(0, 3);
 }
 
+/** Heuristic: looks like a standalone Vercel or GitHub token. */
+function looksLikeToken(text: string): string | null {
+  const t = text.trim();
+  // Vercel tokens: ~24 alphanumeric chars; also accept "vercel: <token>" patterns
+  const vercelMatch = t.match(/(?:^|vercel[:\s]+)([A-Za-z0-9_\-]{20,80})$/i);
+  if (vercelMatch) return vercelMatch[1];
+  // Single word that looks like an opaque token
+  if (/^[A-Za-z0-9_\-]{20,80}$/.test(t) && !/\s/.test(t)) return t;
+  return null;
+}
+
 export function BuildAppEditor({
   projectId: initialProjectId,
   initialMessage,
@@ -76,13 +87,10 @@ export function BuildAppEditor({
   const [error, setError] = useState<string | null>(null);
   const [buildOutput, setBuildOutput] = useState("");
   const [showTechnical, setShowTechnical] = useState(false);
-  const [showDeployCreds, setShowDeployCreds] = useState(false);
-  const [deployCreds, setDeployCreds] = useState({
-    githubToken: "",
-    githubRepo: "",
-    githubBranch: "",
-    vercelToken: "",
-  });
+  // awaiting token means build passed and we've asked the user for their Vercel token in chat
+  const [awaitingVercelToken, setAwaitingVercelToken] = useState(false);
+  // in-memory only: never written to localStorage
+  const [vercelToken, setVercelToken] = useState("");
   const autoStartedRef = useRef(false);
   const seededRef = useRef(false);
 
@@ -103,7 +111,7 @@ export function BuildAppEditor({
 
   const loadProject = useCallback(async (id: string) => {
     const res = await fetch(`/api/support/build-app?projectId=${encodeURIComponent(id)}`);
-    const data = await res.json();
+    const data = (await res.json()) as { project?: BuildAppProject };
     if (data.project) setProject(data.project);
   }, []);
 
@@ -111,13 +119,8 @@ export function BuildAppEditor({
     if (initialProjectId) void loadProject(initialProjectId);
   }, [initialProjectId, loadProject]);
 
-  useEffect(() => {
-    if (initialTicketId) setTicketId(initialTicketId);
-  }, [initialTicketId]);
-
-  useEffect(() => {
-    if (initialTemplateId) setSuggestedTemplateId(initialTemplateId);
-  }, [initialTemplateId]);
+  useEffect(() => { if (initialTicketId) setTicketId(initialTicketId); }, [initialTicketId]);
+  useEffect(() => { if (initialTemplateId) setSuggestedTemplateId(initialTemplateId); }, [initialTemplateId]);
 
   const conversationText = useCallback(
     (extraUserMessage?: string) => {
@@ -137,16 +140,68 @@ export function BuildAppEditor({
     ]);
   }, []);
 
+  // --- deploy with any token we have ---
+  const requestDeploy = useCallback(
+    async (target: "preview" | "production", tokenOverride?: string) => {
+      if (!project) return;
+      if (project.buildOk !== true) {
+        setError("Build must pass before getting a preview link.");
+        pushAssistant("Build must pass first. Click Test my app and fix any errors, then I'll deploy.");
+        return;
+      }
+      const tok = (tokenOverride ?? vercelToken ?? "").trim();
+      setLoading(true);
+      setError(null);
+      setAwaitingVercelToken(false);
+      try {
+        pushAssistant(tok ? "Deploying to Vercel…" : "Creating a demo preview link…");
+        const res = await fetch("/api/support/build-app", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "deploy",
+            projectId: project.id,
+            target,
+            userConfirmed: true,
+            projectSnapshot: project,
+            credentials: tok ? { vercelToken: tok } : undefined,
+          }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean; error?: string; detail?: string; explanation?: string;
+          project?: BuildAppProject; buildOutput?: string;
+        };
+        if (!res.ok) throw new Error(data.error ?? "Deploy failed");
+        setBuildOutput(data.buildOutput ?? data.detail ?? "");
+        const fresh = data.project;
+        if (fresh) setProject(fresh);
+        const url = fresh?.previewUrl ?? project.previewUrl;
+        const isMock = fresh?.deployments?.[0]?.mock ?? !tok;
+        pushAssistant(
+          url
+            ? isMock
+              ? `Demo preview (no Vercel token used): ${url}\n\nTo get a real Vercel URL, paste your token from vercel.com/account/tokens in the chat.`
+              : `Your preview is live: ${url}\n\nShare this with your team.`
+            : (data.detail ?? "Deployment finished.")
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Deploy failed";
+        setError(msg);
+        pushAssistant(`Deploy failed: ${msg}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [project, vercelToken, pushAssistant]
+  );
+
   const runAgent = useCallback(
     async (userText: string, opts?: { silentUser?: boolean }) => {
       const text = conversationText(userText);
       if (!text.trim()) return;
 
       if (!opts?.silentUser) {
-        setChatMessages((prev) => [
-          ...prev,
-          { role: "user", content: userText, at: new Date().toISOString() },
-        ]);
+        setChatMessages((prev) => [...prev, { role: "user", content: userText, at: new Date().toISOString() }]);
       }
 
       setLoading(true);
@@ -157,104 +212,39 @@ export function BuildAppEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             project
-              ? { action: "edit", projectId: project.id, message: userText }
-              : {
-                  action: "plan",
-                  message: text,
-                  templateOverride: suggestedTemplateId || undefined,
-                }
+              ? { action: "edit", projectId: project.id, message: userText, projectSnapshot: project }
+              : { action: "plan", message: text, templateOverride: suggestedTemplateId || undefined }
           ),
         });
-        const data = await res.json();
+        const data = (await res.json()) as {
+          ok?: boolean; error?: string; explanation?: string;
+          pendingChanges?: BuildAppFileChange[]; approvalId?: string; project?: BuildAppProject;
+        };
         if (!res.ok) throw new Error(data.error ?? "Something went wrong");
 
-        const explanation = data.explanation ?? "Done.";
-        pushAssistant(explanation);
+        pushAssistant(data.explanation ?? "Done.");
         setPendingChanges(data.pendingChanges ?? []);
         setApprovalId(data.approvalId ?? null);
 
         if (data.project) {
           setProject(data.project);
           setActiveBuildProject(data.project.id);
-          void loadProject(data.project.id);
         }
 
         if (data.approvalId && data.pendingChanges?.length) {
           pushAssistant(
-            `When you're happy with the plan, click **Yes, create my app** below. I'll set up ${data.pendingChanges.length} file(s) for you — nothing goes live until you approve.`
+            `When you're happy with the plan, click "Yes, create my app" below. I'll set up ${data.pendingChanges.length} file(s) — nothing goes live until you approve.`
           );
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Something went wrong";
         setError(msg);
-        pushAssistant(`Sorry — I hit a problem: ${msg}. You can try again or rephrase your request.`);
+        pushAssistant(`Sorry — ${msg}. Try rephrasing or click the button again.`);
       } finally {
         setLoading(false);
       }
     },
-    [conversationText, project, suggestedTemplateId, loadProject, setActiveBuildProject, pushAssistant]
-  );
-
-  const requestDeploy = useCallback(
-    async (target: "preview" | "production") => {
-      if (!project) return;
-      if (project.buildOk !== true) {
-        setError("Build must pass before getting a preview link.");
-        pushAssistant("Build must pass before deploy. Click **Test my app** first and fix any errors.");
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const hasCreds = Boolean(deployCreds.vercelToken.trim() || deployCreds.githubToken.trim());
-        pushAssistant(
-          target === "production"
-            ? "Getting a live link ready…"
-            : hasCreds
-              ? "Pushing to GitHub (if configured) and creating your Vercel preview link…"
-              : "Creating a preview link for you…"
-        );
-        const credPayload = {
-          githubToken: deployCreds.githubToken.trim() || undefined,
-          githubRepo: deployCreds.githubRepo.trim() || undefined,
-          githubBranch: deployCreds.githubBranch.trim() || undefined,
-          vercelToken: deployCreds.vercelToken.trim() || undefined,
-        };
-        const planRes = await fetch("/api/support/build-app", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "deploy",
-            projectId: project.id,
-            target,
-            userConfirmed: true,
-            credentials: credPayload,
-          }),
-        });
-        const planData = await planRes.json();
-        if (!planRes.ok) throw new Error(planData.error ?? "Deploy failed");
-        setBuildOutput(planData.buildOutput ?? planData.detail ?? planData.explanation ?? "");
-        await loadProject(project.id);
-        const url = planData.project?.previewUrl ?? project.previewUrl;
-        const isMock = planData.project?.deployments?.[0]?.mock;
-        pushAssistant(
-          url
-            ? isMock
-              ? `Demo preview link (no Vercel token): ${url}\nPaste your Vercel token under **Deploy settings** for a real link.`
-              : `Your preview link is ready: ${url}\nShare this with your team to try the app.`
-            : (planData.detail ?? "Deployment finished.")
-        );
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Deploy failed";
-        setError(msg);
-        pushAssistant(
-          `I couldn't deploy yet: ${msg}\n\nIf you haven't already, open **Deploy settings** and paste your GitHub + Vercel tokens.`
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [project, loadProject, pushAssistant, deployCreds]
+    [conversationText, project, suggestedTemplateId, setActiveBuildProject, pushAssistant]
   );
 
   useEffect(() => {
@@ -282,19 +272,52 @@ export function BuildAppEditor({
     void runAgent(initialMessage.trim(), { silentUser: true });
   }, [autoStart, mode, initialMessage, runAgent, project, initialProjectId, loadProject, requestDeploy]);
 
+  // --- chat send: routes deploy, approval, token, and normal messages ---
   async function handleChatSend(text: string) {
-    const lower = text.toLowerCase();
-    if (/\b(deploy|preview link|share|publish)\b/i.test(lower) && project) {
-      setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
-      const target = /\bprod(uction)?\b/i.test(lower) ? "production" : "preview";
-      await requestDeploy(target);
+    const lower = text.toLowerCase().trim();
+
+    // Detect a pasted Vercel token (in context of deploying)
+    const tok = looksLikeToken(text);
+    if (tok && project?.buildOk === true) {
+      setChatMessages((prev) => [...prev, { role: "user", content: "••••••••••••• (token)", at: new Date().toISOString() }]);
+      setVercelToken(tok);
+      setAwaitingVercelToken(false);
+      await requestDeploy("preview", tok);
       return;
     }
+
+    // Deploy intent
+    if (/\b(deploy|preview link|share|publish|get a link)\b/i.test(lower) && project) {
+      setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
+      if (project.buildOk !== true) {
+        pushAssistant("I need to run a test build first. Click **Test my app** below.");
+        return;
+      }
+      if (!vercelToken) {
+        setAwaitingVercelToken(true);
+        pushAssistant(
+          "Ready to deploy! Paste your Vercel token in the chat and I'll create a real preview link.\n\nGet one at vercel.com/account/tokens (needs no special scope — just an account token).\n\nOr just say \"skip\" to get a demo link without a token."
+        );
+        return;
+      }
+      await requestDeploy(/\bprod(uction)?\b/i.test(lower) ? "production" : "preview");
+      return;
+    }
+
+    // "skip token" → demo deploy
+    if (awaitingVercelToken && /\b(skip|no token|demo|without|mock)\b/i.test(lower)) {
+      setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
+      await requestDeploy("preview", "");
+      return;
+    }
+
+    // Approve scaffold
     if (/\b(yes|build it|create it|go ahead|approve)\b/i.test(lower) && (approvalId || pendingChanges.length > 0)) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       await approveAndApply();
       return;
     }
+
     await runAgent(text);
   }
 
@@ -306,14 +329,14 @@ export function BuildAppEditor({
       const res = await fetch("/api/support/build-app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true }),
+        body: JSON.stringify({ action: "apply", projectId: project.id, userConfirmed: true, projectSnapshot: project }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { ok?: boolean; error?: string; project?: BuildAppProject };
       if (!res.ok) throw new Error(data.error ?? "Could not create files");
+      if (data.project) setProject(data.project);
       setPendingChanges([]);
       setApprovalId(null);
-      await loadProject(project.id);
-      pushAssistant("Done — your app files are created. Click **Test my app** when you're ready, or ask me to change anything.");
+      pushAssistant("Done — your app files are created. Click Test my app when you're ready, or ask me to change anything.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not create files";
       setError(msg);
@@ -332,33 +355,41 @@ export function BuildAppEditor({
       const res = await fetch("/api/support/build-app", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "build", projectId: project.id }),
+        body: JSON.stringify({ action: "build", projectId: project.id, projectSnapshot: project }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as {
+        ok?: boolean; error?: string; output?: string;
+        buildOk?: boolean; classification?: { summary?: string; suggestedFix?: string };
+        project?: BuildAppProject;
+      };
       setBuildOutput(data.output ?? data.error ?? "");
       if (data.project) setProject(data.project);
 
       const passed = res.ok && data.ok === true && data.buildOk === true;
       if (!passed) {
-        const summary =
-          data.classification?.summary ??
-          data.error ??
-          "Build failed. I found the failure and will try to help you fix it.";
+        const summary = data.classification?.summary ?? data.error ?? "Build failed.";
         const fix = data.classification?.suggestedFix;
         setError(summary);
         syncBuildProblem(summary);
         pushAssistant(
-          [summary, fix, "Open **Show technical details** below for the full command log."].filter(Boolean).join("\n\n")
+          [summary, fix, "Open Show technical details below for the full command log."].filter(Boolean).join("\n\n")
         );
         return;
       }
 
       syncBuildProblem(null);
-      pushAssistant(
-        data.output?.includes("[MOCK]")
-          ? "Test build passed (mock mode). Ask me for a preview link when you're ready — it will be a demo URL until Vercel credentials are configured."
-          : "Test build passed. Ask me for a preview link whenever you want to share it with your team."
-      );
+      const isMock = data.output?.includes("[MOCK]");
+      if (isMock) {
+        setAwaitingVercelToken(false);
+        pushAssistant(
+          "Test build passed (mock mode — no real compile on Vercel serverless).\n\nType deploy in the chat to get a link. Paste your Vercel token from vercel.com/account/tokens to get a real preview URL, or say skip for a demo link."
+        );
+      } else {
+        setAwaitingVercelToken(false);
+        pushAssistant(
+          "Build passed! Type deploy in the chat when you're ready. Paste your Vercel token to get a real preview link, or say skip for a demo."
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Build failed";
       setError(msg);
@@ -379,12 +410,12 @@ export function BuildAppEditor({
   const templateLabel = (suggestedTemplateId || project?.templateId)?.replace(/-/g, " ");
 
   return (
-    <div data-testid="build-app-workspace" style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 16, minHeight: 560, fontSize: 13 }}>
+    <div data-testid="build-app-workspace" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, minHeight: 560, fontSize: 13 }}>
       <section style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <header style={{ marginBottom: 12 }}>
           <h2 style={{ margin: "0 0 4px" }}>App Builder</h2>
           <p style={{ color: "var(--muted)", margin: 0, fontSize: 13 }}>
-            Describe what you need in plain English — I'll build it step by step and ask if anything is unclear.
+            Describe what you need — I&apos;ll build it step by step.
           </p>
           <div data-testid="build-app-steps" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {(Object.keys(STEP_LABELS) as BuildStep[]).map((s) => (
@@ -421,69 +452,13 @@ export function BuildAppEditor({
             onSend={(t) => void handleChatSend(t)}
             loading={loading}
             quickReplies={approvalId ? undefined : quickReplies}
-            placeholder="Tell me about the app, or answer a question…"
+            placeholder={
+              awaitingVercelToken
+                ? "Paste Vercel token here, or say skip for a demo link…"
+                : "Tell me about the app, or answer a question…"
+            }
           />
         </div>
-
-        <details
-          open={showDeployCreds}
-          onToggle={(e) => setShowDeployCreds((e.target as HTMLDetailsElement).open)}
-          style={{ marginTop: 12 }}
-          data-testid="build-app-deploy-creds"
-        >
-          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>
-            Deploy settings — GitHub + Vercel tokens (memory only, never saved)
-          </summary>
-          <p style={{ fontSize: 11, color: "var(--muted)", margin: "8px 0" }}>
-            Paste tokens here to push your app to GitHub and deploy a real Vercel preview. Tokens are sent only with
-            your deploy request and are not stored in the browser or on disk.
-          </p>
-          <label style={credLabelStyle}>
-            GitHub token
-            <input
-              type="password"
-              autoComplete="off"
-              data-testid="build-app-github-token"
-              value={deployCreds.githubToken}
-              onChange={(e) => setDeployCreds((c) => ({ ...c, githubToken: e.target.value }))}
-              placeholder="ghp_…"
-              style={credInputStyle}
-            />
-          </label>
-          <label style={credLabelStyle}>
-            GitHub repo (owner/name)
-            <input
-              type="text"
-              data-testid="build-app-github-repo"
-              value={deployCreds.githubRepo}
-              onChange={(e) => setDeployCreds((c) => ({ ...c, githubRepo: e.target.value }))}
-              placeholder="your-org/your-repo"
-              style={credInputStyle}
-            />
-          </label>
-          <label style={credLabelStyle}>
-            GitHub branch (optional)
-            <input
-              type="text"
-              value={deployCreds.githubBranch}
-              onChange={(e) => setDeployCreds((c) => ({ ...c, githubBranch: e.target.value }))}
-              placeholder="build-app/preview"
-              style={credInputStyle}
-            />
-          </label>
-          <label style={credLabelStyle}>
-            Vercel token
-            <input
-              type="password"
-              autoComplete="off"
-              data-testid="build-app-vercel-token"
-              value={deployCreds.vercelToken}
-              onChange={(e) => setDeployCreds((c) => ({ ...c, vercelToken: e.target.value }))}
-              placeholder="From vercel.com/account/tokens"
-              style={credInputStyle}
-            />
-          </label>
-        </details>
 
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {(approvalId || (pendingChanges.length > 0 && project)) && (
@@ -499,7 +474,13 @@ export function BuildAppEditor({
           )}
           {(project?.status === "scaffolded" || project?.status === "ready" || project?.status === "failed") && (
             <>
-              <button type="button" data-testid="build-app-build" onClick={() => void runBuild()} disabled={loading} style={btnSecondary}>
+              <button
+                type="button"
+                data-testid="build-app-build"
+                onClick={() => void runBuild()}
+                disabled={loading}
+                style={btnSecondary}
+              >
                 Test my app
               </button>
               {project.buildOk === true && (
@@ -517,14 +498,18 @@ export function BuildAppEditor({
           )}
         </div>
 
-        {error && <p style={{ color: "var(--red)", marginTop: 8 }}>{error}</p>}
+        {error && <p style={{ color: "var(--red)", marginTop: 8, fontSize: 12 }}>{error}</p>}
 
+        {/* Hidden inputs for E2E tests */}
         <input
           type="hidden"
           data-testid="build-app-input"
           value={chatMessages.find((m) => m.role === "user")?.content ?? initialMessage ?? ""}
           readOnly
         />
+        <pre data-testid="build-app-explanation" style={{ display: "none" }}>
+          {chatMessages.filter((m) => m.role === "assistant").map((m) => m.content).join("\n")}
+        </pre>
 
         <details style={{ marginTop: 12 }}>
           <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>Optional: link a support ticket</summary>
@@ -533,20 +518,11 @@ export function BuildAppEditor({
             value={ticketId}
             onChange={(e) => setTicketId(e.target.value)}
             placeholder="e.g. AISUP-123"
-            style={{
-              width: "100%",
-              maxWidth: 220,
-              marginTop: 8,
-              background: "var(--surface-2)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              padding: "6px 10px",
-              color: "var(--text)",
-              fontFamily: "inherit",
-            }}
+            style={{ width: "100%", maxWidth: 220, marginTop: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", color: "var(--text)", fontFamily: "inherit" }}
           />
         </details>
 
+        {/* Hidden plan button for tests */}
         <button
           type="button"
           data-testid="build-app-plan"
@@ -558,15 +534,13 @@ export function BuildAppEditor({
         </button>
 
         {project?.previewUrl && (
-          <p data-testid="build-app-preview-url" style={{ marginTop: 12 }}>
-            Preview link: <a href={project.previewUrl}>{project.previewUrl}</a>
+          <p data-testid="build-app-preview-url" style={{ marginTop: 12, fontSize: 12 }}>
+            Preview:{" "}
+            <a href={project.previewUrl} target="_blank" rel="noreferrer">{project.previewUrl}</a>
             {project.deployments[0]?.mock ? " (demo link)" : ""}
           </p>
         )}
 
-        <pre data-testid="build-app-explanation" style={{ display: "none" }}>
-          {chatMessages.filter((m) => m.role === "assistant").map((m) => m.content).join("\n")}
-        </pre>
         {buildOutput && (
           <pre
             data-testid="build-app-output"
@@ -588,13 +562,14 @@ export function BuildAppEditor({
         )}
       </section>
 
+      {/* Sidebar */}
       <aside style={{ borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
         <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>What&apos;s next</h3>
         <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted)", fontSize: 12, lineHeight: 1.7 }}>
           {step === "describe" && (
             <>
               <li>Describe the app in the chat</li>
-              <li>Answer any quick questions I ask</li>
+              <li>Answer any quick questions</li>
               <li>Review the plan when it&apos;s ready</li>
             </>
           )}
@@ -607,10 +582,10 @@ export function BuildAppEditor({
           )}
           {step === "test" && (
             <>
-              <li>Files are created — ask for changes anytime in chat</li>
-              <li>Click &quot;Test my app&quot; to verify</li>
-              <li>Open Deploy settings and paste GitHub + Vercel tokens</li>
-              <li>Get a preview link to share</li>
+              <li>Files are ready — ask for changes in chat</li>
+              <li>Click Test my app to verify</li>
+              <li>Type &quot;deploy&quot; in chat when done</li>
+              <li>Paste your Vercel token when prompted</li>
             </>
           )}
           {step === "share" && (
@@ -626,7 +601,7 @@ export function BuildAppEditor({
           onClick={() => setShowTechnical((v) => !v)}
           style={{ ...btnSecondary, width: "100%", marginTop: 16, fontSize: 11 }}
         >
-          {showTechnical ? "Hide technical details" : "Show technical details (for developers)"}
+          {showTechnical ? "Hide technical details" : "Show technical details"}
         </button>
 
         {showTechnical && (
@@ -639,16 +614,7 @@ export function BuildAppEditor({
                     type="button"
                     data-testid={`build-app-file-${f.replace(/\//g, "-")}`}
                     onClick={() => setSelectedFile(f)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--text)",
-                      cursor: "pointer",
-                      fontSize: 11,
-                      padding: "2px 0",
-                      textAlign: "left",
-                      width: "100%",
-                    }}
+                    style={{ background: "none", border: "none", color: "var(--text)", cursor: "pointer", fontSize: 11, padding: "2px 0", textAlign: "left", width: "100%" }}
                   >
                     {f}
                   </button>
@@ -656,9 +622,32 @@ export function BuildAppEditor({
               ))}
             </ul>
             {diffContent && (
-              <pre style={{ fontSize: 10, overflow: "auto", maxHeight: 200, marginTop: 8 }}>{diffContent.content?.slice(0, 2000)}</pre>
+              <pre style={{ fontSize: 10, overflow: "auto", maxHeight: 200, marginTop: 8 }}>
+                {diffContent.content?.slice(0, 2000)}
+              </pre>
             )}
           </div>
+        )}
+
+        {/* Token input for accessibility / non-chat flow */}
+        {project?.buildOk === true && (
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 11 }}>
+              Vercel token (optional)
+            </summary>
+            <p style={{ fontSize: 11, color: "var(--muted)", margin: "6px 0" }}>
+              Or paste in the chat. Memory only — never saved.
+            </p>
+            <input
+              type="password"
+              autoComplete="off"
+              data-testid="build-app-vercel-token"
+              value={vercelToken}
+              onChange={(e) => setVercelToken(e.target.value)}
+              placeholder="From vercel.com/account/tokens"
+              style={{ display: "block", width: "100%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", color: "var(--text)", fontFamily: "inherit", fontSize: 12, marginTop: 4 }}
+            />
+          </details>
         )}
       </aside>
     </div>
@@ -683,24 +672,4 @@ const btnSecondary: React.CSSProperties = {
   padding: "8px 14px",
   cursor: "pointer",
   fontSize: 13,
-};
-
-const credLabelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  color: "var(--muted)",
-  marginBottom: 8,
-};
-
-const credInputStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  marginTop: 4,
-  background: "var(--surface-2)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  padding: "6px 10px",
-  color: "var(--text)",
-  fontFamily: "inherit",
-  fontSize: 12,
 };

@@ -7,9 +7,13 @@ import {
   requestDeployApproval,
   applyApprovedBuildAction,
 } from "@/lib/support/build-app/orchestrate";
-import { getProject, listProjects } from "@/lib/support/build-app/project-store";
+import {
+  getProject,
+  listProjects,
+  applyFileChanges,
+  restoreProjectFromSnapshot,
+} from "@/lib/support/build-app/project-store";
 import { listTemplates } from "@/lib/support/build-app/templates";
-import { applyFileChanges } from "@/lib/support/build-app/project-store";
 import { runProjectBuild } from "@/lib/support/build-app/deploy";
 import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
@@ -17,17 +21,35 @@ import { redact } from "@/lib/support/redact";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
 import type { BuildAppCredentials } from "@/lib/support/build-app/credentials";
+import type { BuildAppProject } from "@/lib/support/build-app/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+/**
+ * Resolve a project by id. If the serverless container lost it from /tmp,
+ * restore it from the client-supplied snapshot (re-writes scaffolded files).
+ */
+function ensureProject(id: string, snapshot?: BuildAppProject | null): BuildAppProject | null {
+  const found = getProject(id);
+  if (found) return found;
+  if (snapshot && snapshot.id === id) {
+    try {
+      return restoreProjectFromSnapshot(snapshot);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 type Body =
   | { action: "plan"; message: string; templateOverride?: string }
-  | { action: "apply"; projectId: string; approvalId?: string; force?: boolean; userConfirmed?: boolean }
-  | { action: "build"; projectId: string }
-  | { action: "deploy"; projectId: string; target?: "preview" | "production"; approvalId?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials }
-  | { action: "commit"; projectId: string; message?: string; branch?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials }
-  | { action: "edit"; projectId: string; message: string }
+  | { action: "apply"; projectId: string; approvalId?: string; force?: boolean; userConfirmed?: boolean; projectSnapshot?: BuildAppProject }
+  | { action: "build"; projectId: string; projectSnapshot?: BuildAppProject }
+  | { action: "deploy"; projectId: string; target?: "preview" | "production"; approvalId?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials; projectSnapshot?: BuildAppProject }
+  | { action: "commit"; projectId: string; message?: string; branch?: string; userConfirmed?: boolean; credentials?: BuildAppCredentials; projectSnapshot?: BuildAppProject }
+  | { action: "edit"; projectId: string; message: string; projectSnapshot?: BuildAppProject }
   | { action: "approve-and-run"; approvalId: string };
 
 export async function GET(req: Request) {
@@ -64,6 +86,10 @@ export async function POST(req: Request) {
       }
 
       case "edit": {
+        // Restore project if container lost it.
+        const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
+        ensureProject(body.projectId, snapshot);
+
         const result = handleBuildAppPlan({ message: body.message, projectId: body.projectId });
         if (result.needsApproval && result.pendingChanges?.length) {
           const approval = requestWriteApproval(
@@ -77,7 +103,8 @@ export async function POST(req: Request) {
       }
 
       case "apply": {
-        const project = getProject(body.projectId);
+        const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
+        const project = ensureProject(body.projectId, snapshot);
         if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
         const cfg = getConfig();
@@ -119,6 +146,10 @@ export async function POST(req: Request) {
       }
 
       case "build": {
+        const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
+        const restored = ensureProject(body.projectId, snapshot);
+        if (!restored) return NextResponse.json({ error: "Project not found — please re-scaffold." }, { status: 404 });
+
         const build = await runProjectBuild(body.projectId);
         return NextResponse.json({
           ok: build.ok,
@@ -132,6 +163,10 @@ export async function POST(req: Request) {
       }
 
       case "deploy": {
+        const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
+        const restored = ensureProject(body.projectId, snapshot);
+        if (!restored) return NextResponse.json({ error: "Project not found — please re-scaffold." }, { status: 404 });
+
         const deployPlan = await handleBuildAppDeploy(
           body.projectId,
           body.target ?? "preview",
@@ -190,7 +225,8 @@ export async function POST(req: Request) {
 
       case "commit": {
         const { commitBuildAppProject } = await import("@/lib/support/build-app/git");
-        const project = getProject(body.projectId);
+        const snapshot = "projectSnapshot" in body ? body.projectSnapshot : undefined;
+        const project = ensureProject(body.projectId, snapshot);
         if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
         if (!body.userConfirmed) {
           return NextResponse.json({ error: "userConfirmed required" }, { status: 403 });
