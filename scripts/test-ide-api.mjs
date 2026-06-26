@@ -59,8 +59,8 @@ await check("GET /api/support/tickets?q=indicator → jira.issues[]", async () =
   if ("tickets" in body) throw new Error("legacy tickets field must not exist");
 });
 
-await check("GET /api/support/tickets?ref=PAY-101 → issue", async () => {
-  const { res, body } = await json("/api/support/tickets?ref=PAY-101");
+await check("GET /api/support/tickets?ref=AISUP5-1 → issue", async () => {
+  const { res, body } = await json("/api/support/tickets?ref=AISUP5-1");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   if (!body.issue?.key && !body.issue?.title) throw new Error("issue missing key/title");
 });
