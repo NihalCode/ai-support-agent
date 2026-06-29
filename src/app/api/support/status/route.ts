@@ -7,6 +7,7 @@ import {
   hasJira,
   hasZendesk,
   hasConfluence,
+  hasSlack,
   hasVercel,
   hasCywareProduct,
   maskSecret,
@@ -61,6 +62,10 @@ export async function GET() {
         configured: hasConfluence(cfg),
         baseUrl: cfg.confluence.baseUrl ?? "(unset)",
         spaceKey: cfg.confluence.spaceKey ?? "(unset)",
+      },
+      slack: {
+        configured: hasSlack(cfg),
+        botToken: maskSecret(cfg.slack.botToken),
       },
       vercel: {
         configured: hasVercel(cfg),

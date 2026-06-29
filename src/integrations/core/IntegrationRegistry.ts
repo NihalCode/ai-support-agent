@@ -7,6 +7,7 @@ import {
   hasJira,
   hasZendesk,
   hasConfluence,
+  hasSlack,
   hasOpenAI,
   hasPinecone,
   hasVercel,
@@ -160,7 +161,7 @@ function legacyConfigured(id: IntegrationId, cfg: ReturnType<typeof getConfig>):
     case "confluence":
       return hasConfluence(cfg);
     case "slack":
-      return envConfigured(["SLACK_BOT_TOKEN"]);
+      return hasSlack(cfg);
     default:
       return false;
   }
@@ -220,6 +221,11 @@ export class IntegrationRegistry {
       const { connector, mock } = getConfluenceDocs();
       if (mock) return { ok: false, detail: "Confluence not configured (using mock connector)" };
       return connector.testConnection?.() ?? { ok: true, detail: "Confluence credentials present" };
+    }
+    if (id === "slack") {
+      const cfg = getConfig();
+      if (!hasSlack(cfg)) return { ok: false, detail: "Slack not configured" };
+      return { ok: true, detail: "Slack bot token and signing secret present" };
     }
     const def = IntegrationRegistry.getDefinition(id);
     if (!def) return { ok: false, detail: "Unknown integration" };

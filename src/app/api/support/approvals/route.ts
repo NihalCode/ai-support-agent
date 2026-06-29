@@ -9,6 +9,8 @@ import { classifyAction } from "@/lib/support/safety";
 import { executeAction } from "@/lib/support/executor";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
+import { postSlackMessage } from "@/lib/support/slack/client";
+import { buildApprovalBlocks } from "@/lib/support/slack/approval-cards";
 import type { ApprovalAction, ApprovalStatus, PlannedAction } from "@/lib/support/types";
 
 export const runtime = "nodejs";
@@ -30,6 +32,7 @@ interface CreateBody {
   action: ApprovalAction;
   planned: PlannedAction;
   preview: string;
+  slack?: { channel: string; threadTs?: string };
 }
 interface DecisionBody {
   intent: "approve" | "reject";
@@ -54,6 +57,14 @@ export async function POST(req: Request) {
       safetyClass: safety.safetyClass,
       details: safety.reason,
     });
+    if (body.slack?.channel) {
+      await postSlackMessage({
+        channel: body.slack.channel,
+        threadTs: body.slack.threadTs,
+        text: `Approval required for ${body.action.type}`,
+        blocks: buildApprovalBlocks(approval),
+      }).catch(() => undefined);
+    }
     return NextResponse.json({ approval });
   }
 

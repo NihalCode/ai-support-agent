@@ -70,6 +70,10 @@ export interface SupportConfig {
     apiToken: string | null;
     spaceKey: string | null;
   };
+  slack: {
+    botToken: string | null;
+    signingSecret: string | null;
+  };
   /** @deprecated Use cywareProducts.ctix — kept for backward compatibility. */
   cyware: {
     baseUrl: string | null;
@@ -218,6 +222,10 @@ export function getConfig(): SupportConfig {
       apiToken: clean(process.env.CONFLUENCE_API_TOKEN),
       spaceKey: clean(process.env.CONFLUENCE_SPACE_KEY),
     },
+    slack: {
+      botToken: clean(process.env.SLACK_BOT_TOKEN),
+      signingSecret: clean(process.env.SLACK_SIGNING_SECRET),
+    },
     cyware: ctixLegacy,
     cywareProducts,
     mcpServers: parseMcpServers(clean(process.env.MCP_SERVER_CONFIG_JSON)),
@@ -256,6 +264,9 @@ export function hasZendesk(c = getConfig()): boolean {
 }
 export function hasConfluence(c = getConfig()): boolean {
   return Boolean(c.confluence.baseUrl && c.confluence.email && c.confluence.apiToken);
+}
+export function hasSlack(c = getConfig()): boolean {
+  return Boolean(c.slack.botToken && c.slack.signingSecret);
 }
 export function hasCyware(c = getConfig()): boolean {
   return hasCywareProduct("ctix", c);

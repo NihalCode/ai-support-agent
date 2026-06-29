@@ -60,7 +60,11 @@ export async function POST(req: Request) {
     const result = await executeAction(
       {
         type: "ticket-comment",
-        provider: /^[A-Z][A-Z0-9]+-\d+$/.test(parsed.ref.trim()) ? "jira" : "github",
+        provider: /^ZD-\d+$/i.test(parsed.ref.trim())
+          ? "zendesk"
+          : /^[A-Z][A-Z0-9]+-\d+$/.test(parsed.ref.trim())
+            ? "jira"
+            : "github",
         ref: parsed.ref.trim(),
         body: parsed.body,
         repoUrl: parsed.repoUrl,
