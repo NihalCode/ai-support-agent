@@ -31,7 +31,7 @@ export async function ingestEnterpriseKnowledge(
 ): Promise<EnterpriseKnowledgeIngestResult> {
   const warnings: string[] = [];
   const cfg = getConfig();
-  const { connector, mock } = getConfluenceDocs();
+  const { connector, mock } = await getConfluenceDocs();
   const chunks: SupportChunk[] = [];
   let documentCount = 0;
 

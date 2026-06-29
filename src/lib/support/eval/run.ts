@@ -57,7 +57,7 @@ export async function runTestCase(tc: SupportTestCase): Promise<TestCaseResult> 
   await ensureMockIngested();
   let issue = null;
   if (tc.issueRef) {
-    const { connector } = ticketConnectorForRef(tc.issueRef, MOCK_REPO);
+    const { connector } = await ticketConnectorForRef(tc.issueRef, MOCK_REPO);
     issue = await connector.getIssue(tc.issueRef);
   }
   const analysis = await analyzeIssue({

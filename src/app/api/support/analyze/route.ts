@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     let issue: NormalizedIssue | null = null;
     let ticketsMock = false;
     if (body.issueRef?.trim()) {
-      const { connector, mock } = ticketConnectorForRef(body.issueRef.trim(), ref);
+      const { connector, mock } = await ticketConnectorForRef(body.issueRef.trim(), ref);
       ticketsMock = mock;
       issue = await connector.getIssue(body.issueRef.trim());
     }

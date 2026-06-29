@@ -14,6 +14,10 @@ import {
 } from "@/lib/support/config";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
 import { getConfluenceDocs, getZendeskTickets } from "@/lib/support/connectors";
+import {
+  jiraCredentialsConfigured,
+  resolveJiraCredentials,
+} from "./resolveIntegrationCredentials";
 import { CredentialStore } from "./CredentialStore";
 import type {
   IntegrationDefinition,
@@ -199,8 +203,8 @@ export class IntegrationRegistry {
 
   static async healthCheck(id: IntegrationId): Promise<{ ok: boolean; detail: string }> {
     if (id === "jira") {
-      const cfg = getConfig();
-      if (!hasJira(cfg)) {
+      const creds = await resolveJiraCredentials();
+      if (!jiraCredentialsConfigured(creds)) {
         return { ok: false, detail: "Jira not configured (using mock connector)" };
       }
       return { ok: true, detail: "Jira credentials present" };
@@ -213,12 +217,12 @@ export class IntegrationRegistry {
       return ctix.testConnection();
     }
     if (id === "zendesk") {
-      const { connector, mock } = getZendeskTickets();
+      const { connector, mock } = await getZendeskTickets();
       if (mock) return { ok: false, detail: "Zendesk not configured (using mock connector)" };
       return connector.testConnection?.() ?? { ok: true, detail: "Zendesk credentials present" };
     }
     if (id === "confluence") {
-      const { connector, mock } = getConfluenceDocs();
+      const { connector, mock } = await getConfluenceDocs();
       if (mock) return { ok: false, detail: "Confluence not configured (using mock connector)" };
       return connector.testConnection?.() ?? { ok: true, detail: "Confluence credentials present" };
     }

@@ -13,7 +13,7 @@ export async function runEnterpriseSearchAgent(
   const docs: EvidenceItem[] = [];
   let mock = false;
 
-  const zendesk = getZendeskTickets();
+  const zendesk = await getZendeskTickets();
   mock ||= zendesk.mock;
   try {
     const tickets = await zendesk.connector.searchIssues(terms, 6);
@@ -31,7 +31,7 @@ export async function runEnterpriseSearchAgent(
     warnings.push(`Zendesk search failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const confluence = getConfluenceDocs();
+  const confluence = await getConfluenceDocs();
   mock ||= confluence.mock;
   try {
     const pages = await confluence.connector.searchDocuments(terms, 6);

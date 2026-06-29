@@ -40,8 +40,8 @@ export async function executeAction(
       const { ref: repoRef } = resolveRepoRef(action.repoUrl);
       const { connector, mock } =
         action.provider === "zendesk"
-          ? getZendeskTickets()
-          : ticketConnectorForRef(action.ref, repoRef);
+          ? await getZendeskTickets()
+          : await ticketConnectorForRef(action.ref, repoRef);
       const result = await connector.addComment(action.ref, action.body);
       await audit({
         action: "write:comment",
@@ -55,7 +55,7 @@ export async function executeAction(
     }
 
     case "jira-transition": {
-      const { connector, mock } = getJiraTickets();
+      const { connector, mock } = await getJiraTickets();
       if (mock || !connector.transitionIssue) {
         return mockWrite("jira-transition", `${action.ref} → ${action.transition}`);
       }
@@ -65,7 +65,7 @@ export async function executeAction(
     }
 
     case "jira-link": {
-      const { connector, mock } = getJiraTickets();
+      const { connector, mock } = await getJiraTickets();
       if (mock || !connector.linkIssues) {
         return mockWrite("jira-link", `${action.from} ${action.linkType} ${action.to}`);
       }
@@ -75,7 +75,7 @@ export async function executeAction(
     }
 
     case "jira-create": {
-      const { connector, mock } = getJiraTickets();
+      const { connector, mock } = await getJiraTickets();
       if (mock || !connector.createIssue) {
         return mockWrite("jira-create", `${action.projectKey}: ${action.summary}`);
       }

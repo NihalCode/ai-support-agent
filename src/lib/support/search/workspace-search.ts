@@ -6,6 +6,7 @@ import { retrieveAcross } from "@/lib/support/retrieve";
 import { getConfig, hasOpenAI, hasPinecone } from "@/lib/support/config";
 import { getConfluenceDocs, getJiraTickets, getZendeskTickets } from "@/lib/support/connectors";
 import { enterpriseKnowledgeNamespace } from "@/lib/support/enterprise/knowledge-ingest";
+import { cqlNamespace } from "@/lib/support/cql/ingest-docs";
 import { listInvestigations } from "@/lib/support/investigation/object-store";
 import { isTestMode } from "@/lib/test-mode";
 import type {
@@ -159,7 +160,7 @@ async function keywordSearch(query: string): Promise<WorkspaceSearchResult[]> {
   }
 
   try {
-    const jira = getJiraTickets();
+    const jira = await getJiraTickets();
     const jiraIssues = await jira.connector.searchIssues(query, 8).catch(() => []);
     for (const t of jiraIssues) {
       const key = t.key ?? t.id;
@@ -183,7 +184,7 @@ async function keywordSearch(query: string): Promise<WorkspaceSearchResult[]> {
   }
 
   try {
-    const zendesk = getZendeskTickets();
+    const zendesk = await getZendeskTickets();
     const tickets = await zendesk.connector.searchIssues(query, 8).catch(() => []);
     for (const t of tickets) {
       const key = t.key ?? t.id;
@@ -207,7 +208,7 @@ async function keywordSearch(query: string): Promise<WorkspaceSearchResult[]> {
   }
 
   try {
-    const confluence = getConfluenceDocs();
+    const confluence = await getConfluenceDocs();
     const docs = await confluence.connector.searchDocuments(query, 8).catch(() => []);
     for (const doc of docs) {
       results.push({
@@ -269,7 +270,7 @@ async function semanticSearch(query: string, topK: number): Promise<{
 
   const cfg = getConfig();
   const namespaces = listSpecs().map((s) => apiSpecNamespace(s.id));
-  namespaces.push("cql-docs", enterpriseKnowledgeNamespace());
+  namespaces.push(cqlNamespace(), enterpriseKnowledgeNamespace());
 
   if (namespaces.length === 0) {
     return {

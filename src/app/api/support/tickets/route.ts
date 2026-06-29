@@ -22,12 +22,12 @@ export async function GET(req: Request) {
   const repoUrl = url.searchParams.get("repoUrl")?.trim() || undefined;
   const { ref: repoRef } = resolveRepoRef(repoUrl);
   const gh = getGitHubTickets(repoRef);
-  const jira = getJiraTickets();
-  const zendesk = getZendeskTickets();
+  const jira = await getJiraTickets();
+  const zendesk = await getZendeskTickets();
 
   try {
     if (ref) {
-      const { connector, mock } = ticketConnectorForRef(ref, repoRef);
+      const { connector, mock } = await ticketConnectorForRef(ref, repoRef);
       const issue = await connector.getIssue(ref);
       return NextResponse.json({ issue, source: connector.id, mock });
     }

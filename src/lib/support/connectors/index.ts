@@ -1,8 +1,16 @@
 import "server-only";
 
 import type { KnowledgeConnector, RepoConnector, TicketConnector, RepoRef } from "../types";
-import { getConfig, hasConfluence, hasGitHub, hasJira, hasZendesk } from "../config";
+import { getConfig, hasGitHub } from "../config";
 import { isTestMode } from "@/lib/test-mode";
+import {
+  confluenceCredentialsConfigured,
+  jiraCredentialsConfigured,
+  resolveConfluenceCredentials,
+  resolveJiraCredentials,
+  resolveZendeskCredentials,
+  zendeskCredentialsConfigured,
+} from "@/integrations/core/resolveIntegrationCredentials";
 import { GitHubConnector, parseRepoUrl } from "./github";
 import { JiraConnector } from "./jira";
 import { ConfluenceConnector, MockConfluenceConnector } from "./confluence";
@@ -58,18 +66,18 @@ export function getGitHubTickets(ref: RepoRef): { connector: TicketConnector; mo
   return { connector: gh, mock: false };
 }
 
-export function getJiraTickets(): { connector: TicketConnector; mock: boolean } {
+export async function getJiraTickets(): Promise<{ connector: TicketConnector; mock: boolean }> {
   if (isTestMode()) {
     return { connector: new MockJiraTicketConnector(), mock: true };
   }
-  const cfg = getConfig();
-  if (hasJira(cfg) && cfg.jira.baseUrl && cfg.jira.email && cfg.jira.apiToken) {
+  const creds = await resolveJiraCredentials();
+  if (jiraCredentialsConfigured(creds)) {
     return {
       connector: new JiraConnector(
-        cfg.jira.baseUrl,
-        cfg.jira.email,
-        cfg.jira.apiToken,
-        cfg.jira.projectKey
+        creds.baseUrl!,
+        creds.email!,
+        creds.apiToken!,
+        creds.projectKey ?? undefined
       ),
       mock: false,
     };
@@ -77,41 +85,35 @@ export function getJiraTickets(): { connector: TicketConnector; mock: boolean } 
   return { connector: new MockJiraTicketConnector(), mock: true };
 }
 
-export function getZendeskTickets(): { connector: TicketConnector; mock: boolean } {
+export async function getZendeskTickets(): Promise<{ connector: TicketConnector; mock: boolean }> {
   if (isTestMode()) {
     return { connector: new MockZendeskTicketConnector(), mock: true };
   }
-  const cfg = getConfig();
-  if (hasZendesk(cfg) && cfg.zendesk.subdomain && cfg.zendesk.email && cfg.zendesk.apiToken) {
+  const creds = await resolveZendeskCredentials();
+  if (zendeskCredentialsConfigured(creds)) {
     return {
-      connector: new ZendeskConnector(
-        cfg.zendesk.subdomain,
-        cfg.zendesk.email,
-        cfg.zendesk.apiToken
-      ),
+      connector: new ZendeskConnector(creds.subdomain!, creds.email!, creds.apiToken!),
       mock: false,
     };
   }
   return { connector: new MockZendeskTicketConnector(), mock: true };
 }
 
-export function getConfluenceDocs(): { connector: KnowledgeConnector; mock: boolean } {
+export async function getConfluenceDocs(): Promise<{
+  connector: KnowledgeConnector;
+  mock: boolean;
+}> {
   if (isTestMode()) {
     return { connector: new MockConfluenceConnector(), mock: true };
   }
-  const cfg = getConfig();
-  if (
-    hasConfluence(cfg) &&
-    cfg.confluence.baseUrl &&
-    cfg.confluence.email &&
-    cfg.confluence.apiToken
-  ) {
+  const creds = await resolveConfluenceCredentials();
+  if (confluenceCredentialsConfigured(creds)) {
     return {
       connector: new ConfluenceConnector(
-        cfg.confluence.baseUrl,
-        cfg.confluence.email,
-        cfg.confluence.apiToken,
-        cfg.confluence.spaceKey
+        creds.baseUrl!,
+        creds.email!,
+        creds.apiToken!,
+        creds.spaceKey ?? undefined
       ),
       mock: false,
     };
@@ -119,10 +121,10 @@ export function getConfluenceDocs(): { connector: KnowledgeConnector; mock: bool
   return { connector: new MockConfluenceConnector(), mock: true };
 }
 
-export function ticketConnectorForRef(
+export async function ticketConnectorForRef(
   ref: string,
   repoRef: RepoRef
-): { connector: TicketConnector; mock: boolean } {
+): Promise<{ connector: TicketConnector; mock: boolean }> {
   if (/^[A-Z][A-Z0-9]+-\d+$/.test(ref.trim())) return getJiraTickets();
   if (/^ZD-\d+$/i.test(ref.trim())) return getZendeskTickets();
   return getGitHubTickets(repoRef);

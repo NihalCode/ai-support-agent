@@ -6,12 +6,14 @@ import { loadBundledCywareSpec } from "@/lib/support/api-specs/bundled-specs";
 import { registerSpec, indexSpec } from "@/lib/support/api-specs/registry";
 import { CYWARE_PRODUCT_PRESETS, type CywareProductId } from "@/lib/support/cyware-products";
 import { ingestCqlDocs } from "@/lib/support/cql/ingest-docs";
+import { ingestEnterpriseKnowledge } from "@/lib/support/enterprise/knowledge-ingest";
 
 const g = globalThis as unknown as { __autoImportDone?: boolean; __autoImportPromise?: Promise<AutoImportResult> };
 
 export interface AutoImportResult {
   cywareProducts: { id: CywareProductId; endpoints: number; source: string }[];
   cql: { chunks: number; skipped: boolean };
+  enterpriseKnowledge: { chunks: number; skipped: boolean };
   warnings: string[];
   durationMs: number;
 }
@@ -19,7 +21,13 @@ export interface AutoImportResult {
 /** Auto-import bundled Cyware API specs + CQL docs when registry is empty. */
 export async function ensureAutoImported(): Promise<AutoImportResult> {
   if (g.__autoImportDone && !g.__autoImportPromise) {
-    return { cywareProducts: [], cql: { chunks: 0, skipped: true }, warnings: [], durationMs: 0 };
+    return {
+      cywareProducts: [],
+      cql: { chunks: 0, skipped: true },
+      enterpriseKnowledge: { chunks: 0, skipped: true },
+      warnings: [],
+      durationMs: 0,
+    };
   }
   if (g.__autoImportPromise) return g.__autoImportPromise;
 
@@ -85,9 +93,36 @@ async function runAutoImport(): Promise<AutoImportResult> {
     }
   }
 
+  let enterpriseKnowledgeChunks = 0;
+  let enterpriseKnowledgeSkipped = true;
+  if (process.env.AUTO_IMPORT_ENTERPRISE_KNOWLEDGE !== "false") {
+    try {
+      const { enterpriseKnowledgeNamespace } = await import(
+        "@/lib/support/enterprise/knowledge-ingest"
+      );
+      const store = await import("@/lib/support/vector-store").then((m) => m.getVectorStore());
+      const ns = enterpriseKnowledgeNamespace();
+      const existing = await store.query(ns, new Array(8).fill(0), 1);
+      if (existing.length === 0) {
+        const knowledge = await ingestEnterpriseKnowledge();
+        enterpriseKnowledgeChunks = knowledge.upserted;
+        enterpriseKnowledgeSkipped = false;
+        warnings.push(...knowledge.warnings);
+      }
+    } catch (err) {
+      warnings.push(
+        `Enterprise knowledge auto-import: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   return {
     cywareProducts,
     cql: { chunks: cqlChunks, skipped: cqlSkipped },
+    enterpriseKnowledge: {
+      chunks: enterpriseKnowledgeChunks,
+      skipped: enterpriseKnowledgeSkipped,
+    },
     warnings,
     durationMs: Date.now() - start,
   };

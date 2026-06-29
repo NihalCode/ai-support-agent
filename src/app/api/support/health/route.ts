@@ -44,7 +44,7 @@ export async function GET() {
   }
 
   try {
-    const { connector, mock } = getJiraTickets();
+    const { connector, mock } = await getJiraTickets();
     const ping = !mock && connector.testConnection ? await connector.testConnection() : { ok: !mock, detail: mock ? "mock data (no JIRA_* env)" : "live" };
     connectors.push({ name: "jira", configured: hasJira(cfg), mode: mock ? "mock" : "live", ok: ping.ok, detail: ping.detail });
   } catch (err) {

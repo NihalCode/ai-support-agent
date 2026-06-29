@@ -40,7 +40,7 @@ function detectFixedVersion(tickets: NormalizedIssue[]): string | undefined {
 export async function runJiraAgent(q: SupportQuery): Promise<AgentResult<JiraFinding>> {
   const start = Date.now();
   const warnings: string[] = [];
-  const { connector, mock } = getJiraTickets();
+  const { connector, mock } = await getJiraTickets();
   const terms = buildSearchTerms(q);
   let tickets: NormalizedIssue[] = [];
 

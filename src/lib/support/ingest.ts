@@ -83,7 +83,7 @@ export async function ingestRepo(opts: {
   }
 
   // --- Jira tickets ---
-  const { connector: jiraTickets, mock: jiraMock } = getJiraTickets();
+  const { connector: jiraTickets, mock: jiraMock } = await getJiraTickets();
   if (hasJira(cfg) || jiraMock) {
     try {
       const tickets = await jiraTickets.searchIssues("bug error issue", 30);
@@ -94,7 +94,7 @@ export async function ingestRepo(opts: {
   }
 
   // --- Zendesk tickets ---
-  const { connector: zendeskTickets, mock: zendeskMock } = getZendeskTickets();
+  const { connector: zendeskTickets, mock: zendeskMock } = await getZendeskTickets();
   if (hasZendesk(cfg) || zendeskMock) {
     try {
       const tickets = await zendeskTickets.searchIssues("bug error issue", 30);
@@ -105,7 +105,7 @@ export async function ingestRepo(opts: {
   }
 
   // --- Confluence knowledge docs ---
-  const { connector: confluenceDocs, mock: confluenceMock } = getConfluenceDocs();
+  const { connector: confluenceDocs, mock: confluenceMock } = await getConfluenceDocs();
   if (hasConfluence(cfg) || confluenceMock) {
     try {
       const docs = await confluenceDocs.searchDocuments("support runbook api cql", 30);
