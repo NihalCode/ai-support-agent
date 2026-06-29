@@ -9,6 +9,8 @@ import {
   hasCywareProduct,
   maskSecret,
 } from "@/lib/support/config";
+import { getAppSession, sessionToJson } from "@/lib/auth/session";
+import { isAuthConfigured } from "@/lib/auth/config";
 import { pingSessionStore } from "@/lib/support/investigation/session-store";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
 
@@ -17,6 +19,7 @@ export const runtime = "nodejs";
 /** Reports which integrations are live vs. running on mocks. Secrets are masked. */
 export async function GET() {
   const cfg = getConfig();
+  const session = await getAppSession();
   const ctix = getCywareProductConnector("ctix");
 
   const sessionBackend = await pingSessionStore();
@@ -27,6 +30,10 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    auth: {
+      configured: isAuthConfigured(),
+      session: session ? sessionToJson(session) : null,
+    },
     integrations: {
       openai: { configured: hasOpenAI(cfg), key: maskSecret(cfg.openaiApiKey) },
       pinecone: {

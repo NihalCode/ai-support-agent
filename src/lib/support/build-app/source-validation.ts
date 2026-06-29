@@ -31,6 +31,17 @@ export function findDuplicateAttributesInLine(line: string): string[] {
   return dupes;
 }
 
+/** Fix toolbar wrapper left open when SearchBox is self-closing (legacy applyUiPolish bug). */
+export function fixUnclosedDashboardToolbar(content: string): string {
+  if (!content.includes('className="dashboard-toolbar"')) return content;
+  const match = content.match(/<div className="dashboard-toolbar">[\s\S]*?<SearchBox[\s\S]*?\/>/);
+  if (!match) return content;
+  const endIdx = match.index! + match[0].length;
+  const rest = content.slice(endIdx);
+  if (/^\s*<\/div>/.test(rest)) return content;
+  return `${content.slice(0, endIdx)}\n      </div>${rest}`;
+}
+
 /** Merge duplicate className attributes on one tag into a single attribute. */
 export function fixDuplicateClassNames(content: string): string {
   return content.replace(
@@ -86,6 +97,11 @@ export function validateAndFixProjectSources(rootDir: string): SourceValidationR
 
     if (/className="[^"]*"[^>]*className="/.test(content)) {
       content = fixDuplicateClassNames(content);
+    }
+
+    const toolbarFixed = fixUnclosedDashboardToolbar(content);
+    if (toolbarFixed !== content) {
+      content = toolbarFixed;
     }
 
     if (content !== before) {

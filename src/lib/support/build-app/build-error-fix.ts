@@ -4,6 +4,7 @@ import type { BuildAppFileChange, BuildAppProject } from "./types";
 import { classifyBuildError } from "./error-classify";
 import {
   fixDuplicateClassNames,
+  fixUnclosedDashboardToolbar,
   hasUnresolvedTemplateVars,
   validateSourceContent,
 } from "./source-validation";
@@ -79,6 +80,12 @@ function fixSourceContent(content: string, project: BuildAppProject): { content:
   if (deduped !== out) {
     out = deduped;
     fixes.push("merged duplicate JSX attributes");
+  }
+
+  const toolbarFixed = fixUnclosedDashboardToolbar(out);
+  if (toolbarFixed !== out) {
+    out = toolbarFixed;
+    fixes.push("closed unclosed dashboard-toolbar wrapper");
   }
 
   if (hasUnresolvedTemplateVars(out)) {

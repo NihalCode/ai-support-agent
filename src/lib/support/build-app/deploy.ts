@@ -108,8 +108,26 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
     };
   }
 
+  const sourceCheck = validateAndFixProjectSources(p.rootDir);
+  if (!sourceCheck.ok) {
+    const output = formatSourceValidationReport(sourceCheck);
+    p.buildOk = false;
+    p.buildOutput = output;
+    p.status = "failed";
+    saveProject(p);
+    return {
+      ok: false,
+      buildOk: false,
+      preflightOk: preflight.ok,
+      output,
+      commands,
+      classification: classifyBuildError(output),
+    };
+  }
+
   const preface = [
     formatPreflightReport(preflight),
+    sourceCheck.fixed.length ? `Source auto-fix: ${sourceCheck.fixed.join(", ")}` : "",
     mockMode
       ? process.env.VERCEL === "1"
         ? "[MOCK MODE] Vercel serverless — install/build simulated. Set BUILD_APP_REAL_COMMANDS=true for real npm on a worker with network + disk."

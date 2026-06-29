@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { deriveAppCopy, looksLikeRawPrompt } from "../build-app/app-copy";
 import { classifyEditIntent, isEditIntent } from "../build-app/edit-intent";
 import { cleanLandingPage, generateUiEditChanges } from "../build-app/ui-edits";
+import { fixUnclosedDashboardToolbar } from "../build-app/source-validation";
 import { buildScaffoldPlan, planToFileChanges } from "../build-app/plan-scaffold";
 import { handleBuildAppPlan } from "../build-app/orchestrate";
 import { applyFileChanges, getProject, readProjectFile } from "../build-app/project-store";
@@ -144,5 +145,16 @@ describe("generateUiEditChanges", () => {
     });
     expect(changes.some((c) => c.path === "app/globals.css")).toBe(true);
     expect(changes.some((c) => c.path === "app/page.tsx")).toBe(true);
+  });
+
+  it("auto-fixes legacy broken toolbar wrapper on disk", () => {
+    const broken = `<main className="dashboard-page">
+      <div className="dashboard-toolbar">
+        <SearchBox query={q} onSearch={() => void runSearch()} loading={loading} />
+      {error && <p>{error}</p>}
+    </main>`;
+    const fixed = fixUnclosedDashboardToolbar(broken);
+    expect(fixed).toContain("</div>");
+    expect(fixed.indexOf("</div>")).toBeLessThan(fixed.indexOf("{error"));
   });
 });

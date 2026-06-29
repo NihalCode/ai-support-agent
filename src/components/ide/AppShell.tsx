@@ -10,12 +10,15 @@ import { BottomPanelContainer } from "./BottomPanelContainer";
 import { StatusBar } from "./StatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { ResizableSidebar, ResizableChat, ResizableBottom } from "./ResizablePanels";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { useWorkspace } from "./WorkspaceProvider";
 
 export function AppShell() {
   useKeyboardShortcuts();
   const { setCommandPalette, toggleChat, isClientMode, productMode, setProductMode } = useWorkspace();
+  const { canUseDeveloperMode } = useAuth();
 
   return (
     <div
@@ -36,9 +39,10 @@ export function AppShell() {
             aria-label="Client or Developer mode"
           >
             <option value="client">Client</option>
-            <option value="developer">Developer</option>
+            {canUseDeveloperMode && <option value="developer">Developer</option>}
           </select>
         </label>
+        <UserMenu />
         {!isClientMode && (
           <button
             type="button"

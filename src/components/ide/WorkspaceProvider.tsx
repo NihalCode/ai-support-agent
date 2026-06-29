@@ -43,6 +43,7 @@ import {
   PRODUCT_MODE_STORAGE_KEY,
   type ProductMode,
 } from "@/lib/product-config";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const STORAGE_KEY = "ai-support-ide-layout-v2";
 
@@ -201,24 +202,34 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialWorkspaceState);
   const [productMode, setProductModeState] = useState<ProductMode>(productConfig.defaultMode);
+  const { canUseDeveloperMode } = useAuth();
 
   useEffect(() => {
-    setProductModeState(readStoredProductMode());
-  }, []);
+    const stored = readStoredProductMode();
+    if (stored === "developer" && !canUseDeveloperMode) {
+      setProductModeState("client");
+      return;
+    }
+    setProductModeState(stored);
+  }, [canUseDeveloperMode]);
 
-  const setProductMode = useCallback((mode: ProductMode) => {
-    setProductModeState(mode);
-    try {
-      localStorage.setItem(PRODUCT_MODE_STORAGE_KEY, mode);
-    } catch {
-      /* ignore */
-    }
-    const layoutPatch = mode === "developer" ? developerLayoutDefaults() : clientLayoutDefaults();
-    dispatch({ type: "SET_LAYOUT", partial: layoutPatch });
-    if (mode === "client") {
-      dispatch({ type: "SET_ACTIVITY", activity: "home" });
-    }
-  }, []);
+  const setProductMode = useCallback(
+    (mode: ProductMode) => {
+      const next = mode === "developer" && !canUseDeveloperMode ? "client" : mode;
+      setProductModeState(next);
+      try {
+        localStorage.setItem(PRODUCT_MODE_STORAGE_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      const layoutPatch = next === "developer" ? developerLayoutDefaults() : clientLayoutDefaults();
+      dispatch({ type: "SET_LAYOUT", partial: layoutPatch });
+      if (next === "client") {
+        dispatch({ type: "SET_ACTIVITY", activity: "home" });
+      }
+    },
+    [canUseDeveloperMode]
+  );
 
   useEffect(() => {
     try {

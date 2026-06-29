@@ -186,12 +186,11 @@ function applyUiPolish(opts: {
   const pagePath = project.files.find((f) => f.endsWith("app/page.tsx")) ?? "app/page.tsx";
   const page = readFile(pagePath) ?? "";
   if (page.includes("<SearchBox") && !page.includes("dashboard-toolbar")) {
+    // SearchBox is self-closing (<SearchBox ... />) — never use </SearchBox>
     const updated = page.replace(
-      /(\s*)<SearchBox/,
-      '$1<div className="dashboard-toolbar">\n$1  <SearchBox'
-    ).replace(
-      /(\s*)<\/SearchBox>(\s*\n\s*\{error)/,
-      "$1  </SearchBox>\n$1</div>$2"
+      /(\s*)<SearchBox([\s\S]*?)\/>/,
+      (_match, indent: string, props: string) =>
+        `${indent}<div className="dashboard-toolbar">\n${indent}  <SearchBox${props}/>\n${indent}</div>`
     );
     if (updated !== page) {
       changes.push({ path: pagePath, action: "update", content: updated, previousContent: page });

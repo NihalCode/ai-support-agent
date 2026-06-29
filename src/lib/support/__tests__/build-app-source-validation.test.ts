@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   findDuplicateAttributesInLine,
   fixDuplicateClassNames,
+  fixUnclosedDashboardToolbar,
   validateSourceContent,
   validateAndFixProjectSources,
 } from "../build-app/source-validation";
@@ -32,6 +33,21 @@ describe("source validation", () => {
   it("flags unresolved template variables", () => {
     const issues = validateSourceContent("page.tsx", "<h1>{{APP_TITLE}}</h1>");
     expect(issues.some((i) => /template variable/i.test(i.message))).toBe(true);
+  });
+
+  it("fixes unclosed dashboard-toolbar after self-closing SearchBox", () => {
+    const broken = `<main>
+      <div className="dashboard-toolbar">
+        <SearchBox
+          query={query}
+          onSearch={() => void runSearch()}
+          loading={loading}
+        />
+      {error && <p>{error}</p>}
+    </main>`;
+    const fixed = fixUnclosedDashboardToolbar(broken);
+    expect(fixed).toMatch(/<SearchBox[\s\S]*?\/>\s*\n\s*<\/div>/);
+    expect(fixed.indexOf("</div>")).toBeLessThan(fixed.indexOf("{error"));
   });
 });
 
