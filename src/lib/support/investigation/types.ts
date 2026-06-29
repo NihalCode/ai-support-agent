@@ -17,6 +17,8 @@ export type CurrentStatus =
 
 export type EvidenceSourceType =
   | "jira"
+  | "zendesk"
+  | "confluence"
   | "code"
   | "logs"
   | "deployment"

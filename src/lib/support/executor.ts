@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ApprovalAction } from "./types";
-import { resolveRepoRef, ticketConnectorForRef, getJiraTickets } from "./connectors";
+import { resolveRepoRef, ticketConnectorForRef, getJiraTickets, getZendeskTickets } from "./connectors";
 import { getConfig } from "./config";
 import { audit } from "./audit";
 import { redact, redactHeaders } from "./redact";
@@ -38,7 +38,10 @@ export async function executeAction(
   switch (action.type) {
     case "ticket-comment": {
       const { ref: repoRef } = resolveRepoRef(action.repoUrl);
-      const { connector, mock } = ticketConnectorForRef(action.ref, repoRef);
+      const { connector, mock } =
+        action.provider === "zendesk"
+          ? getZendeskTickets()
+          : ticketConnectorForRef(action.ref, repoRef);
       const result = await connector.addComment(action.ref, action.body);
       await audit({
         action: "write:comment",

@@ -1,6 +1,7 @@
 import type {
   RepoFile,
   NormalizedIssue,
+  KnowledgeDocument,
   CommitInfo,
   SupportChunk,
   ChunkMetadata,
@@ -196,7 +197,14 @@ export function chunkIssue(issue: NormalizedIssue, ref: RepoRef): SupportChunk {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const sourceType = issue.source === "jira" ? "jira" : issue.state === "merged" ? "pr" : "issue";
+  const sourceType =
+    issue.source === "jira"
+      ? "jira"
+      : issue.source === "zendesk"
+        ? "zendesk"
+        : issue.state === "merged"
+          ? "pr"
+          : "issue";
   const now = new Date().toISOString();
   return {
     id: `${repo}:${branch}:${sourceType}:${issue.id}`.replace(/\s+/g, "_"),
@@ -217,6 +225,38 @@ export function chunkIssue(issue: NormalizedIssue, ref: RepoRef): SupportChunk {
       updated_at: issue.updatedAt ?? now,
     },
   };
+}
+
+export function chunkKnowledgeDocument(doc: KnowledgeDocument): SupportChunk[] {
+  const now = new Date().toISOString();
+  const blocks = doc.body
+    .split(/\n(?=#{1,4}\s)|\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const chunks: SupportChunk[] = [];
+  let idx = 0;
+  for (const block of blocks.length ? blocks : [doc.body]) {
+    const text = `${doc.title}\n\n${block}`.slice(0, 1800);
+    chunks.push({
+      id: `${doc.source}:${doc.id}:${idx++}`.replace(/\s+/g, "_"),
+      text,
+      metadata: {
+        repo: doc.source,
+        branch: doc.spaceKey ?? "knowledge",
+        filePath: doc.id,
+        language: "text",
+        sourceType: doc.source === "confluence" ? "confluence" : "docs",
+        title: doc.title,
+        url: doc.url,
+        source_name: doc.source === "confluence" ? "Confluence" : doc.source,
+        source_url: doc.url,
+        file_path: doc.id,
+        created_at: now,
+        updated_at: doc.updatedAt ?? now,
+      },
+    });
+  }
+  return chunks;
 }
 
 export function chunkCommit(commit: CommitInfo, ref: RepoRef): SupportChunk {

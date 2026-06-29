@@ -4,7 +4,8 @@ import { listSpecs } from "@/lib/support/api-specs/registry";
 import { apiSpecNamespace } from "@/lib/support/api-specs/index";
 import { retrieveAcross } from "@/lib/support/retrieve";
 import { getConfig, hasOpenAI, hasPinecone } from "@/lib/support/config";
-import { getJiraTickets } from "@/lib/support/connectors";
+import { getConfluenceDocs, getJiraTickets, getZendeskTickets } from "@/lib/support/connectors";
+import { enterpriseKnowledgeNamespace } from "@/lib/support/enterprise/knowledge-ingest";
 import { listInvestigations } from "@/lib/support/investigation/object-store";
 import { isTestMode } from "@/lib/test-mode";
 import type {
@@ -24,6 +25,8 @@ function mapSourceType(st: string): WorkspaceSearchSourceType {
     "cql-doc": "cql",
     code: "code",
     jira: "jira",
+    zendesk: "zendesk",
+    confluence: "confluence",
     issue: "jira",
     "error-log": "logs",
     resolution: "release-note",
@@ -78,6 +81,35 @@ function mockSearchResults(query: string): WorkspaceSearchResult[] {
         tabId: "jira-AISUP-42",
         title: "AISUP-42",
         payload: { key: "AISUP-42", title: "Tag bulk API returns 400" },
+      },
+    },
+    {
+      id: "mock-zendesk-1001",
+      title: "ZD-1001 Customer cannot sync threat indicators",
+      sourceType: "zendesk",
+      sourceName: "Zendesk",
+      score: 0.74,
+      matchedText: "Customer reports indicator sync fails after adding a tag filter.",
+      metadata: { key: "ZD-1001", status: "open" },
+      openTarget: {
+        kind: "jira-ticket",
+        tabId: "zendesk-ZD-1001",
+        title: "ZD-1001",
+        payload: { key: "ZD-1001", title: "Customer cannot sync threat indicators" },
+      },
+    },
+    {
+      id: "mock-confluence-runbook",
+      title: "Runbook: CTIX indicator sync failures",
+      sourceType: "confluence",
+      sourceName: "Confluence",
+      score: 0.7,
+      matchedText: "Check CTIX credentials, CQL tag filters, request IDs, and logs before escalating.",
+      metadata: { url: "https://example.atlassian.net/wiki/spaces/SUP/pages/1001" },
+      openTarget: {
+        kind: "markdown-report",
+        tabId: "confluence-runbook",
+        title: "Confluence runbook",
       },
     },
   ];
@@ -150,6 +182,53 @@ async function keywordSearch(query: string): Promise<WorkspaceSearchResult[]> {
     /* jira optional */
   }
 
+  try {
+    const zendesk = getZendeskTickets();
+    const tickets = await zendesk.connector.searchIssues(query, 8).catch(() => []);
+    for (const t of tickets) {
+      const key = t.key ?? t.id;
+      results.push({
+        id: `zendesk-${key}`,
+        title: t.title,
+        sourceType: "zendesk",
+        sourceName: "Zendesk",
+        matchedText: t.body || t.title,
+        metadata: { key, status: t.state },
+        openTarget: {
+          kind: "jira-ticket",
+          tabId: `zendesk-${key}`,
+          title: String(key),
+          payload: { key, title: t.title, source: "zendesk" },
+        },
+      });
+    }
+  } catch {
+    /* zendesk optional */
+  }
+
+  try {
+    const confluence = getConfluenceDocs();
+    const docs = await confluence.connector.searchDocuments(query, 8).catch(() => []);
+    for (const doc of docs) {
+      results.push({
+        id: `confluence-${doc.id}`,
+        title: doc.title,
+        sourceType: "confluence",
+        sourceName: "Confluence",
+        matchedText: doc.body.slice(0, 280),
+        metadata: { id: doc.id, url: doc.url, spaceKey: doc.spaceKey },
+        openTarget: {
+          kind: "markdown-report",
+          tabId: `confluence-${doc.id}`,
+          title: doc.title,
+          payload: { url: doc.url, title: doc.title },
+        },
+      });
+    }
+  } catch {
+    /* confluence optional */
+  }
+
   for (const inv of listInvestigations()) {
     if (inv.title.toLowerCase().includes(q) || inv.userIssue.toLowerCase().includes(q)) {
       results.push({
@@ -190,7 +269,7 @@ async function semanticSearch(query: string, topK: number): Promise<{
 
   const cfg = getConfig();
   const namespaces = listSpecs().map((s) => apiSpecNamespace(s.id));
-  namespaces.push("cql-docs", "knowledge");
+  namespaces.push("cql-docs", enterpriseKnowledgeNamespace());
 
   if (namespaces.length === 0) {
     return {

@@ -94,7 +94,10 @@ function diversify(chunks: RetrievedChunk[], topK: number): RetrievedChunk[] {
 export function citationFromChunk(c: RetrievedChunk): AnalysisCitation {
   const m = c.metadata;
   const isTicket =
-    m.sourceType === "issue" || m.sourceType === "pr" || m.sourceType === "jira";
+    m.sourceType === "issue" ||
+    m.sourceType === "pr" ||
+    m.sourceType === "jira" ||
+    m.sourceType === "zendesk";
   return {
     label: isTicket
       ? `${m.title ?? m.filePath} (${m.filePath})`

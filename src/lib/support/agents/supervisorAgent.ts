@@ -15,6 +15,7 @@ export type SpecialistAgent =
   | "logs"
   | "deployment"
   | "docs"
+  | "enterpriseSearch"
   | "cql"
   | "version"
   | "rootCause"
@@ -61,7 +62,7 @@ export function detectCredentialGaps(): CredentialStatus & { gaps: string[] } {
 export function planInvestigation(query: SupportQuery): SupervisorPlan {
   const missingQuestions = missingInfoQuestions(query);
   const credentialGaps = detectCredentialGaps().gaps;
-  const agents: SpecialistAgent[] = ["docs", "jira", "code", "logs", "deployment"];
+  const agents: SpecialistAgent[] = ["docs", "enterpriseSearch", "jira", "code", "logs", "deployment"];
 
   const needsCql =
     /\bcql\b/i.test(query.text) ||

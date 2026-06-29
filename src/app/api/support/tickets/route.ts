@@ -3,6 +3,7 @@ import {
   resolveRepoRef,
   getGitHubTickets,
   getJiraTickets,
+  getZendeskTickets,
   ticketConnectorForRef,
 } from "@/lib/support/connectors";
 
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
   const { ref: repoRef } = resolveRepoRef(repoUrl);
   const gh = getGitHubTickets(repoRef);
   const jira = getJiraTickets();
+  const zendesk = getZendeskTickets();
 
   try {
     if (ref) {
@@ -42,13 +44,15 @@ export async function GET(req: Request) {
       }
       return NextResponse.json({ error: "Provide ?q= or ?ref=" }, { status: 400 });
     }
-    const [ghIssues, jiraIssues] = await Promise.all([
+    const [ghIssues, jiraIssues, zendeskIssues] = await Promise.all([
       gh.connector.searchIssues(q, 5).catch(() => []),
       jira.connector.searchIssues(q, 5).catch(() => []),
+      zendesk.connector.searchIssues(q, 5).catch(() => []),
     ]);
     return NextResponse.json({
       github: { issues: ghIssues, mock: gh.mock },
       jira: { issues: jiraIssues, mock: jira.mock },
+      zendesk: { issues: zendeskIssues, mock: zendesk.mock },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ticket lookup failed";

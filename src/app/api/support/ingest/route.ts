@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ingestRepo } from "@/lib/support/ingest";
+import { ingestEnterpriseKnowledge } from "@/lib/support/enterprise/knowledge-ingest";
 import { audit } from "@/lib/support/audit";
 import type { IngestRequest } from "@/lib/support/types";
 
@@ -14,13 +15,16 @@ export async function POST(req: Request) {
       includeIssues: body.includeIssues,
       includePRs: body.includePRs,
     });
+    const enterprise = body.includeEnterpriseKnowledge
+      ? await ingestEnterpriseKnowledge()
+      : null;
     await audit({
       action: "ingest",
       target: result.repo,
       approved: true,
-      details: `${result.chunks} chunks, ${result.upserted} upserted (${result.usedMock.vectorStore ? "memory" : "pinecone"})`,
+      details: `${result.chunks} chunks, ${result.upserted} upserted (${result.usedMock.vectorStore ? "memory" : "pinecone"})${enterprise ? `; enterprise ${enterprise.upserted} upserted` : ""}`,
     });
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, enterprise });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ingestion failed";
     return NextResponse.json({ error: message }, { status: 500 });

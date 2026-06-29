@@ -59,6 +59,17 @@ export interface SupportConfig {
     apiToken: string | null;
     projectKey: string | null;
   };
+  zendesk: {
+    subdomain: string | null;
+    email: string | null;
+    apiToken: string | null;
+  };
+  confluence: {
+    baseUrl: string | null;
+    email: string | null;
+    apiToken: string | null;
+    spaceKey: string | null;
+  };
   /** @deprecated Use cywareProducts.ctix — kept for backward compatibility. */
   cyware: {
     baseUrl: string | null;
@@ -196,6 +207,17 @@ export function getConfig(): SupportConfig {
       apiToken: clean(process.env.JIRA_API_TOKEN),
       projectKey: clean(process.env.JIRA_PROJECT_KEY),
     },
+    zendesk: {
+      subdomain: clean(process.env.ZENDESK_SUBDOMAIN),
+      email: clean(process.env.ZENDESK_EMAIL),
+      apiToken: clean(process.env.ZENDESK_API_TOKEN),
+    },
+    confluence: {
+      baseUrl: clean(process.env.CONFLUENCE_BASE_URL),
+      email: clean(process.env.CONFLUENCE_EMAIL),
+      apiToken: clean(process.env.CONFLUENCE_API_TOKEN),
+      spaceKey: clean(process.env.CONFLUENCE_SPACE_KEY),
+    },
     cyware: ctixLegacy,
     cywareProducts,
     mcpServers: parseMcpServers(clean(process.env.MCP_SERVER_CONFIG_JSON)),
@@ -228,6 +250,12 @@ export function hasVercel(c = getConfig()): boolean {
 }
 export function hasJira(c = getConfig()): boolean {
   return Boolean(c.jira.baseUrl && c.jira.email && c.jira.apiToken);
+}
+export function hasZendesk(c = getConfig()): boolean {
+  return Boolean(c.zendesk.subdomain && c.zendesk.email && c.zendesk.apiToken);
+}
+export function hasConfluence(c = getConfig()): boolean {
+  return Boolean(c.confluence.baseUrl && c.confluence.email && c.confluence.apiToken);
 }
 export function hasCyware(c = getConfig()): boolean {
   return hasCywareProduct("ctix", c);

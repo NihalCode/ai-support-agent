@@ -5,11 +5,14 @@ import {
   hasCywareProduct,
   hasGitHub,
   hasJira,
+  hasZendesk,
+  hasConfluence,
   hasOpenAI,
   hasPinecone,
   hasVercel,
 } from "@/lib/support/config";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
+import { getConfluenceDocs, getZendeskTickets } from "@/lib/support/connectors";
 import { CredentialStore } from "./CredentialStore";
 import type {
   IntegrationDefinition,
@@ -33,7 +36,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     category: "ticketing",
     description: "Zendesk Support tickets (Phase B).",
     envKeys: ["ZENDESK_SUBDOMAIN", "ZENDESK_EMAIL", "ZENDESK_API_TOKEN"],
-    supportsHealthCheck: false,
+    supportsHealthCheck: true,
     supportsWrite: true,
   },
   {
@@ -42,7 +45,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     category: "docs",
     description: "Confluence docs for RAG (Phase B).",
     envKeys: ["CONFLUENCE_BASE_URL", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN"],
-    supportsHealthCheck: false,
+    supportsHealthCheck: true,
     supportsWrite: false,
   },
   {
@@ -153,9 +156,9 @@ function legacyConfigured(id: IntegrationId, cfg: ReturnType<typeof getConfig>):
     case "orchestrate":
       return hasCywareProduct("orchestrate", cfg);
     case "zendesk":
-      return envConfigured(["ZENDESK_SUBDOMAIN", "ZENDESK_EMAIL", "ZENDESK_API_TOKEN"]);
+      return hasZendesk(cfg);
     case "confluence":
-      return envConfigured(["CONFLUENCE_BASE_URL", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN"]);
+      return hasConfluence(cfg);
     case "slack":
       return envConfigured(["SLACK_BOT_TOKEN"]);
     default:
@@ -207,6 +210,16 @@ export class IntegrationRegistry {
         return { ok: false, detail: "CTIX not configured" };
       }
       return ctix.testConnection();
+    }
+    if (id === "zendesk") {
+      const { connector, mock } = getZendeskTickets();
+      if (mock) return { ok: false, detail: "Zendesk not configured (using mock connector)" };
+      return connector.testConnection?.() ?? { ok: true, detail: "Zendesk credentials present" };
+    }
+    if (id === "confluence") {
+      const { connector, mock } = getConfluenceDocs();
+      if (mock) return { ok: false, detail: "Confluence not configured (using mock connector)" };
+      return connector.testConnection?.() ?? { ok: true, detail: "Confluence credentials present" };
     }
     const def = IntegrationRegistry.getDefinition(id);
     if (!def) return { ok: false, detail: "Unknown integration" };

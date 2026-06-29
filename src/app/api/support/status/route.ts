@@ -5,6 +5,8 @@ import {
   hasPinecone,
   hasGitHub,
   hasJira,
+  hasZendesk,
+  hasConfluence,
   hasVercel,
   hasCywareProduct,
   maskSecret,
@@ -50,6 +52,15 @@ export async function GET() {
         configured: hasJira(cfg),
         baseUrl: cfg.jira.baseUrl ?? "(unset)",
         projectKey: cfg.jira.projectKey ?? "(unset)",
+      },
+      zendesk: {
+        configured: hasZendesk(cfg),
+        subdomain: cfg.zendesk.subdomain ?? "(unset)",
+      },
+      confluence: {
+        configured: hasConfluence(cfg),
+        baseUrl: cfg.confluence.baseUrl ?? "(unset)",
+        spaceKey: cfg.confluence.spaceKey ?? "(unset)",
       },
       vercel: {
         configured: hasVercel(cfg),

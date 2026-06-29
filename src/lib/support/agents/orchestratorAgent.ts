@@ -17,6 +17,7 @@ import { runCodeAgent } from "../agents/codeAgent";
 import { runLogsAgent } from "../agents/logsAgent";
 import { runDeploymentAgent } from "../agents/deploymentAgent";
 import { runDocsAgent } from "../agents/docsAgent";
+import { runEnterpriseSearchAgent } from "../agents/enterpriseSearchAgent";
 import { runRootCauseAgent } from "../agents/rootCauseAgent";
 import { runFixProposalAgent } from "../agents/fixProposalAgent";
 import { runResponseWriterAgent } from "../agents/responseWriterAgent";
@@ -163,14 +164,22 @@ export async function runInvestigation(rawQuery: SupportQuery): Promise<Investig
     };
   }
 
-  const [jiraR, codeR, logsR, deployR, docsR, cqlR] = await Promise.all([
+  const [jiraR, codeR, logsR, deployR, docsR, enterpriseR, cqlR] = await Promise.all([
     runJiraAgent(query),
     runCodeAgent(query),
     runLogsAgent(query),
     runDeploymentAgent(query),
     runDocsAgent(query),
+    runEnterpriseSearchAgent(query),
     runCqlAgent(query),
   ]);
+
+  docsR.data = {
+    ...docsR.data,
+    docs: [...docsR.data.docs, ...enterpriseR.data.docs],
+    summary: [docsR.data.summary, enterpriseR.data.summary].filter(Boolean).join(" "),
+    mock: docsR.data.mock && enterpriseR.data.mock,
+  };
 
   const versionR = await runVersionAgent(query, jiraR.data, codeR.data);
 

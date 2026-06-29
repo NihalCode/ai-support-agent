@@ -7,6 +7,8 @@ export type WorkspaceSearchSourceType =
   | "cql"
   | "code"
   | "jira"
+  | "zendesk"
+  | "confluence"
   | "logs"
   | "investigation"
   | "snippet"

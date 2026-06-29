@@ -1,15 +1,17 @@
 import "server-only";
 
-import type { RepoConnector, TicketConnector, RepoRef } from "../types";
-import { getConfig, hasGitHub, hasJira } from "../config";
+import type { KnowledgeConnector, RepoConnector, TicketConnector, RepoRef } from "../types";
+import { getConfig, hasConfluence, hasGitHub, hasJira, hasZendesk } from "../config";
 import { isTestMode } from "@/lib/test-mode";
 import { GitHubConnector, parseRepoUrl } from "./github";
 import { JiraConnector } from "./jira";
+import { ConfluenceConnector, MockConfluenceConnector } from "./confluence";
 import {
   MockRepoConnector,
   MockGitHubTicketConnector,
   MockJiraTicketConnector,
 } from "./mock";
+import { MockZendeskTicketConnector, ZendeskConnector } from "./zendesk";
 import { MOCK_REPO } from "./mock-data";
 
 export { parseRepoUrl } from "./github";
@@ -75,11 +77,54 @@ export function getJiraTickets(): { connector: TicketConnector; mock: boolean } 
   return { connector: new MockJiraTicketConnector(), mock: true };
 }
 
+export function getZendeskTickets(): { connector: TicketConnector; mock: boolean } {
+  if (isTestMode()) {
+    return { connector: new MockZendeskTicketConnector(), mock: true };
+  }
+  const cfg = getConfig();
+  if (hasZendesk(cfg) && cfg.zendesk.subdomain && cfg.zendesk.email && cfg.zendesk.apiToken) {
+    return {
+      connector: new ZendeskConnector(
+        cfg.zendesk.subdomain,
+        cfg.zendesk.email,
+        cfg.zendesk.apiToken
+      ),
+      mock: false,
+    };
+  }
+  return { connector: new MockZendeskTicketConnector(), mock: true };
+}
+
+export function getConfluenceDocs(): { connector: KnowledgeConnector; mock: boolean } {
+  if (isTestMode()) {
+    return { connector: new MockConfluenceConnector(), mock: true };
+  }
+  const cfg = getConfig();
+  if (
+    hasConfluence(cfg) &&
+    cfg.confluence.baseUrl &&
+    cfg.confluence.email &&
+    cfg.confluence.apiToken
+  ) {
+    return {
+      connector: new ConfluenceConnector(
+        cfg.confluence.baseUrl,
+        cfg.confluence.email,
+        cfg.confluence.apiToken,
+        cfg.confluence.spaceKey
+      ),
+      mock: false,
+    };
+  }
+  return { connector: new MockConfluenceConnector(), mock: true };
+}
+
 export function ticketConnectorForRef(
   ref: string,
   repoRef: RepoRef
 ): { connector: TicketConnector; mock: boolean } {
   if (/^[A-Z][A-Z0-9]+-\d+$/.test(ref.trim())) return getJiraTickets();
+  if (/^ZD-\d+$/i.test(ref.trim())) return getZendeskTickets();
   return getGitHubTickets(repoRef);
 }
 

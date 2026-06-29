@@ -5,12 +5,14 @@ import {
   getRepoConnector,
   getGitHubTickets,
   getJiraTickets,
+  getZendeskTickets,
+  getConfluenceDocs,
   resolveRepoRef,
 } from "./connectors";
-import { chunkFile, chunkIssue, chunkCommit } from "./chunk";
+import { chunkFile, chunkIssue, chunkCommit, chunkKnowledgeDocument } from "./chunk";
 import { embedBatch } from "./embed";
 import { getVectorStore, namespaceFor } from "./vector-store";
-import { hasJira, getConfig } from "./config";
+import { hasConfluence, hasJira, hasZendesk, getConfig } from "./config";
 
 /**
  * Repo ingestion service: fetch repo files + README + commits + issues/PRs +
@@ -88,6 +90,28 @@ export async function ingestRepo(opts: {
       for (const t of tickets) chunks.push(chunkIssue(t, ref));
     } catch (e) {
       warnings.push(`Jira ingestion limited: ${(e as Error).message}`);
+    }
+  }
+
+  // --- Zendesk tickets ---
+  const { connector: zendeskTickets, mock: zendeskMock } = getZendeskTickets();
+  if (hasZendesk(cfg) || zendeskMock) {
+    try {
+      const tickets = await zendeskTickets.searchIssues("bug error issue", 30);
+      for (const t of tickets) chunks.push(chunkIssue(t, ref));
+    } catch (e) {
+      warnings.push(`Zendesk ingestion limited: ${(e as Error).message}`);
+    }
+  }
+
+  // --- Confluence knowledge docs ---
+  const { connector: confluenceDocs, mock: confluenceMock } = getConfluenceDocs();
+  if (hasConfluence(cfg) || confluenceMock) {
+    try {
+      const docs = await confluenceDocs.searchDocuments("support runbook api cql", 30);
+      for (const doc of docs) chunks.push(...chunkKnowledgeDocument(doc));
+    } catch (e) {
+      warnings.push(`Confluence ingestion limited: ${(e as Error).message}`);
     }
   }
 

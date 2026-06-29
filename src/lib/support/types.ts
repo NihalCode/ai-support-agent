@@ -14,6 +14,8 @@ export type SourceType =
   | "issue"
   | "pr"
   | "jira"
+  | "zendesk"
+  | "confluence"
   | "ticket"
   | "commit"
   | "openapi"
@@ -173,6 +175,24 @@ export interface TicketConnector {
   createIssue?(draft: JiraCreateDraft): Promise<{ ok: boolean; key?: string; url?: string }>;
 }
 
+export interface KnowledgeDocument {
+  id: string;
+  source: "confluence" | string;
+  title: string;
+  body: string;
+  url: string;
+  spaceKey?: string;
+  updatedAt?: string;
+}
+
+export interface KnowledgeConnector {
+  readonly id: string;
+  readonly isMock: boolean;
+  searchDocuments(query: string, limit?: number): Promise<KnowledgeDocument[]>;
+  getDocument(id: string): Promise<KnowledgeDocument | null>;
+  testConnection?(): Promise<{ ok: boolean; detail: string }>;
+}
+
 export interface RepoConnector {
   readonly id: string;
   readonly isMock: boolean;
@@ -246,6 +266,7 @@ export interface IngestRequest {
   repoUrl?: string;
   includeIssues?: boolean;
   includePRs?: boolean;
+  includeEnterpriseKnowledge?: boolean;
 }
 
 export interface IngestResult {
@@ -282,6 +303,9 @@ export interface AuditEntry {
   safetyClass?: SafetyClass;
   /** Connector/provider/MCP server the action targeted. */
   provider?: string;
+  actorId?: string;
+  actorEmail?: string;
+  orgId?: string;
 }
 
 /* --------------------- Normalized API schema (Phase 3) -------------------- */
@@ -422,7 +446,7 @@ export interface ApprovalRequest {
 
 /** Discriminated union of executable actions, all approval-gated. */
 export type ApprovalAction =
-  | { type: "ticket-comment"; provider: "github" | "jira"; ref: string; body: string; repoUrl?: string }
+  | { type: "ticket-comment"; provider: "github" | "jira" | "zendesk"; ref: string; body: string; repoUrl?: string }
   | { type: "jira-transition"; ref: string; transition: string }
   | { type: "jira-link"; from: string; to: string; linkType: string }
   | { type: "jira-create"; projectKey: string; summary: string; description: string; issueType: string }
