@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { buildSpecRequest, findSpecEndpoint } from "@/lib/support/api-execute";
 import { getSpec, listSpecs } from "@/lib/support/api-specs/registry";
 import { getConfig } from "@/lib/support/config";
@@ -13,7 +14,10 @@ export const maxDuration = 60;
  *   GET  → list specs + endpoint counts
  *   POST {intent:"preview"|"execute", specId, method?, path?, query?, body?, search?, approved?}
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   return NextResponse.json({
     specs: listSpecs().map((s) => ({
       id: s.id,
@@ -46,6 +50,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.intent === "execute" ? SupportApiPermission.approve : SupportApiPermission.read;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
 
   if (!body.specId?.trim()) {
     return NextResponse.json({ error: "specId is required" }, { status: 400 });

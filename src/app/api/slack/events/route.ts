@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
 import { redact } from "@/lib/support/redact";
 import { postSlackMessage } from "@/lib/support/slack/client";
+import { slackSigningSecret } from "@/lib/support/slack/credentials";
+import { enrichSlackThread } from "@/lib/support/slack/enrich-thread";
 import { verifySlackSignature } from "@/lib/support/slack/signature";
-import { appendSlackThreadMessage, getSlackThread } from "@/lib/support/slack/thread-store";
+import { appendSlackThreadMessage } from "@/lib/support/slack/thread-store";
 import { isTestMode } from "@/lib/test-mode";
 
 export const runtime = "nodejs";
@@ -26,6 +27,7 @@ interface SlackEventCallback {
     ts?: string;
     thread_ts?: string;
     bot_id?: string;
+    subtype?: string;
   };
 }
 
@@ -33,9 +35,9 @@ type SlackEventBody = SlackUrlVerification | SlackEventCallback;
 
 async function verify(req: Request, rawBody: string): Promise<NextResponse | null> {
   if (isTestMode()) return null;
-  const cfg = getConfig();
+  const signingSecret = await slackSigningSecret();
   const verdict = verifySlackSignature({
-    signingSecret: cfg.slack.signingSecret,
+    signingSecret,
     timestamp: req.headers.get("x-slack-request-timestamp"),
     signature: req.headers.get("x-slack-signature"),
     rawBody,
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
   }
 
   const event = body.event;
-  if (!event || event.bot_id || !event.channel || !event.ts) {
+  if (!event || event.bot_id || event.subtype || !event.channel || !event.ts) {
     return NextResponse.json({ ok: true });
   }
 
@@ -74,7 +76,8 @@ export async function POST(req: Request) {
 
   const threadTs = event.thread_ts ?? event.ts;
   const text = redact(event.text ?? "");
-  const thread = appendSlackThreadMessage({
+
+  appendSlackThreadMessage({
     channelId: event.channel,
     threadTs,
     teamId: body.team_id,
@@ -85,11 +88,27 @@ export async function POST(req: Request) {
     },
   });
 
-  const prior = getSlackThread(event.channel, threadTs);
-  const reply =
-    prior && prior.messages.length > 1
-      ? "I added this to the support thread context. Open AI Support Studio for the full investigation, or create an approval card for any write action."
-      : "I’m tracking this support thread. Share a ticket, request ID, endpoint, or error and I’ll keep the context together.";
+  let reply: string;
+  let sessionId: string | undefined;
+  try {
+    const enriched = await enrichSlackThread({
+      channelId: event.channel,
+      threadTs,
+      latestMessage: text,
+    });
+    reply = enriched.text;
+    sessionId = enriched.sessionId;
+  } catch (err) {
+    reply =
+      "I hit an error running the investigation. Open AI Support Studio for the full workflow, or try again with a ticket key or endpoint.";
+    await audit({
+      action: "slack:enrich-error",
+      target: `${event.channel}:${threadTs}`,
+      approved: false,
+      provider: "slack",
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   await postSlackMessage({
     channel: event.channel,
@@ -109,7 +128,7 @@ export async function POST(req: Request) {
     target: `${event.channel}:${threadTs}`,
     approved: true,
     provider: "slack",
-    details: `stored ${thread.messages.length} message(s) in thread memory`,
+    details: sessionId ? `investigation ${sessionId}` : "thread reply",
   });
 
   return NextResponse.json({ ok: true });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getSpec, listSpecs } from "@/lib/support/api-specs/registry";
 
 export const runtime = "nodejs";
@@ -9,6 +10,9 @@ export const runtime = "nodejs";
  * GET (no params) → specs + integration summary hooks
  */
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const url = new URL(req.url);
   const specId = url.searchParams.get("specId");
 

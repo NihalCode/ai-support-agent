@@ -1,6 +1,7 @@
 import "server-only";
 
-import { getConfig } from "../config";
+import { defaultOrgId } from "@/lib/auth/config";
+import { resolveSlackCredentials } from "@/integrations/core/resolveIntegrationCredentials";
 import { redact } from "../redact";
 import { safeFetch } from "../../ssrf";
 
@@ -14,9 +15,11 @@ export async function postSlackMessage(input: {
   text: string;
   threadTs?: string;
   blocks?: SlackBlock[];
+  orgId?: string;
 }): Promise<{ ok: boolean; detail: string; ts?: string }> {
-  const token = getConfig().slack.botToken;
-  if (!token) return { ok: false, detail: "SLACK_BOT_TOKEN not configured" };
+  const creds = await resolveSlackCredentials(input.orgId ?? defaultOrgId());
+  const token = creds.botToken;
+  if (!token) return { ok: false, detail: "Slack bot token not configured" };
 
   const res = await safeFetch("https://slack.com/api/chat.postMessage", {
     method: "POST",

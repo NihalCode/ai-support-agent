@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   enqueueApproval,
   getApproval,
@@ -23,6 +24,9 @@ export const runtime = "nodejs";
  *   POST {intent:"reject",  id}    → mark rejected
  */
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const status = new URL(req.url).searchParams.get("status") as ApprovalStatus | null;
   return NextResponse.json({ approvals: listApprovals(status ?? undefined) });
 }
@@ -40,6 +44,9 @@ interface DecisionBody {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.approve, req);
+  if (auth instanceof NextResponse) return auth;
+
   let body: CreateBody | DecisionBody;
   try {
     body = (await req.json()) as CreateBody | DecisionBody;

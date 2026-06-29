@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   resolveRepoRef,
   getGitHubTickets,
@@ -16,6 +17,9 @@ export const runtime = "nodejs";
  * GET /api/support/tickets  -> recent Jira issues (when Jira live)
  */
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const ref = url.searchParams.get("ref")?.trim();

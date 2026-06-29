@@ -66,4 +66,22 @@ describe("resolveIntegrationCredentials", () => {
     expect(creds.email).toBe("env@example.com");
     expect(creds.apiToken).toBe("env-token");
   });
+
+  it("resolves Slack credentials from store", async () => {
+    const { CredentialStore } = await import("@/integrations/core/CredentialStore");
+    await CredentialStore.save(
+      "slack",
+      { botToken: "xoxb-test", signingSecret: "sign-secret" },
+      "default",
+      "user-1"
+    );
+
+    const { resolveSlackCredentials, slackCredentialsConfigured } = await import(
+      "@/integrations/core/resolveIntegrationCredentials"
+    );
+    const creds = await resolveSlackCredentials("default");
+    expect(creds.botToken).toBe("xoxb-test");
+    expect(creds.signingSecret).toBe("sign-secret");
+    expect(slackCredentialsConfigured(creds)).toBe(true);
+  });
 });

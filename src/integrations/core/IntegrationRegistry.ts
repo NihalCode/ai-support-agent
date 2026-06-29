@@ -17,6 +17,8 @@ import { getConfluenceDocs, getZendeskTickets } from "@/lib/support/connectors";
 import {
   jiraCredentialsConfigured,
   resolveJiraCredentials,
+  resolveSlackCredentials,
+  slackCredentialsConfigured,
 } from "./resolveIntegrationCredentials";
 import { CredentialStore } from "./CredentialStore";
 import type {
@@ -227,8 +229,10 @@ export class IntegrationRegistry {
       return connector.testConnection?.() ?? { ok: true, detail: "Confluence credentials present" };
     }
     if (id === "slack") {
-      const cfg = getConfig();
-      if (!hasSlack(cfg)) return { ok: false, detail: "Slack not configured" };
+      const creds = await resolveSlackCredentials();
+      if (!slackCredentialsConfigured(creds)) {
+        return { ok: false, detail: "Slack not configured" };
+      }
       return { ok: true, detail: "Slack bot token and signing secret present" };
     }
     const def = IntegrationRegistry.getDefinition(id);

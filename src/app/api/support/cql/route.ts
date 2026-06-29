@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { ingestCqlDocs, DEFAULT_CQL_DOC_URL } from "@/lib/support/cql/ingest-docs";
 import { generateCql } from "@/lib/support/cql/generate";
 import { audit } from "@/lib/support/audit";
@@ -29,6 +30,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.intent === "index" ? SupportApiPermission.developer : SupportApiPermission.read;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
 
   if (body.intent === "index") {
     try {

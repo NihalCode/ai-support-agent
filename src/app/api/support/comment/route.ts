@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   draftCustomerComment,
   draftEngineeringNote,
@@ -13,6 +14,9 @@ export const runtime = "nodejs";
  * analysis. Pure drafting — performs NO external writes.
  */
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as { analysis?: IssueAnalysis; target?: "github" | "jira" };
     if (!body.analysis) {

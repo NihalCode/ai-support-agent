@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import type { ApiImportRequest } from "@/lib/support/types";
 import { normalizeApiSource } from "@/lib/support/api-specs";
 import { indexSpec, registerSpec, listSpecs, removeSpec } from "@/lib/support/api-specs/registry";
@@ -20,7 +21,10 @@ export const maxDuration = 60;
  *   GET            → list imported specs (summaries)
  *   POST {content|url, kind?, name?, index?}
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   const specs = listSpecs().map((s) => ({
     id: s.id,
     name: s.name,
@@ -33,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   let body: ApiImportRequest & { cywareProduct?: CywareProductId; delete?: string };
   try {
     body = (await req.json()) as ApiImportRequest & { cywareProduct?: CywareProductId; delete?: string };

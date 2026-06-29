@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { ingestRepo } from "@/lib/support/ingest";
 import { ingestEnterpriseKnowledge } from "@/lib/support/enterprise/knowledge-ingest";
 import { audit } from "@/lib/support/audit";
@@ -8,6 +9,9 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.investigate, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as IngestRequest;
     const result = await ingestRepo({

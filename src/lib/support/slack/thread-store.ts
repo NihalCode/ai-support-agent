@@ -17,6 +17,7 @@ export interface SlackThreadMemory {
   channelId: string;
   threadTs: string;
   teamId?: string;
+  investigationSessionId?: string;
   messages: SlackThreadMessage[];
   updatedAt: string;
 }
@@ -48,6 +49,21 @@ function key(channelId: string, threadTs: string): string {
 export function getSlackThread(channelId: string, threadTs: string): SlackThreadMemory | null {
   const k = key(channelId, threadTs);
   return readAll().find((t) => key(t.channelId, t.threadTs) === k) ?? null;
+}
+
+export function setSlackThreadInvestigation(
+  channelId: string,
+  threadTs: string,
+  investigationSessionId: string
+): SlackThreadMemory | null {
+  const threads = readAll();
+  const k = key(channelId, threadTs);
+  const thread = threads.find((t) => key(t.channelId, t.threadTs) === k);
+  if (!thread) return null;
+  thread.investigationSessionId = investigationSessionId;
+  thread.updatedAt = new Date().toISOString();
+  writeAll(threads);
+  return thread;
 }
 
 export function appendSlackThreadMessage(input: {

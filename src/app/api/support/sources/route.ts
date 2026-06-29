@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getVectorStore } from "@/lib/support/vector-store";
 import { addKnowledge, type KnowledgeKind } from "@/lib/support/knowledge";
 import { audit } from "@/lib/support/audit";
@@ -19,7 +20,10 @@ function categorize(ns: string): string {
   return "repo";
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const store = getVectorStore();
     const namespaces = await store.listNamespaces();
@@ -46,6 +50,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.intent === "delete" ? SupportApiPermission.developer : SupportApiPermission.investigate;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
 
   if (body.intent === "add-knowledge") {
     if (!body.kind || !body.title?.trim() || !body.text?.trim()) {

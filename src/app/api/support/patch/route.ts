@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { generatePatch } from "@/lib/support/patch";
 import type { IssueAnalysis } from "@/lib/support/types";
 
@@ -7,6 +8,9 @@ export const maxDuration = 60;
 
 /** Generate an advisory code patch (diff) grounded in retrieved code. */
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as { description?: string; analysis?: IssueAnalysis };
     if (!body.analysis) {

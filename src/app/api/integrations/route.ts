@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/session";
 import { IntegrationAuditLog } from "@/integrations/core/IntegrationAuditLog";
 import { IntegrationRegistry } from "@/integrations/core/IntegrationRegistry";
+import { credentialFieldsFor } from "@/integrations/core/integrationCredentialFields";
 import { runIntegrationHealthCheck } from "@/integrations/core/IntegrationHealthCheck";
 import { CredentialStore, hasCredentialEncryption } from "@/integrations/core/CredentialStore";
 import type { IntegrationId } from "@/integrations/core/IntegrationTypes";
@@ -28,6 +29,9 @@ export async function GET() {
   return NextResponse.json({
     integrations,
     definitions,
+    credentialFields: Object.fromEntries(
+      definitions.map((d) => [d.id, credentialFieldsFor(d.id)])
+    ),
     credentialStore: {
       encryptionAvailable: hasCredentialEncryption(),
     },

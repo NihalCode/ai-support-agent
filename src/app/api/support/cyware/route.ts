@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import type { CywareProductId } from "@/lib/support/cyware-products";
 import { getCywareProductConnector, type CywareFlow } from "@/lib/support/connectors/cyware-product";
 import { listProviders } from "@/lib/support/providers";
@@ -14,6 +15,9 @@ export const runtime = "nodejs";
  *   POST {product?, intent, method, path, query?, body?, flow?, approved?}
  */
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const product = parseProduct(new URL(req.url).searchParams.get("product"));
   const conn = getCywareProductConnector(product);
   const status = conn.configured ? await conn.testConnection() : { ok: false, detail: "not configured" };
@@ -61,6 +65,11 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.intent === "execute" ? SupportApiPermission.approve : SupportApiPermission.read;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
 
   const product = body.product ?? "ctix";
   const cyware = getCywareProductConnector(product);

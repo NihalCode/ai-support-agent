@@ -6,8 +6,15 @@ import { auth0 } from "@/lib/auth0";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
+/** Webhooks verified by provider signature — not Auth0 session. */
+const PUBLIC_API_PREFIXES = ["/api/slack/"];
+
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isPublicApiPath(pathname: string): boolean {
+  return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
 }
 
 export async function middleware(request: NextRequest) {
@@ -25,6 +32,9 @@ export async function middleware(request: NextRequest) {
   const authUser = await getMiddlewareAuthUser(request);
 
   if (pathname.startsWith("/api/")) {
+    if (isPublicApiPath(pathname)) {
+      return authResponse;
+    }
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   getConfig,
   hasOpenAI,
@@ -12,7 +13,7 @@ import {
   hasCywareProduct,
   maskSecret,
 } from "@/lib/support/config";
-import { getAppSession, sessionToJson } from "@/lib/auth/session";
+import { sessionToJson } from "@/lib/auth/session";
 import { isAuthConfigured } from "@/lib/auth/config";
 import { pingSessionStore } from "@/lib/support/investigation/session-store";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
@@ -20,9 +21,12 @@ import { getCywareProductConnector } from "@/lib/support/connectors/cyware-produ
 export const runtime = "nodejs";
 
 /** Reports which integrations are live vs. running on mocks. Secrets are masked. */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const cfg = getConfig();
-  const session = await getAppSession();
+  const session = auth;
   const ctix = getCywareProductConnector("ctix");
 
   const sessionBackend = await pingSessionStore();

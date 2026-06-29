@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
 import { executeAction } from "@/lib/support/executor";
@@ -20,6 +21,9 @@ interface WriteBody {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.approve, req);
+  if (auth instanceof NextResponse) return auth;
+
   let parsed: WriteBody;
   try {
     parsed = (await req.json()) as WriteBody;

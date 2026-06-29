@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   handleBuildAppPlan,
   handleBuildAppDeploy,
@@ -54,6 +55,9 @@ type Body =
   | { action: "approve-and-run"; approvalId: string };
 
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const url = new URL(req.url);
   const projectId = url.searchParams.get("projectId");
   if (projectId) {
@@ -65,6 +69,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.build, req);
+  if (auth instanceof NextResponse) return auth;
+
   let body: Body;
   try {
     body = (await req.json()) as Body;

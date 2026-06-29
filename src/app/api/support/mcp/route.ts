@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { serverStatuses, discoverAll, discoverTools } from "@/lib/support/mcp/registry";
 import { previewMcpCall, executeMcpCall } from "@/lib/support/mcp/executor";
 import { getConfig } from "@/lib/support/config";
@@ -13,6 +14,9 @@ export const runtime = "nodejs";
  *   POST {intent:"execute", server, tool, args, approved} → guarded execution
  */
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   const url = new URL(req.url);
   const server = url.searchParams.get("server");
   const wantTools = url.searchParams.get("tools");
@@ -45,6 +49,12 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.intent === "execute" ? SupportApiPermission.approve : SupportApiPermission.developer;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
+
   if (!body.server || !body.tool) {
     return NextResponse.json({ error: "server and tool are required" }, { status: 400 });
   }

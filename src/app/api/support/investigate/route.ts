@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { runInvestigation, runInvestigationChat } from "@/lib/support/agents/orchestratorAgent";
 import { getSession } from "@/lib/support/investigation/session-store";
 import type { InvestigateRequest } from "@/lib/support/investigation/types";
@@ -9,6 +10,9 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const id = new URL(req.url).searchParams.get("sessionId");
   if (!id) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
   const ctx = await getSession(id);
@@ -17,6 +21,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.investigate, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as InvestigateRequest;
 

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/audit";
 import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
 import { postSlackMessage } from "@/lib/support/slack/client";
+import { slackSigningSecret } from "@/lib/support/slack/credentials";
 import { verifySlackSignature } from "@/lib/support/slack/signature";
 import { isTestMode } from "@/lib/test-mode";
 
@@ -20,9 +20,9 @@ interface SlackInteractionPayload {
 
 async function verify(req: Request, rawBody: string): Promise<NextResponse | null> {
   if (isTestMode()) return null;
-  const cfg = getConfig();
+  const signingSecret = await slackSigningSecret();
   const verdict = verifySlackSignature({
-    signingSecret: cfg.slack.signingSecret,
+    signingSecret,
     timestamp: req.headers.get("x-slack-request-timestamp"),
     signature: req.headers.get("x-slack-signature"),
     rawBody,

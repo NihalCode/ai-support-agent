@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getSession, saveSession } from "@/lib/support/investigation/session-store";
 import { investigationToAnalysis } from "@/lib/support/investigation/to-analysis";
 import { generatePrDescription } from "@/lib/support/investigation/pr-description";
@@ -54,6 +55,13 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  const perm =
+    body.action === "create-jira" && body.approved
+      ? SupportApiPermission.approve
+      : SupportApiPermission.investigate;
+  const auth = await requireSupportApi(perm, req);
+  if (auth instanceof NextResponse) return auth;
 
   if (!body.sessionId?.trim() || !body.action) {
     return NextResponse.json({ error: "sessionId and action required" }, { status: 400 });
@@ -198,6 +206,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const id = new URL(req.url).searchParams.get("sessionId");
   if (!id) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
   const ctx = await getSession(id);

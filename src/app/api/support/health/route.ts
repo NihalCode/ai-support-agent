@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import {
   getConfig,
   hasOpenAI,
@@ -28,7 +29,10 @@ interface ConnectorHealth {
  * Connector + integration health checks. Live ping for Jira, GitHub, Cyware
  * products, and MCP servers. Secrets are masked — never returned in full.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   const cfg = getConfig();
   const connectors: ConnectorHealth[] = [];
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { analyzeIssue } from "@/lib/support/analyze";
 import { resolveRepoRef, ticketConnectorForRef } from "@/lib/support/connectors";
 import { audit } from "@/lib/support/audit";
@@ -8,6 +9,9 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as AnalyzeRequest;
     if (!body.description?.trim() && !body.issueRef?.trim()) {

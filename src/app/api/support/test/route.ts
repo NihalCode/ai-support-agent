@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { runAllTestCases, runTestCase } from "@/lib/support/eval/run";
 import { TEST_CASES } from "@/lib/support/eval/test-cases";
 
@@ -6,7 +7,10 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 /** List the available test cases. */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   return NextResponse.json({
     cases: TEST_CASES.map((t) => ({ id: t.id, name: t.name, description: t.description })),
   });
@@ -14,6 +18,9 @@ export async function GET() {
 
 /** Run one test case (by id) or all of them. */
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.developer, req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json().catch(() => ({}))) as { id?: string };
     if (body.id) {

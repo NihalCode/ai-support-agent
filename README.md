@@ -93,7 +93,7 @@ See **[docs/IDE-FEATURES.md](docs/IDE-FEATURES.md)** for:
 
 Describe a Cyware API app in natural language — the **App Builder Agent** selects a template, picks endpoints from the API Registry, generates server-side API routes, and prepares Vercel deployment with approval gates.
 
-See **[docs/BUILD-APP.md](docs/BUILD-APP.md)** · **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** · **[docs/SECURITY-BUILD-APP.md](docs/SECURITY-BUILD-APP.md)**
+See **[docs/BUILD-APP.md](docs/BUILD-APP.md)** · **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** · **[docs/ENTERPRISE-SETUP.md](docs/ENTERPRISE-SETUP.md)** · **[docs/SECURITY-BUILD-APP.md](docs/SECURITY-BUILD-APP.md)**
 
 ```bash
 # Activity bar → Build App (🛠), or /build-app in chat

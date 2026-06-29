@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getConfig, hasOpenAI } from "@/lib/support/config";
 import { getSession, saveSession } from "@/lib/support/investigation/session-store";
 import { runInvestigationChat } from "@/lib/support/agents/orchestratorAgent";
@@ -38,6 +39,9 @@ function investigationTitle(message: string): string {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireSupportApi(SupportApiPermission.read, req);
+  if (auth instanceof NextResponse) return auth;
+
   let body: StreamBody;
   try {
     body = (await req.json()) as StreamBody;
