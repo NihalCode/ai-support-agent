@@ -4,12 +4,13 @@ import { runInvestigation, runInvestigationChat } from "../agents/orchestratorAg
 import { extractNaturalLanguageDetails } from "../investigation/extract-query";
 import type { SupportQuery } from "../investigation/types";
 import { getSlackThread, setSlackThreadInvestigation } from "./thread-store";
+import { upsertInvestigationLinks } from "../enterprise/stores/investigation-links-store";
 
 const INVESTIGATION_KEYWORDS =
   /\b(error|fail|bug|issue|ticket|api|endpoint|cql|500|401|403|sync|help|investigate|broken)\b/i;
 
-function threadQueryText(channelId: string, threadTs: string, latest: string): string {
-  const thread = getSlackThread(channelId, threadTs);
+async function threadQueryText(channelId: string, threadTs: string, latest: string): Promise<string> {
+  const thread = await getSlackThread(channelId, threadTs);
   const parts = (thread?.messages ?? [])
     .filter((m) => m.role === "user")
     .map((m) => m.text.trim())
@@ -43,6 +44,7 @@ export async function enrichSlackThread(input: {
   channelId: string;
   threadTs: string;
   latestMessage: string;
+  teamId?: string;
 }): Promise<{ text: string; sessionId?: string; mode: "investigation" | "chat" | "ack" }> {
   const latest = input.latestMessage.trim();
   if (!latest) {
@@ -52,7 +54,7 @@ export async function enrichSlackThread(input: {
     };
   }
 
-  const thread = getSlackThread(input.channelId, input.threadTs);
+  const thread = await getSlackThread(input.channelId, input.threadTs, input.teamId);
   const sessionId = thread?.investigationSessionId;
 
   if (sessionId) {
@@ -64,7 +66,7 @@ export async function enrichSlackThread(input: {
     }
   }
 
-  const combined = threadQueryText(input.channelId, input.threadTs, latest);
+  const combined = await threadQueryText(input.channelId, input.threadTs, latest);
   const shouldInvestigate =
     combined.length >= 12 || INVESTIGATION_KEYWORDS.test(combined) || Boolean(buildSupportQuery(combined).issueRef);
 
@@ -76,21 +78,30 @@ export async function enrichSlackThread(input: {
   }
 
   const result = await runInvestigation(buildSupportQuery(combined));
-  setSlackThreadInvestigation(input.channelId, input.threadTs, result.sessionId);
+  await setSlackThreadInvestigation(
+    input.channelId,
+    input.threadTs,
+    result.sessionId,
+    input.teamId
+  );
 
+  const slackThreadId = `${input.channelId}:${input.threadTs}`;
+  const query = buildSupportQuery(combined);
+  await upsertInvestigationLinks(result.sessionId, {
+    sourceSystem: "slack",
+    slackThreadId,
+    zendeskTicketId: query.issueRef,
+    customerSummary: combined.slice(0, 500),
+  }).catch(() => undefined);
+
+  const appBase = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL;
   const summary =
-    result.report.customerResponse ||
-    result.report.likelyCause ||
-    (typeof result.report.whatWeFound === "string"
-      ? result.report.whatWeFound
-      : JSON.stringify(result.report.whatWeFound)) ||
-    `Investigation complete — status: ${result.report.currentStatus}.`;
-
-  const { getConfig } = await import("../config");
-  const cfg = getConfig();
-
+    result.chatReply ??
+    result.markdownReport?.slice(0, 500) ??
+    result.report?.plainEnglishSummary ??
+    "Investigation started.";
   return {
-    text: formatInvestigationReply(summary, result.sessionId, cfg.appBaseUrl),
+    text: formatInvestigationReply(summary, result.sessionId, appBase),
     sessionId: result.sessionId,
     mode: "investigation",
   };

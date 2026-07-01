@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSupportApi, SupportApiPermission } from "@/lib/auth/support-api-auth";
 import { getConfig } from "@/lib/support/config";
-import { audit } from "@/lib/support/audit";
+import { audit } from "@/lib/support/enterprise/audit-log";
 import { executeAction } from "@/lib/support/executor";
 
 export const runtime = "nodejs";
@@ -18,6 +18,7 @@ interface WriteBody {
   repoUrl?: string;
   body: string;
   approved: boolean;
+  approvalId?: string;
 }
 
 export async function POST(req: Request) {
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
         body: parsed.body,
         repoUrl: parsed.repoUrl,
       },
-      { approved: true }
+      { approved: true, approvalId: parsed.approvalId }
     );
     return NextResponse.json({ ok: result.ok, url: result.url, mock: result.mock, detail: result.detail });
   } catch (err) {

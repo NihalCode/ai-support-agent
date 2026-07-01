@@ -446,7 +446,9 @@ export interface ApprovalRequest {
 
 /** Discriminated union of executable actions, all approval-gated. */
 export type ApprovalAction =
-  | { type: "ticket-comment"; provider: "github" | "jira" | "zendesk"; ref: string; body: string; repoUrl?: string }
+  | { type: "ticket-comment"; provider: "github" | "jira" | "zendesk"; ref: string; body: string; repoUrl?: string; public?: boolean }
+  | { type: "zendesk-create"; subject: string; body: string; requesterEmail?: string }
+  | { type: "slack-message"; channel: string; threadTs?: string; text: string }
   | { type: "jira-transition"; ref: string; transition: string }
   | { type: "jira-link"; from: string; to: string; linkType: string }
   | { type: "jira-create"; projectKey: string; summary: string; description: string; issueType: string }

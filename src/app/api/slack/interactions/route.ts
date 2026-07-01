@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { audit } from "@/lib/support/audit";
+import { audit } from "@/lib/support/enterprise/audit-log";
 import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
 import { postSlackMessage } from "@/lib/support/slack/client";
@@ -57,14 +57,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
   }
 
-  const approval = getApproval(approvalId);
+  const approval = await getApproval(approvalId);
   if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
   if (approval.status !== "pending") {
     return NextResponse.json({ text: `Approval already ${approval.status}` });
   }
 
   if (decision === "reject") {
-    const updated = setApprovalStatus(approvalId, "rejected", `Rejected from Slack by ${payload.user?.id ?? "unknown"}`);
+    const updated = await setApprovalStatus(
+      approvalId,
+      "rejected",
+      `Rejected from Slack by ${payload.user?.id ?? "unknown"}`
+    );
     await audit({
       action: "slack:approval:reject",
       target: approvalId,
@@ -77,14 +81,14 @@ export async function POST(req: Request) {
   }
 
   if (approval.safety.blocked) {
-    setApprovalStatus(approvalId, "rejected", approval.safety.reason);
+    await setApprovalStatus(approvalId, "rejected", approval.safety.reason);
     await maybeReply(payload, `Blocked approval ${approvalId}: ${approval.safety.reason}`);
     return NextResponse.json({ text: approval.safety.reason });
   }
 
   try {
-    const result = await executeAction(approval.action, { approved: true });
-    const updated = setApprovalStatus(approvalId, result.ok ? "executed" : "failed", result.detail);
+    const result = await executeAction(approval.action, { approved: true, approvalId });
+    const updated = await setApprovalStatus(approvalId, result.ok ? "executed" : "failed", result.detail);
     await audit({
       action: "slack:approval:approve",
       target: approvalId,
@@ -96,7 +100,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ text: `Executed: ${result.detail}` });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Execution failed";
-    setApprovalStatus(approvalId, "failed", message);
+    await setApprovalStatus(approvalId, "failed", message);
     await maybeReply(payload, `Approval ${approvalId} failed: ${message}`);
     return NextResponse.json({ text: message }, { status: 500 });
   }

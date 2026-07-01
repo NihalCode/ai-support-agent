@@ -15,7 +15,7 @@ export default defineConfig({
   webServer: {
     command: "npm run build && npm run start",
     url: "http://127.0.0.1:3000",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000,
     env: {
       TEST_MODE: "true",

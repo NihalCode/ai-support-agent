@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { audit } from "@/lib/support/audit";
+import { audit } from "@/lib/support/enterprise/audit-log";
 import { redact } from "@/lib/support/redact";
 import { postSlackMessage } from "@/lib/support/slack/client";
 import { slackSigningSecret } from "@/lib/support/slack/credentials";
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   const threadTs = event.thread_ts ?? event.ts;
   const text = redact(event.text ?? "");
 
-  appendSlackThreadMessage({
+  await appendSlackThreadMessage({
     channelId: event.channel,
     threadTs,
     teamId: body.team_id,
@@ -95,6 +95,7 @@ export async function POST(req: Request) {
       channelId: event.channel,
       threadTs,
       latestMessage: text,
+      teamId: body.team_id,
     });
     reply = enriched.text;
     sessionId = enriched.sessionId;
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
     text: reply,
   }).catch(() => undefined);
 
-  appendSlackThreadMessage({
+  await appendSlackThreadMessage({
     channelId: event.channel,
     threadTs,
     teamId: body.team_id,

@@ -595,6 +595,7 @@ test.describe("Settings and integrations", () => {
     await page.getByTestId("product-mode-toggle").selectOption("developer");
     await page.getByTestId("activity-settings").click();
     await expect(page.getByTestId("settings-editor")).toBeVisible();
+    await expect(page.getByTestId("integration-health-panel")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("integration-settings-panel")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("integration-row-jira")).toBeVisible();
     await page.getByTestId("integration-configure-jira").click();
@@ -604,6 +605,19 @@ test.describe("Settings and integrations", () => {
     await expect(page.getByTestId("integration-settings-message")).toContainText(/jira/i, {
       timeout: 10000,
     });
+  });
+
+  test("shows enterprise admin sections in developer mode", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-settings").click();
+    const settings = page.getByTestId("settings-editor");
+    await settings.getByTestId("settings-nav-setup").click();
+    await expect(settings.getByTestId("setup-checklist-panel")).toBeVisible({ timeout: 10000 });
+    await settings.getByTestId("settings-nav-audit").click();
+    await expect(settings.getByTestId("audit-logs-panel")).toBeVisible();
+    await settings.getByTestId("settings-nav-knowledge").click();
+    await expect(settings.getByTestId("knowledge-sources-panel")).toBeVisible();
   });
 
   test("auth me bootstrap returns session in test mode", async ({ request }) => {
@@ -635,6 +649,8 @@ test.describe("API smoke (authenticated test mode)", () => {
       "/api/support/bootstrap",
       "/api/integrations",
       "/api/support/tickets?ref=PAY-101",
+      "/api/support/enterprise/health",
+      "/api/support/enterprise/setup",
     ]) {
       const res = await request.get(path);
       expect(res.ok(), `${path} should succeed in test mode`).toBeTruthy();

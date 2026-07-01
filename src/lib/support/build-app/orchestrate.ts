@@ -32,7 +32,7 @@ export async function handleBuildAppDeploy(
   return runAppDeployAgent(projectId, target, credentials);
 }
 
-export function requestScaffoldApproval(projectId: string, preview: string) {
+export async function requestScaffoldApproval(projectId: string, preview: string) {
   const safety = classifyAction({
     kind: "api",
     method: "POST",
@@ -45,7 +45,7 @@ export function requestScaffoldApproval(projectId: string, preview: string) {
   });
 }
 
-export function requestWriteApproval(projectId: string, paths: string[], preview: string) {
+export async function requestWriteApproval(projectId: string, paths: string[], preview: string) {
   const safety = classifyAction({
     kind: "api",
     method: "PUT",
@@ -58,7 +58,7 @@ export function requestWriteApproval(projectId: string, paths: string[], preview
   });
 }
 
-export function requestDeployApproval(projectId: string, target: DeploymentTarget, preview: string) {
+export async function requestDeployApproval(projectId: string, target: DeploymentTarget, preview: string) {
   const safety = classifyAction({
     kind: "api",
     method: "POST",

@@ -20,6 +20,7 @@ import { pingPostgres } from "@/lib/db/postgres";
 import { credentialStoreBackend } from "@/integrations/core/CredentialStore";
 import { pingSessionStore } from "@/lib/support/investigation/session-store";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
+import { enterpriseAuditBackend } from "@/lib/support/enterprise/audit-log";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
         reachable: postgresOk,
         userStore: userStoreBackend(),
         credentialStore: credentialStoreBackend(),
-        auditLog: userStoreBackend(),
+        auditLog: enterpriseAuditBackend(),
       },
     },
     integrations: {

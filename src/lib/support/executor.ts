@@ -3,9 +3,12 @@ import "server-only";
 import type { ApprovalAction } from "./types";
 import { resolveRepoRef, ticketConnectorForRef, getJiraTickets, getZendeskTickets } from "./connectors";
 import { getConfig } from "./config";
-import { audit } from "./audit";
+import { audit } from "./enterprise/audit-log";
+import { assertApprovedForExecution } from "./approvals";
 import { redact, redactHeaders } from "./redact";
 import { safeFetch } from "../ssrf";
+import { isTestMode } from "@/lib/test-mode";
+import { postSlackMessage } from "./slack/client";
 
 /**
  * Single execution point for every approval-gated action. The approval queue
@@ -22,7 +25,7 @@ export interface ExecuteResult {
 
 export async function executeAction(
   action: ApprovalAction,
-  opts: { approved: boolean } = { approved: false }
+  opts: { approved: boolean; approvalId?: string } = { approved: false }
 ): Promise<ExecuteResult> {
   const cfg = getConfig();
 
@@ -35,13 +38,39 @@ export async function executeAction(
     throw new Error("Action not approved. Explicit user approval is required.");
   }
 
+  if (!opts.approvalId && !isTestMode()) {
+    await audit({
+      action: `exec:${action.type}`,
+      approved: false,
+      details: "rejected: missing approval request id",
+    });
+    throw new Error("Valid approval request ID is required.");
+  }
+
+  if (opts.approvalId) {
+    await assertApprovedForExecution(opts.approvalId, action);
+  }
+
   switch (action.type) {
     case "ticket-comment": {
       const { ref: repoRef } = resolveRepoRef(action.repoUrl);
-      const { connector, mock } =
-        action.provider === "zendesk"
-          ? await getZendeskTickets()
-          : await ticketConnectorForRef(action.ref, repoRef);
+      if (action.provider === "zendesk") {
+        const { connector, mock } = await getZendeskTickets();
+        const zc = connector as import("./connectors/zendesk").ZendeskConnector;
+        const result = action.public
+          ? await zc.addPublicReply(action.ref, action.body)
+          : await zc.addInternalNote(action.ref, action.body);
+        await audit({
+          action: action.public ? "write:zendesk-public-reply" : "write:zendesk-internal-note",
+          target: action.ref,
+          approved: true,
+          provider: connector.id,
+          safetyClass: action.public ? "WRITE_MEDIUM_RISK" : "WRITE_LOW_RISK",
+          details: `${mock ? "MOCK " : ""}posted to ${connector.id}: ${result.url ?? "ok"}`,
+        });
+        return { ok: result.ok, detail: result.url ?? "comment posted", url: result.url, mock: mock };
+      }
+      const { connector, mock } = await ticketConnectorForRef(action.ref, repoRef);
       const result = await connector.addComment(action.ref, action.body);
       await audit({
         action: "write:comment",
@@ -87,6 +116,47 @@ export async function executeAction(
       });
       await audit({ action: "write:jira-create", target: r.key ?? action.projectKey, approved: true, provider: "jira", safetyClass: "WRITE_MEDIUM_RISK", details: action.summary });
       return { ok: r.ok, detail: `created ${r.key ?? "issue"}`, url: r.url };
+    }
+
+    case "zendesk-create": {
+      const { connector, mock } = await getZendeskTickets();
+      const zc = connector as import("./connectors/zendesk").ZendeskConnector & {
+        createTicket?: (input: { subject: string; body: string; requesterEmail?: string }) => Promise<{ ok: boolean; key?: string; url?: string; mock?: boolean }>;
+      };
+      if (mock || !zc.createTicket) {
+        return mockWrite("zendesk-create", `${action.subject}`);
+      }
+      const r = await zc.createTicket({
+        subject: action.subject,
+        body: action.body,
+        requesterEmail: action.requesterEmail,
+      });
+      await audit({
+        action: "write:zendesk-create",
+        target: r.key ?? action.subject,
+        approved: true,
+        provider: "zendesk",
+        safetyClass: "WRITE_MEDIUM_RISK",
+        details: action.subject,
+      });
+      return { ok: r.ok, detail: `created ${r.key ?? "ticket"}`, url: r.url };
+    }
+
+    case "slack-message": {
+      const r = await postSlackMessage({
+        channel: action.channel,
+        threadTs: action.threadTs,
+        text: action.text,
+      });
+      await audit({
+        action: "write:slack-message",
+        target: `${action.channel}:${action.threadTs ?? "channel"}`,
+        approved: true,
+        provider: "slack",
+        safetyClass: "WRITE_MEDIUM_RISK",
+        details: redact(action.text.slice(0, 200)),
+      });
+      return { ok: r.ok, detail: r.ok ? "Slack message sent" : r.detail ?? "failed" };
     }
 
     case "api-call": {

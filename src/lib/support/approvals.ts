@@ -1,8 +1,7 @@
 import "server-only";
 
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+
 import type {
   ApprovalAction,
   ApprovalRequest,
@@ -10,108 +9,115 @@ import type {
   SafetyVerdict,
 } from "./types";
 import { redact } from "./redact";
-import { supportDataRoot } from "./data-root";
+import type { EnterpriseApprovalRequest } from "./enterprise/types";
+import {
+  buildPayloadPreview,
+  classifyApprovalMeta,
+  fetchApproval,
+  fetchApprovals,
+  saveApproval,
+  toLegacyApproval,
+} from "./enterprise/stores/approval-store";
 
-/**
- * Approval queue with in-memory cache + disk persistence for serverless (Vercel).
- * Survives cold starts and cross-request lookups within the same deployment region.
- */
+const g = globalThis as unknown as { __approvalMem?: Map<string, EnterpriseApprovalRequest> };
 
-const g = globalThis as unknown as { __approvalQueue?: Map<string, ApprovalRequest> };
-const queue: Map<string, ApprovalRequest> = (g.__approvalQueue ??= new Map());
-
-const MAX_ENTRIES = 200;
-
-function approvalsDir(): string {
-  return supportDataRoot("approvals");
+function mem(): Map<string, EnterpriseApprovalRequest> {
+  if (!g.__approvalMem) g.__approvalMem = new Map();
+  return g.__approvalMem;
 }
 
-function approvalPath(id: string): string {
-  return path.join(approvalsDir(), `${id}.json`);
+async function hydrateMem(id: string): Promise<EnterpriseApprovalRequest | null> {
+  const cached = mem().get(id);
+  if (cached) return cached;
+  const loaded = await fetchApproval(id);
+  if (loaded) mem().set(id, loaded);
+  return loaded;
 }
 
-function persistApproval(req: ApprovalRequest): void {
-  writeFileSync(approvalPath(req.id), JSON.stringify(req, null, 2));
-  queue.set(req.id, req);
-}
-
-function loadFromDisk(id: string): ApprovalRequest | null {
-  const file = approvalPath(id);
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, "utf8")) as ApprovalRequest;
-  } catch {
-    return null;
-  }
-}
-
-function hydrateQueueFromDisk(): void {
-  if (!existsSync(approvalsDir())) return;
-  for (const name of readdirSync(approvalsDir())) {
-    if (!name.endsWith(".json")) continue;
-    const id = name.slice(0, -5);
-    if (queue.has(id)) continue;
-    const loaded = loadFromDisk(id);
-    if (loaded) queue.set(id, loaded);
-  }
-}
-
-function prune() {
-  hydrateQueueFromDisk();
-  if (queue.size <= MAX_ENTRIES) return;
-  const sorted = [...queue.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  for (const entry of sorted.slice(0, queue.size - MAX_ENTRIES)) {
-    queue.delete(entry.id);
-    try {
-      unlinkSync(approvalPath(entry.id));
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-export function enqueueApproval(input: {
+export async function enqueueApproval(input: {
   action: ApprovalAction;
   safety: SafetyVerdict;
   preview: string;
-}): ApprovalRequest {
-  const req: ApprovalRequest = {
+  requestedByUserId?: string;
+}): Promise<ApprovalRequest> {
+  const now = new Date().toISOString();
+  const meta = classifyApprovalMeta(input.action, input.safety);
+  const req: EnterpriseApprovalRequest = {
     id: randomUUID(),
-    createdAt: new Date().toISOString(),
+    requestedByUserId: input.requestedByUserId ?? "system",
+    actionType: meta.actionType,
+    targetSystem: meta.targetSystem,
+    targetId: meta.targetId,
+    riskLevel: meta.riskLevel,
+    summary: meta.summary,
+    payloadPreview: buildPayloadPreview(input.action),
     status: "pending",
     action: input.action,
     safety: input.safety,
     preview: redact(input.preview),
+    createdAt: now,
+    updatedAt: now,
   };
-  persistApproval(req);
-  prune();
-  return req;
+  await saveApproval(req);
+  mem().set(req.id, req);
+  return toLegacyApproval(req);
 }
 
-export function getApproval(id: string): ApprovalRequest | null {
-  const mem = queue.get(id);
-  if (mem) return mem;
-  const disk = loadFromDisk(id);
-  if (disk) queue.set(id, disk);
-  return disk;
+export async function getApproval(id: string): Promise<ApprovalRequest | null> {
+  const req = await hydrateMem(id);
+  return req ? toLegacyApproval(req) : null;
 }
 
-export function listApprovals(status?: ApprovalStatus): ApprovalRequest[] {
-  hydrateQueueFromDisk();
-  const all = [...queue.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return status ? all.filter((r) => r.status === status) : all;
+export async function getEnterpriseApproval(id: string): Promise<EnterpriseApprovalRequest | null> {
+  return hydrateMem(id);
 }
 
-export function setApprovalStatus(
+export async function listApprovals(status?: ApprovalStatus): Promise<ApprovalRequest[]> {
+  const all = await fetchApprovals(status);
+  for (const req of all) mem().set(req.id, req);
+  return all.map(toLegacyApproval);
+}
+
+export async function setApprovalStatus(
   id: string,
   status: ApprovalStatus,
-  result?: string
-): ApprovalRequest | null {
-  let req = queue.get(id) ?? loadFromDisk(id);
+  result?: string,
+  approvedByUserId?: string
+): Promise<ApprovalRequest | null> {
+  const req = await hydrateMem(id);
   if (!req) return null;
+  const now = new Date().toISOString();
   req.status = status;
-  req.resolvedAt = new Date().toISOString();
+  req.updatedAt = now;
+  req.resolvedAt = now;
+  if (approvedByUserId) req.approvedByUserId = approvedByUserId;
   if (result !== undefined) req.result = redact(result);
-  persistApproval(req);
+  await saveApproval(req);
+  mem().set(id, req);
+  return toLegacyApproval(req);
+}
+
+export async function assertApprovedForExecution(
+  approvalId: string | undefined,
+  action: ApprovalAction
+): Promise<EnterpriseApprovalRequest> {
+  if (!approvalId) {
+    throw new Error("Approval request ID is required for this action.");
+  }
+  const req = await hydrateMem(approvalId);
+  if (!req) throw new Error(`Approval request ${approvalId} not found.`);
+  if (req.status !== "pending" && req.status !== "approved") {
+    throw new Error(`Approval ${approvalId} is ${req.status} and cannot be executed.`);
+  }
+  if (req.safety.blocked) throw new Error(req.safety.reason);
+  if (req.action.type !== action.type) {
+    throw new Error("Approval action type does not match the requested execution.");
+  }
   return req;
+}
+
+/** Sync helpers for legacy callers in hot paths — uses memory cache only. */
+export function getApprovalSync(id: string): ApprovalRequest | null {
+  const req = mem().get(id);
+  return req ? toLegacyApproval(req) : null;
 }

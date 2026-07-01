@@ -15,7 +15,7 @@ export class ZendeskConnector implements TicketConnector {
     canComment: true,
     canTransition: false,
     canLink: false,
-    canCreate: false,
+    canCreate: true,
   };
 
   private readonly baseUrl: string;
@@ -133,16 +133,49 @@ export class ZendeskConnector implements TicketConnector {
     return (data.results ?? []).slice(0, limit).map((t) => this.normalize(t));
   }
 
-  async addComment(ref: string, body: string) {
+  async addComment(ref: string, body: string, opts?: { public?: boolean }) {
     const id = ref.replace(/^ZD-/i, "").trim();
     if (!/^\d+$/.test(id)) throw new Error(`Invalid Zendesk ticket ref: ${ref}`);
+    const isPublic = opts?.public ?? false;
     const res = await safeFetch(`${this.baseUrl}/api/v2/tickets/${encodeURIComponent(id)}.json`, {
       method: "PUT",
       headers: this.headers(),
-      body: JSON.stringify({ ticket: { comment: { body, public: false } } }),
+      body: JSON.stringify({ ticket: { comment: { body, public: isPublic } } }),
     });
     if (!res.ok) throw new Error(`Zendesk addComment ${res.status}: ${res.text.slice(0, 200)}`);
     return { ok: true, url: `${this.baseUrl}/agent/tickets/${id}` };
+  }
+
+  async addPublicReply(ref: string, body: string) {
+    return this.addComment(ref, body, { public: true });
+  }
+
+  async addInternalNote(ref: string, body: string) {
+    return this.addComment(ref, body, { public: false });
+  }
+
+  async createTicket(input: { subject: string; body: string; requesterEmail?: string }) {
+    const payload: Record<string, unknown> = {
+      ticket: {
+        subject: input.subject,
+        comment: { body: input.body },
+      },
+    };
+    if (input.requesterEmail) {
+      payload.ticket = {
+        ...(payload.ticket as Record<string, unknown>),
+        requester: { email: input.requesterEmail },
+      };
+    }
+    const res = await safeFetch(`${this.baseUrl}/api/v2/tickets.json`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`Zendesk createTicket ${res.status}: ${res.text.slice(0, 200)}`);
+    const data = JSON.parse(res.text) as { ticket?: { id?: number } };
+    const id = data.ticket?.id;
+    return { ok: true, key: id ? `ZD-${id}` : undefined, url: id ? `${this.baseUrl}/agent/tickets/${id}` : undefined };
   }
 }
 
@@ -214,6 +247,15 @@ export class MockZendeskTicketConnector implements TicketConnector {
       ok: true,
       mock: true,
       url: `https://example.zendesk.com/agent/tickets/${ref.replace(/^ZD-/i, "")}#mock-comment`,
+    };
+  }
+
+  async createTicket(input: { subject: string; body: string }) {
+    return {
+      ok: true,
+      mock: true,
+      key: "ZD-9999",
+      url: `https://example.zendesk.com/agent/tickets/9999#mock-create-${encodeURIComponent(input.subject.slice(0, 20))}`,
     };
   }
 }

@@ -8,7 +8,6 @@ import { CqlSidebar } from "./sidebars/CqlSidebar";
 import { JiraSidebar } from "./sidebars/JiraSidebar";
 import { LogsSidebar } from "./sidebars/LogsSidebar";
 import { McpSidebar } from "./sidebars/McpSidebar";
-import { SettingsSidebar } from "./sidebars/SettingsSidebar";
 import { InvestigationsSidebar } from "./sidebars/InvestigationsSidebar";
 import { SourceControlSidebar } from "./sidebars/SourceControlSidebar";
 import { BuildAppSidebar } from "./sidebars/BuildAppSidebar";
@@ -48,7 +47,11 @@ export function PrimarySidebar() {
       {activity === "jira" && <JiraSidebar />}
       {activity === "logs" && <LogsSidebar />}
       {activity === "mcp" && <McpSidebar />}
-      {activity === "settings" && <SettingsSidebar />}
+      {activity === "settings" && (
+        <p style={{ padding: 12, color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
+          Settings open in the editor. Use the sidebar there for integrations, audit logs, setup, and retention.
+        </p>
+      )}
       {activity === "chat" && (
         <p style={{ padding: 12, color: "var(--muted)", fontSize: 12 }}>Use the AI panel on the right for chat.</p>
       )}

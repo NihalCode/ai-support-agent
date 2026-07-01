@@ -21,7 +21,7 @@ import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
 import { redact } from "@/lib/support/redact";
 import { getConfig } from "@/lib/support/config";
-import { audit } from "@/lib/support/audit";
+import { audit } from "@/lib/support/enterprise/audit-log";
 import type { BuildAppCredentials } from "@/lib/support/build-app/credentials";
 import type { BuildAppProject } from "@/lib/support/build-app/types";
 
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
           message: body.message,
           templateOverride: body.templateOverride as never,
         });
-        const approval = requestScaffoldApproval(
+        const approval = await requestScaffoldApproval(
           result.project!.id,
           result.approvalPreview ?? "Scaffold app files"
         );
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
           buildOutput: body.buildOutput,
         });
         if (result.needsApproval && result.pendingChanges?.length) {
-          const approval = requestWriteApproval(
+          const approval = await requestWriteApproval(
             body.projectId,
             result.pendingChanges.map((c) => c.path),
             result.approvalPreview ?? "Apply edits"
@@ -145,12 +145,12 @@ export async function POST(req: Request) {
         }
 
         if (body.approvalId) {
-          const approval = getApproval(body.approvalId);
+          const approval = await getApproval(body.approvalId);
           if (!approval || approval.status !== "approved") {
             return NextResponse.json({ error: "Approval required" }, { status: 403 });
           }
           const detail = await applyApprovedBuildAction(approval.action as { type: string; projectId: string });
-          setApprovalStatus(body.approvalId, "executed", detail);
+          await setApprovalStatus(body.approvalId, "executed", detail);
           return NextResponse.json({ ok: true, detail, project: getProject(body.projectId) });
         }
 
@@ -217,7 +217,7 @@ export async function POST(req: Request) {
         }
 
         if (!body.approvalId) {
-          const approval = requestDeployApproval(
+          const approval = await requestDeployApproval(
             body.projectId,
             body.target ?? "preview",
             deployPlan.explanation
@@ -226,17 +226,17 @@ export async function POST(req: Request) {
         }
         const exec = await executeAction(
           { type: "build-app-deploy", projectId: body.projectId, target: body.target ?? "preview" },
-          { approved: true }
+          { approved: true, approvalId: body.approvalId }
         );
         return NextResponse.json({ ...exec, project: getProject(body.projectId) });
       }
 
       case "approve-and-run": {
-        const approval = getApproval(body.approvalId);
+        const approval = await getApproval(body.approvalId);
         if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
-        setApprovalStatus(body.approvalId, "approved");
-        const exec = await executeAction(approval.action, { approved: true });
-        setApprovalStatus(body.approvalId, "executed", exec.detail);
+        await setApprovalStatus(body.approvalId, "approved");
+        const exec = await executeAction(approval.action, { approved: true, approvalId: body.approvalId });
+        await setApprovalStatus(body.approvalId, "executed", exec.detail);
         return NextResponse.json(exec);
       }
 

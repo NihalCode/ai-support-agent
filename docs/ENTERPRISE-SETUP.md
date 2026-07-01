@@ -305,6 +305,48 @@ Bootstrap auto-imports Confluence/mock knowledge into the `knowledge` Pinecone n
 
 ---
 
+## Enterprise polish features
+
+The following admin surfaces are available under **Settings** (Developer/Admin mode with `audit:read` where noted):
+
+| Section | API | Purpose |
+|---------|-----|---------|
+| **Integrations** | `GET /api/support/enterprise/health` | Integration health cards + degraded summaries |
+| **System health** | same | Open/resolved operational events |
+| **Audit logs** | `GET /api/support/audit` | Unified Postgres/file audit trail |
+| **Setup checklist** | `GET /api/support/enterprise/setup` | Real-status onboarding checklist |
+| **Knowledge sources** | `GET/POST /api/support/enterprise/knowledge` | Confluence sync + RAG index status |
+| **Notifications** | `GET /api/support/enterprise/notifications` | In-app alerts (Postgres when configured) |
+| **Data retention** | `GET/POST /api/support/enterprise/retention` | Retention policy + deletion controls |
+
+### Postgres tables (enterprise)
+
+When `DATABASE_URL` is set, `npm run db:migrate` creates:
+
+- `approval_requests` — durable approval queue
+- `audit_logs` — unified audit (legacy JSONL still written as fallback)
+- `system_health_events` — operational incidents
+- `slack_conversations` — thread memory keyed by team/channel/thread
+- `knowledge_sources` — Confluence and other RAG sources
+- `investigation_links` — Zendesk/Jira/Slack/Confluence artifact links
+- `app_notifications` — per-user notifications
+- `retention_settings` — org retention policy
+
+Without Postgres, the same models persist under `.data/enterprise/` for local dev.
+
+### Approval hardening
+
+External writes require a persisted **approval request ID** in production (`approvalId` passed to `executeAction`). `TEST_MODE` retains the legacy `approved: true` shortcut for E2E.
+
+### Support vs Developer/Admin Mode
+
+- **Support Mode** (`client`): investigations, customer response, friendly integration status
+- **Developer/Admin Mode** (`developer`): terminal, MCP, system health, env details, audit logs
+
+RBAC remains server-side; UI hiding is not a security control.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Check |

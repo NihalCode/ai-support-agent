@@ -47,14 +47,14 @@ describe("Slack integration", () => {
     ).toBe(false);
   });
 
-  it("persists redacted Slack thread memory", () => {
+  it("persists redacted Slack thread memory", async () => {
     process.env.SLACK_BOT_TOKEN = "xoxb-secret-token-123456";
-    appendSlackThreadMessage({
+    await appendSlackThreadMessage({
       channelId: "C1",
       threadTs: "123.45",
       message: { role: "user", text: "token xoxb-secret-token-123456" },
     });
-    const thread = getSlackThread("C1", "123.45");
+    const thread = await getSlackThread("C1", "123.45");
     expect(thread?.messages[0]?.text).not.toContain("xoxb-secret-token-123456");
     delete process.env.SLACK_BOT_TOKEN;
   });
