@@ -57,6 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (!res.ok) {
+        setState({
+          loading: false,
+          authenticated: false,
+          authConfigured: res.status === 401,
+          authProvider: "none",
+          user: null,
+          permissions: [],
+        });
+        return;
+      }
       const data = (await res.json()) as AuthState & { user: AuthUser | null };
       setState({
         loading: false,

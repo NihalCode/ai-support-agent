@@ -588,3 +588,65 @@ test.describe("Investigations sidebar", () => {
     await expect(page.locator('[data-testid^="investigation-"]').first()).toBeVisible({ timeout: 10000 });
   });
 });
+
+test.describe("Settings and integrations", () => {
+  test("opens integration registry with configure forms", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-settings").click();
+    await expect(page.getByTestId("settings-editor")).toBeVisible();
+    await expect(page.getByTestId("integration-settings-panel")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("integration-row-jira")).toBeVisible();
+    await page.getByTestId("integration-configure-jira").click();
+    await expect(page.getByTestId("integration-form-jira")).toBeVisible();
+    await expect(page.getByTestId("integration-field-jira-baseUrl")).toBeVisible();
+    await page.getByTestId("integration-health-jira").click();
+    await expect(page.getByTestId("integration-settings-message")).toContainText(/jira/i, {
+      timeout: 10000,
+    });
+  });
+
+  test("auth me bootstrap returns session in test mode", async ({ request }) => {
+    const res = await request.get("/api/auth/me");
+    expect(res.ok()).toBeTruthy();
+    const data = (await res.json()) as { user?: { role?: string }; permissions?: string[] };
+    expect(data.user?.role).toBeTruthy();
+    expect(data.permissions?.length).toBeGreaterThan(0);
+  });
+});
+
+test.describe("Keyword search", () => {
+  test("returns keyword results in test mode", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-search").click();
+    await page.getByTestId("search-mode-keyword").click();
+    await page.getByTestId("search-input").fill("PAY-101");
+    await page.getByTestId("search-submit").click();
+    await expect(page.getByText(/PAY-101|webhook/i).first()).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test.describe("API smoke (authenticated test mode)", () => {
+  test("core support APIs respond", async ({ request }) => {
+    for (const path of [
+      "/api/support/health",
+      "/api/support/status",
+      "/api/support/bootstrap",
+      "/api/integrations",
+      "/api/support/tickets?ref=PAY-101",
+    ]) {
+      const res = await request.get(path);
+      expect(res.ok(), `${path} should succeed in test mode`).toBeTruthy();
+    }
+  });
+
+  test("POST search returns results", async ({ request }) => {
+    const res = await request.post("/api/support/search", {
+      data: { query: "tag creation 400", mode: "hybrid" },
+    });
+    expect(res.ok()).toBeTruthy();
+    const data = (await res.json()) as { results?: unknown[] };
+    expect(Array.isArray(data.results)).toBe(true);
+  });
+});

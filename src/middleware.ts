@@ -9,11 +9,15 @@ const PUBLIC_PATHS = ["/login", "/auth"];
 /** Webhooks verified by provider signature — not Auth0 session. */
 const PUBLIC_API_PREFIXES = ["/api/slack/"];
 
+/** Session-optional API routes (handler returns authenticated: false when logged out). */
+const PUBLIC_API_EXACT = ["/api/auth/me"];
+
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 function isPublicApiPath(pathname: string): boolean {
+  if (PUBLIC_API_EXACT.includes(pathname)) return true;
   return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
 }
 
