@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { isPostgresConfigured, pgQuery } from "@/lib/db/postgres";
 import { getConfig } from "@/lib/support/config";
 import type { IntegrationCredentialPayload, IntegrationId } from "./IntegrationTypes";
 
@@ -37,7 +38,7 @@ function encryptionSecret(): string | null {
   );
 }
 
-async function readStore(): Promise<CredentialStoreFile> {
+async function readFileStore(): Promise<CredentialStoreFile> {
   try {
     const raw = await readFile(STORE_FILE, "utf8");
     const parsed = JSON.parse(raw) as CredentialStoreFile;
@@ -48,7 +49,7 @@ async function readStore(): Promise<CredentialStoreFile> {
   }
 }
 
-async function writeStore(store: CredentialStoreFile): Promise<void> {
+async function writeFileStore(store: CredentialStoreFile): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(STORE_FILE, `${JSON.stringify(store, null, 2)}\n`, "utf8");
 }
@@ -89,6 +90,10 @@ function decryptPayload(
   return JSON.parse(plaintext) as IntegrationCredentialPayload;
 }
 
+export function credentialStoreBackend(): "postgres" | "file" {
+  return isPostgresConfigured() ? "postgres" : "file";
+}
+
 export class CredentialStore {
   static async save(
     integrationId: IntegrationId,
@@ -103,7 +108,26 @@ export class CredentialStore {
       );
     }
     const { encrypted, iv } = encryptPayload(payload, secret);
-    const store = await readStore();
+
+    if (isPostgresConfigured()) {
+      await pgQuery`
+        INSERT INTO integration_credentials (
+          integration_id, org_id, encrypted, iv, updated_at, updated_by
+        )
+        VALUES (
+          ${integrationId}, ${orgId}, ${encrypted}, ${iv}, NOW(), ${updatedBy}
+        )
+        ON CONFLICT (integration_id, org_id)
+        DO UPDATE SET
+          encrypted = EXCLUDED.encrypted,
+          iv = EXCLUDED.iv,
+          updated_at = NOW(),
+          updated_by = EXCLUDED.updated_by
+      `;
+      return;
+    }
+
+    const store = await readFileStore();
     const idx = store.records.findIndex(
       (r) => r.integrationId === integrationId && r.orgId === orgId
     );
@@ -117,7 +141,7 @@ export class CredentialStore {
     };
     if (idx >= 0) store.records[idx] = record;
     else store.records.push(record);
-    await writeStore(store);
+    await writeFileStore(store);
   }
 
   static async load(
@@ -126,7 +150,27 @@ export class CredentialStore {
   ): Promise<IntegrationCredentialPayload | null> {
     const secret = encryptionSecret();
     if (!secret) return null;
-    const store = await readStore();
+
+    if (isPostgresConfigured()) {
+      const rows = await pgQuery`
+        SELECT encrypted, iv
+        FROM integration_credentials
+        WHERE integration_id = ${integrationId} AND org_id = ${orgId}
+        LIMIT 1
+      `;
+      if (!rows[0]) return null;
+      try {
+        return decryptPayload(
+          String(rows[0].encrypted),
+          String(rows[0].iv),
+          secret
+        );
+      } catch {
+        return null;
+      }
+    }
+
+    const store = await readFileStore();
     const record = store.records.find(
       (r) => r.integrationId === integrationId && r.orgId === orgId
     );
@@ -139,18 +183,36 @@ export class CredentialStore {
   }
 
   static async delete(integrationId: IntegrationId, orgId: string): Promise<boolean> {
-    const store = await readStore();
+    if (isPostgresConfigured()) {
+      const rows = await pgQuery`
+        DELETE FROM integration_credentials
+        WHERE integration_id = ${integrationId} AND org_id = ${orgId}
+        RETURNING integration_id
+      `;
+      return rows.length > 0;
+    }
+
+    const store = await readFileStore();
     const before = store.records.length;
     store.records = store.records.filter(
       (r) => !(r.integrationId === integrationId && r.orgId === orgId)
     );
     if (store.records.length === before) return false;
-    await writeStore(store);
+    await writeFileStore(store);
     return true;
   }
 
   static async listConfigured(orgId: string): Promise<IntegrationId[]> {
-    const store = await readStore();
+    if (isPostgresConfigured()) {
+      const rows = await pgQuery`
+        SELECT integration_id
+        FROM integration_credentials
+        WHERE org_id = ${orgId}
+      `;
+      return rows.map((r) => String(r.integration_id) as IntegrationId);
+    }
+
+    const store = await readFileStore();
     return store.records
       .filter((r) => r.orgId === orgId)
       .map((r) => r.integrationId);

@@ -15,6 +15,9 @@ import {
 } from "@/lib/support/config";
 import { sessionToJson } from "@/lib/auth/session";
 import { isAuthConfigured } from "@/lib/auth/config";
+import { userStoreBackend } from "@/lib/auth/user-store";
+import { pingPostgres } from "@/lib/db/postgres";
+import { credentialStoreBackend } from "@/integrations/core/CredentialStore";
 import { pingSessionStore } from "@/lib/support/investigation/session-store";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
 
@@ -30,6 +33,7 @@ export async function GET(req: Request) {
   const ctix = getCywareProductConnector("ctix");
 
   const sessionBackend = await pingSessionStore();
+  const postgresOk = await pingPostgres();
 
   let ctixConnection: { ok: boolean; detail: string } | null = null;
   if (ctix.configured) {
@@ -40,6 +44,17 @@ export async function GET(req: Request) {
     auth: {
       configured: isAuthConfigured(),
       session: session ? sessionToJson(session) : null,
+      userStore: userStoreBackend(),
+    },
+    persistence: {
+      databaseUrl: cfg.databaseUrl ? "(set)" : "(unset)",
+      postgres: {
+        configured: Boolean(cfg.databaseUrl),
+        reachable: postgresOk,
+        userStore: userStoreBackend(),
+        credentialStore: credentialStoreBackend(),
+        auditLog: userStoreBackend(),
+      },
     },
     integrations: {
       openai: { configured: hasOpenAI(cfg), key: maskSecret(cfg.openaiApiKey) },

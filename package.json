@@ -23,10 +23,12 @@
     "build:app": "npm run build",
     "deploy:preview": "vercel",
     "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",
-    "deploy:public": "node scripts/ensure-public-deploy.mjs"
+    "deploy:public": "node scripts/ensure-public-deploy.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.23.0",
+    "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.38.0",
     "next": "16.2.7",
     "react": "19.2.4",

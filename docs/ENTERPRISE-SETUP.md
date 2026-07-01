@@ -10,7 +10,8 @@ This guide covers production configuration for **AI Support Studio** enterprise 
 |-------|---------|
 | **Auth0** | Identity (login, SSO). Roles are stored in the app user store, not Auth0 groups. |
 | **RBAC** | Route-level permissions on `/api/support/*` (see [Permissions](#permissions)). |
-| **Credential store** | AES-GCM encrypted `.data/integration-credentials.json` (server-side only). |
+| **Postgres** | Durable users, encrypted credentials, and integration audit log when `DATABASE_URL` is set. |
+| **Credential store** | AES-GCM encrypted integration secrets (Postgres or local `.data/` fallback). |
 | **Env fallback** | Legacy `JIRA_*`, `ZENDESK_*`, `SLACK_*`, etc. still work when the store is empty. |
 
 When Auth0 env vars are **unset** (or `AUTH_DISABLED=true`, or `TEST_MODE=true`), the app runs without login and grants an implicit **owner** session for local development and E2E tests.
@@ -60,13 +61,127 @@ AUTH_DISABLED=false   # force auth off even when Auth0 is configured
 
 ### 4. First login and roles
 
-- First user to log in is upserted into `.data/users.json` with role **`owner`** (unless pre-provisioned).
+- First user to log in is upserted with role **`owner`** (unless pre-provisioned).
 - Admins change roles in **Settings → User Management** (`/api/auth/users`, requires `users:write`).
 - Roles: `owner`, `admin`, `developer`, `support_agent`, `viewer`.
+- With **`DATABASE_URL`** set, roles persist across Vercel deploys. Without it, local `.data/users.json` is used (dev only).
+
+### 5. Google social login (optional)
+
+Use this when you want **Continue with Google** on the login page (instead of email/password only).
+
+#### Step 1 — Google Cloud Console
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/) → select or create a project.
+2. **APIs & Services → OAuth consent screen**
+   - User type: **External** (or Internal for Google Workspace)
+   - App name, support email, developer contact — fill required fields
+   - Scopes: add `email`, `profile`, `openid` (defaults are fine)
+   - Add test users while in **Testing** mode, or **Publish** the app for production
+3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
+   - Application type: **Web application**
+   - Name: `AI Support Studio`
+   - **Authorized JavaScript origins:**
+     - `http://localhost:3000`
+     - `https://ai-support-agent-ecru.vercel.app` (your production URL)
+   - **Authorized redirect URIs:** (Auth0 callback — not your app URL)
+     - `https://dev-jthpufxs5d58hkiu.us.auth0.com/login/callback`
+     - Replace with your Auth0 tenant domain if different (`https://{AUTH0_DOMAIN}/login/callback`)
+4. Copy the **Client ID** and **Client Secret**.
+
+#### Step 2 — Auth0 Dashboard
+
+1. **Authentication → Social → Google**
+2. Paste your Google **Client ID** and **Client Secret**
+3. **Save** — the **Dev Keys** warning disappears once custom credentials are saved.
+
+#### Step 3 — Enable for your application
+
+1. **Applications → AI Support Studio → Connections**
+2. Toggle **Google / Gmail** (`google-oauth2`) **on**
+3. Save
+
+#### Step 4 — Verify
+
+1. Open `{APP_BASE_URL}/auth/login`
+2. Confirm **Continue with Google** appears with **no** Dev Keys alert
+3. Complete a Google login and confirm you return to the app
+
+### 6. Security hardening (production)
+
+**Dev Keys alert on login:** Auth0 shows this when **Google** (or another social provider) uses Auth0’s shared development OAuth keys. For production:
+
+- **Recommended:** Auth0 Dashboard → **Applications** → *AI Support Studio* → **Connections** → disable **Google** until you add your own Google Cloud OAuth client ID/secret under **Authentication → Social → Google**.
+- Email/password (**Username-Password-Authentication**) does not use dev keys and is safe for production.
+
+**Application settings to verify:**
+
+| Setting | Recommended value |
+|---------|-------------------|
+| Grant types | `authorization_code`, `refresh_token` only (remove `implicit`, `client_credentials`) |
+| Token endpoint auth | `client_secret_post` |
+| Cross-Origin Authentication | Off |
+| Callback / logout URLs | Exact origins only — no wildcards |
+
+**Vercel production checklist:**
+
+- Set `AUTH0_*`, `APP_BASE_URL`, `INTEGRATION_SECRET_KEY`
+- Do **not** set `TEST_MODE`, `AUTH_DISABLED`, or `NEXT_PUBLIC_TEST_MODE`
+- Rotate `AUTH0_SECRET` / `INTEGRATION_SECRET_KEY` if they were ever committed or shared
 
 ---
 
-## Permissions
+## Persistent database (production)
+
+Vercel serverless has **no durable filesystem**. Without Postgres, user roles and saved integration credentials reset on deploy. Set **`DATABASE_URL`** to enable enterprise persistence.
+
+### Recommended: Neon (works with Vercel)
+
+1. Create a free database at [neon.tech](https://neon.tech) (or use **Vercel → Storage → Postgres**).
+2. Copy the connection string (`postgres://...` or `postgresql://...`).
+3. Add to **Vercel → Environment Variables**:
+   ```bash
+   DATABASE_URL=postgres://user:pass@host/db?sslmode=require
+   ```
+4. Apply schema (once per database):
+   ```bash
+   DATABASE_URL="postgres://..." npm run db:migrate
+   ```
+   Schema also auto-applies on first request if you skip this step.
+
+### What Postgres stores
+
+| Table | Purpose |
+|-------|---------|
+| `app_users` | Auth0 user IDs, emails, RBAC roles, org membership |
+| `integration_credentials` | AES-GCM encrypted integration secrets from Settings |
+| `integration_audit_log` | Who changed which integration and when |
+
+### Local development
+
+- **Without `DATABASE_URL`:** uses `.data/` JSON files (fine for dev and tests).
+- **With `DATABASE_URL`:** uses the same Postgres backend as production.
+
+### Verify persistence
+
+After deploy, call `GET /api/support/status` (requires login). Check:
+
+```json
+"persistence": {
+  "postgres": {
+    "configured": true,
+    "reachable": true,
+    "userStore": "postgres",
+    "credentialStore": "postgres"
+  }
+}
+```
+
+### Migrate existing local users (optional)
+
+If you have users in `.data/users.json` from local testing, re-assign roles in **Settings → User Management** after first production login, or run a one-time import script against Postgres.
+
+---
 
 | Permission | Typical use |
 |------------|-------------|
@@ -179,13 +294,14 @@ Bootstrap auto-imports Confluence/mock knowledge into the `knowledge` Pinecone n
 
 ## Deployment checklist
 
-1. Set Auth0 + `APP_BASE_URL` + `INTEGRATION_SECRET_KEY` on Vercel
-2. Push to `main` (or run `npm run deploy:prod`)
-3. Confirm `/login` redirects to Auth0 when auth is enabled
-4. Assign roles to team members in User Management
-5. Configure integrations (env or Settings)
-6. Point Slack Event + Interactivity URLs at production
-7. Smoke test: search, investigation, approval, Slack mention
+1. Set Auth0 + `APP_BASE_URL` + `INTEGRATION_SECRET_KEY` + **`DATABASE_URL`** on Vercel
+2. Run `npm run db:migrate` against production Postgres (once)
+3. Push to `main` (or run `npm run deploy:prod`)
+4. Confirm `/login` redirects to Auth0 when auth is enabled
+5. Assign roles to team members in User Management
+6. Configure integrations (env or Settings)
+7. Point Slack Event + Interactivity URLs at production
+8. Smoke test: search, investigation, approval, Slack mention
 
 ---
 
