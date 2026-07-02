@@ -1,66 +1,42 @@
 import "server-only";
 
-import { listSpecs } from "@/lib/support/api-specs/registry";
+import { retrieveApiEndpointContext, detectCywareProducts } from "@/lib/support/api-context";
+import { formatApiEndpointDisplay, formatResolvedEndpointList } from "@/lib/support/api-base-url";
+import { CYWARE_PRODUCT_PRESETS } from "@/lib/support/cyware-products";
 import type { SupportQuery } from "./types";
 import { buildSearchTerms, isCqlAuthoringRequest } from "./extract-query";
 
-const WORKFLOW_TERMS: Record<string, string[]> = {
-  block: ["indicator", "block", "action", "ip", "deny"],
-  malicious: ["indicator", "malicious", "threat", "ip"],
-  ip: ["indicator", "ip", "address"],
-  workflow: ["orchestrat", "playbook", "automation", "action"],
-  indicator: ["indicator", "threat", "ioc"],
-  tag: ["tag", "bulk"],
-  search: ["search", "query", "filter"],
-  cql: ["cql", "query", "filter"],
-};
-
-function termsFromQuery(q: SupportQuery): string[] {
-  const blob = buildSearchTerms(q).toLowerCase();
-  const terms = new Set<string>();
-  for (const word of blob.split(/\W+/)) {
-    if (word.length >= 3) terms.add(word);
-    const mapped = WORKFLOW_TERMS[word];
-    if (mapped) mapped.forEach((t) => terms.add(t));
-  }
-  if (q.workflowName) {
-    for (const word of q.workflowName.toLowerCase().split(/\W+/)) {
-      if (word.length >= 3) terms.add(word);
-      WORKFLOW_TERMS[word]?.forEach((t) => terms.add(t));
-    }
-  }
-  return [...terms];
+function endpointFromChunk(metadata: Record<string, unknown>): string {
+  const method = String(metadata.http_method ?? metadata.filePath ?? "GET").split(" ")[0] ?? "GET";
+  const path =
+    String(metadata.endpoint_path ?? "") ||
+    String(metadata.filePath ?? "").replace(/^[A-Z]+\s+/, "");
+  return `${method.toUpperCase()} ${path}`.trim();
 }
 
-function scoreEndpoint(path: string, summary: string, terms: string[]): number {
-  const hay = `${path} ${summary}`.toLowerCase();
-  let score = 0;
-  for (const t of terms) {
-    if (hay.includes(t)) score += t.length >= 5 ? 2 : 1;
-  }
-  return score;
+function productFromChunk(metadata: Record<string, unknown>) {
+  const repo = String(metadata.repo ?? "");
+  return Object.values(CYWARE_PRODUCT_PRESETS).find((p) => p.specId === repo)?.id ?? null;
 }
 
 /** Infer likely API endpoints from imported specs when the user did not provide one. */
 export function inferEndpointsFromDocs(query: SupportQuery): string[] {
   if (query.endpoint) return [query.endpoint];
 
-  const terms = termsFromQuery(query);
-  if (terms.length === 0) return [];
+  const searchText = buildSearchTerms(query);
+  const chunks = retrieveApiEndpointContext(searchText, 5);
+  if (chunks.length === 0) return [];
 
-  const scored: { path: string; score: number }[] = [];
-  for (const spec of listSpecs()) {
-    for (const ep of spec.endpoints) {
-      const path = ep.path;
-      const summary = [ep.name, ep.description, ep.operationId].filter(Boolean).join(" ");
-      const score = scoreEndpoint(path, summary, terms);
-      if (score > 0) scored.push({ path, score });
-    }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const chunk of chunks) {
+    const meta = chunk.metadata as unknown as Record<string, unknown>;
+    const ep = endpointFromChunk(meta);
+    if (seen.has(ep)) continue;
+    seen.add(ep);
+    out.push(ep);
   }
-
-  scored.sort((a, b) => b.score - a.score);
-  const unique = [...new Set(scored.map((s) => s.path))];
-  return unique.slice(0, 5);
+  return out;
 }
 
 /** Enrich query with inferred endpoint(s) for agent search — does not overwrite explicit endpoint. */
@@ -88,5 +64,23 @@ export function describeEndpointInference(query: SupportQuery): string | null {
     }
     return null;
   }
-  return `Based on your description I'm checking imported API docs — likely endpoints include ${inferred.slice(0, 3).join(", ")}.`;
+  const resolved = formatResolvedEndpointList(
+    inferred.slice(0, 3),
+    query,
+    undefined,
+    detectCywareProducts(query.text ?? "")
+  );
+  return `Based on your description I'm checking imported API docs — likely endpoints include ${resolved.join(", ")}.`;
+}
+
+/** Format a single endpoint line for docs/evidence (method + tenant URL). */
+export function formatInferredEndpointDisplay(
+  method: string,
+  path: string,
+  specId?: string
+): string {
+  const productId = specId
+    ? Object.values(CYWARE_PRODUCT_PRESETS).find((p) => p.specId === specId)?.id ?? null
+    : null;
+  return formatApiEndpointDisplay(path, { method, productId, specId });
 }

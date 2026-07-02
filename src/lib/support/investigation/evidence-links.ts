@@ -2,6 +2,7 @@ import "server-only";
 
 import type { InvestigationContext } from "./types";
 import { cqlDocUrl } from "../cyware-doc-url";
+import { formatApiEndpointDisplay, productForSpecId } from "../api-base-url";
 
 const MAX_API_LINKS = 6;
 const MAX_CQL_LINKS = 4;
@@ -21,7 +22,11 @@ export function collectApiDocLinks(ctx: Partial<InvestigationContext>): DocLinkL
       url: d.url ?? "",
       detail:
         d.metadata?.method && d.metadata?.path
-          ? `${d.metadata.method} ${d.metadata.path}`
+          ? formatApiEndpointDisplay(String(d.metadata.path), {
+              method: String(d.metadata.method),
+              specId: String(d.metadata.repo ?? ""),
+              productId: productForSpecId(String(d.metadata.repo ?? "")),
+            })
           : undefined,
     }))
     .filter((l) => l.url.startsWith("http"));

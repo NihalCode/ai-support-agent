@@ -73,7 +73,7 @@ export async function enrichSlackThread(input: {
   const query = buildSupportQuery(combined);
   const appBase = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL;
 
-  if (isCqlAuthoringRequest(combined, query)) {
+  if (isCqlAuthoringRequest(combined, query, { latestMessage: latest })) {
     const text = await buildCqlSlackReply(combined, appBase, sessionId);
     return { text, sessionId, mode: sessionId ? "chat" : "investigation" };
   }

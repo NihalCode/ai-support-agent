@@ -19,6 +19,7 @@ import {
   buildClarificationReply,
 } from "@/lib/support/intent/choose-route";
 import type { WorkspaceIntentContext } from "@/lib/support/intent/types";
+import { buildCqlMarkdownReply } from "@/lib/support/investigation/cql-investigation";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
           buildFailed: body.buildOk === false,
         };
         const classification = classifyUserIntent({ message, context: intentCtx });
-        const route = chooseAgentRoute(classification, intentCtx);
+        const route = chooseAgentRoute(classification, intentCtx, message);
 
         send({
           type: "intent_classified",
@@ -228,9 +229,41 @@ export async function POST(req: Request) {
           fullText = buildClarificationReply(classification);
           // Intent summary already streamed via intent_classified — avoid duplicate token stream.
         } else if (route.kind === "cql") {
-          fullText =
-            "I'll help with CQL — open the **CQL Workspace** from the activity bar, or describe your filter criteria here and I'll generate a query.\n\n" +
-            formatIntentSummary(classification);
+          const createToolId = crypto.randomUUID();
+          send({
+            type: "tool_call_start",
+            toolCallId: createToolId,
+            agent: "cql",
+            name: "generate_cql",
+            summary: "Generating CQL query and fetching grammar docs…",
+          });
+
+          const auto = await ensureInvestigationSession({
+            userMessage: message,
+            currentSessionId: sessionId,
+            currentInvestigationId: investigationId,
+          });
+
+          sessionId = auto.sessionId;
+          investigationId = auto.investigationId ?? investigationId;
+          fullText = auto.introMarkdown || (await buildCqlMarkdownReply(message));
+
+          send({
+            type: "tool_call_result",
+            toolCallId: createToolId,
+            status: "success",
+            summary: "Generated CQL query with grammar doc links",
+          });
+
+          if (sessionId) {
+            send({
+              type: "session_created",
+              sessionId,
+              investigationId,
+              title: "CQL query help",
+            });
+          }
+
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }

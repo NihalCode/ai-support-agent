@@ -183,9 +183,19 @@ export function enrichSupportQuery(raw: SupportQuery): SupportQuery {
 }
 
 /** True when the user wants CQL syntax/help, not an incident investigation. */
-export function isCqlAuthoringRequest(text: string, q?: SupportQuery): boolean {
+export function isCqlAuthoringRequest(
+  text: string,
+  q?: SupportQuery,
+  opts?: { latestMessage?: string }
+): boolean {
   const t = text.trim();
   if (!/\b(cql|cyware query language)\b/i.test(t)) return false;
+
+  const latest = opts?.latestMessage?.trim();
+  const explicitAuthoringOnLatest =
+    Boolean(latest) &&
+    (/\b(write|build|generate|create|help (?:me )?write)\b.{0,30}\bcql\b/i.test(latest!) ||
+      /\bcql\b.{0,40}\b(grammar|syntax|docs?|query for)\b/i.test(latest!));
 
   const negatedIncident =
     /\b(not (a|an)|isn'?t (a|an)|no)\s+(failure|incident|outage|error report)\b/i.test(t) ||
@@ -198,18 +208,31 @@ export function isCqlAuthoringRequest(text: string, q?: SupportQuery): boolean {
       t
     ) || /\blast\s+\d+\s*(hours?|h|days?)\b/i.test(t);
 
+  // When the latest message is clearly CQL-only, ignore older thread failure context.
+  const failureText = explicitAuthoringOnLatest ? latest! : t;
   const hasFailureSignal =
     !negatedIncident &&
+    !explicitAuthoringOnLatest &&
     (Boolean(q?.statusCode && q.statusCode >= 400) ||
       Boolean(q?.symptom && !/\bn\/a\b/i.test(q.symptom)) ||
-      /\b(500|401|403|502|503|timeout|outage|keep loading|production down)\b/i.test(t));
+      /\b(500|401|403|502|503|timeout|outage|keep loading|production down)\b/i.test(failureText));
 
   return asksForCql && !hasFailureSignal;
 }
 
+function isOrchestratePlaybookIssue(q: SupportQuery): boolean {
+  const text = q.text ?? "";
+  return /\borchestrat(e|ion)\b/i.test(text) && /\bplaybook\b/i.test(text);
+}
+
 function plainEnglishFollowUps(q: SupportQuery): MissingInformationQuestion[] {
   const out: MissingInformationQuestion[] = [];
-  if (!q.approximateStartTime && !q.timestamp) {
+  const hasTimeoutSignal =
+    /\btimeout\b/i.test(q.text ?? "") ||
+    /\b\d+\s*s(ec(onds?)?)?\b/i.test(q.text ?? "") ||
+    /\btimeout\b/i.test(q.symptom ?? "");
+
+  if (!q.approximateStartTime && !q.timestamp && !(isOrchestratePlaybookIssue(q) && hasTimeoutSignal)) {
     out.push({
       id: "time-plain",
       question: "Roughly what time did the latest failure happen?",
@@ -217,7 +240,7 @@ function plainEnglishFollowUps(q: SupportQuery): MissingInformationQuestion[] {
       field: "timestamp",
     });
   }
-  if (!q.symptom && !q.errorMessage && !q.statusCode) {
+  if (!q.symptom && !q.errorMessage && !q.statusCode && !hasTimeoutSignal) {
     out.push({
       id: "symptom-plain",
       question: "Do users see an error message, or does it just keep loading?",

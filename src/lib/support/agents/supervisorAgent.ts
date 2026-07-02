@@ -9,6 +9,10 @@ import type {
 import { missingInfoQuestions } from "../investigation/extract-query";
 import { getConfig, hasJira, hasGitHub, hasOpenAI, hasPinecone, hasVercel } from "../config";
 import { formatEvidenceLinksMarkdown } from "../investigation/evidence-links";
+import { isCqlAuthoringRequest } from "../investigation/extract-query";
+import { formatCqlInvestigationMarkdown } from "../investigation/cql-investigation";
+import { detectCywareProducts } from "../api-context";
+import { formatQueryEndpointDisplay } from "../api-base-url";
 
 export type SpecialistAgent =
   | "jira"
@@ -107,6 +111,9 @@ export function planInvestigation(query: SupportQuery): SupervisorPlan {
 
 export function formatInvestigationMarkdown(ctx: Partial<InvestigationContext>): string {
   const q = ctx.query;
+  if (isCqlAuthoringRequest(q?.text ?? "", q)) {
+    return formatCqlInvestigationMarkdown(ctx);
+  }
   const report = ctx.report;
   const root = ctx.rootCause;
   const version = ctx.version;
@@ -118,7 +125,7 @@ export function formatInvestigationMarkdown(ctx: Partial<InvestigationContext>):
     q?.text ?? report?.title ?? "(none)",
     "",
     "## Details Known",
-    `- Endpoint: ${q?.endpoint ?? "—"}`,
+    `- Endpoint: ${formatQueryEndpointDisplay(q, ctx, detectCywareProducts(q?.text ?? ""))}`,
     `- Status code: ${q?.statusCode ?? "—"}`,
     `- Request ID: ${q?.requestId ?? q?.traceId ?? "—"}`,
     `- Timestamp: ${q?.timestamp ?? "—"}`,

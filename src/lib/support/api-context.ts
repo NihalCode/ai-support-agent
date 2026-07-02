@@ -6,6 +6,7 @@ import { loadBundledCywareSpec } from "./api-specs/bundled-specs";
 import { getSpec, registerSpec } from "./api-specs/registry";
 import { rankEndpoints, describeEndpoint, apiSpecNamespace } from "./api-specs";
 import { resolveApiDocUrl } from "./cyware-doc-url";
+import { formatApiEndpointDisplay } from "./api-base-url";
 import type { NormalizedApiSpec, NormalizedEndpoint, RetrievedChunk } from "./types";
 
 const PRODUCT_PATTERNS: { id: CywareProductId; patterns: RegExp[] }[] = [
@@ -228,6 +229,10 @@ export function isVagueCustomerResponse(text: string): boolean {
   );
 }
 
+function formatPlanEndpoint(productId: CywareProductId, method: string, path: string): string {
+  return formatApiEndpointDisplay(path, { method, productId });
+}
+
 /** Deterministic, production-grade steps from ranked API (+ optional CQL) context. */
 export function buildCywareActionPlan(
   query: string,
@@ -249,25 +254,27 @@ export function buildCywareActionPlan(
       const retry = eps.find((e) => /playbook\/run/i.test(e.path));
       if (runLog)
         fixSteps.push(
-          `Orchestrate — check run status/logs: ${runLog.method} ${runLog.path} (${runLog.name}).`
+          `Orchestrate — check run status/logs: ${formatPlanEndpoint("orchestrate", runLog.method, runLog.path)} (${runLog.name}).`
         );
       if (node)
         fixSteps.push(
-          `Orchestrate — inspect node-level failure: ${node.method} ${node.path} (${node.name}).`
+          `Orchestrate — inspect node-level failure: ${formatPlanEndpoint("orchestrate", node.method, node.path)} (${node.name}).`
         );
       if (retry)
-        fixSteps.push(`Orchestrate — retry the playbook: ${retry.method} ${retry.path} (${retry.name}).`);
+        fixSteps.push(
+          `Orchestrate — retry the playbook: ${formatPlanEndpoint("orchestrate", retry.method, retry.path)} (${retry.name}).`
+        );
     } else if (productId === "ctix") {
       const enrich = eps.find((e) => /enrich|threat|indicator/i.test(`${e.path} ${e.name}`));
       if (enrich)
         fixSteps.push(
-          `CTIX — enrich / fetch indicator data by ID: ${enrich.method} ${enrich.path} (${enrich.name}).`
+          `CTIX — enrich / fetch indicator data by ID: ${formatPlanEndpoint("ctix", enrich.method, enrich.path)} (${enrich.name}).`
         );
     } else if (productId === "csap") {
       const card = eps.find((e) => /create_card|alert/i.test(`${e.path} ${e.name}`));
       if (card)
         fixSteps.push(
-          `CSAP — publish intel card/alert from JSON: ${card.method} ${card.path} (${card.name}).`
+          `CSAP — publish intel card/alert from JSON: ${formatPlanEndpoint("csap", card.method, card.path)} (${card.name}).`
         );
     } else if (productId === "cftr") {
       const inc =
@@ -275,7 +282,7 @@ export function buildCywareActionPlan(
         eps.find((e) => /create incident/i.test(e.name));
       if (inc)
         fixSteps.push(
-          `CFTR — create incident via API (separate call from Orchestrate): ${inc.method} ${inc.path} (${inc.name}).`
+          `CFTR — create incident via API (separate call from Orchestrate): ${formatPlanEndpoint("cftr", inc.method, inc.path)} (${inc.name}).`
         );
     }
     const prefix =
@@ -292,7 +299,7 @@ export function buildCywareActionPlan(
         productId === "cftr"
           ? eps.find((e) => e.method === "POST" && /incident|create incident/i.test(`${e.path} ${e.name}`)) ?? eps[0]
           : eps[0];
-      fixSteps.push(`${prefix} — ${best.method} ${best.path} (${best.name}).`);
+      fixSteps.push(`${prefix} — ${formatPlanEndpoint(productId, best.method, best.path)} (${best.name}).`);
     }
   }
 

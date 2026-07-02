@@ -21,4 +21,13 @@ describe("isCqlAuthoringRequest", () => {
     const text = "CTIX API returns 401 and I need CQL to debug indicators";
     expect(isCqlAuthoringRequest(text, { text, statusCode: 401 })).toBe(false);
   });
+
+  it("treats latest CQL message as authoring even when thread history mentions timeout", () => {
+    const combined =
+      "Orchestrate playbook Block Malicious IP timed out after 45s.\nWrite a CQL query for malicious IP indicators in the last 24 hours with confidence >= 90. Link the relevant CQL grammar docs.";
+    const latest =
+      "Write a CQL query for malicious IP indicators in the last 24 hours with confidence >= 90. Link the relevant CQL grammar docs.";
+    expect(isCqlAuthoringRequest(combined, { text: combined }, { latestMessage: latest })).toBe(true);
+    expect(missingInfoQuestions({ text: combined })).toEqual([]);
+  });
 });

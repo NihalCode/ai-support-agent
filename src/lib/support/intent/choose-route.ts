@@ -6,6 +6,7 @@ import {
   shouldAutoInvestigateFromIntent,
   formatIntentSummary,
 } from "./classify-intent";
+import { enrichSupportQuery, isCqlAuthoringRequest } from "../investigation/extract-query";
 
 export type ChatRouteKind =
   | "build_app"
@@ -26,8 +27,17 @@ export interface ChosenChatRoute {
 
 export function chooseAgentRoute(
   classification: IntentClassification,
-  ctx: WorkspaceIntentContext
+  ctx: WorkspaceIntentContext,
+  message?: string
 ): ChosenChatRoute {
+  const msg = message?.trim() ?? classification.extractedEntities.supportIssue ?? "";
+  if (msg) {
+    const q = enrichSupportQuery({ text: msg });
+    if (isCqlAuthoringRequest(msg, q)) {
+      return { kind: "cql" };
+    }
+  }
+
   if (classification.needsClarification && classification.confidence === "low" && classification.primaryIntent === "unknown") {
     return { kind: "clarify" };
   }

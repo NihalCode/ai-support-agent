@@ -2,8 +2,8 @@ import "server-only";
 
 import type { CywareProductId } from "./cyware-products";
 import { getCywareProductConnector } from "./connectors/cyware-product";
+import { productForSpec, resolveSpecBaseUrl } from "./api-base-url";
 import { getSpec } from "./api-specs/registry";
-import { getConfig } from "./config";
 import { classifyHttp } from "./safety";
 import { redactHeaders } from "./redact";
 import type { NormalizedApiSpec, NormalizedEndpoint, SafetyVerdict } from "./types";
@@ -20,32 +20,16 @@ export interface ApiRequestPlan {
 }
 
 /** Map a spec id to a configured Cyware product connector when applicable. */
-function productForSpec(spec: NormalizedApiSpec): CywareProductId | null {
-  const id = spec.id.toLowerCase();
-  if (/ctix|intel.exchange/i.test(id) || /ctix/i.test(spec.name)) return "ctix";
-  if (/csap/i.test(id) || /csap/i.test(spec.name)) return "csap";
-  if (/cftr/i.test(id) || /cftr/i.test(spec.name)) return "cftr";
-  if (/orchestrate/i.test(id) || /orchestrate/i.test(spec.name)) return "orchestrate";
-  return null;
+function productForSpecLocal(spec: NormalizedApiSpec): CywareProductId | null {
+  return productForSpec(spec);
 }
 
 function resolveBaseUrl(spec: NormalizedApiSpec): string {
-  const productId = productForSpec(spec);
-  if (productId) {
-    const conn = getCywareProductConnector(productId);
-    if (conn.configured) {
-      const cfg = getConfig().cywareProducts[productId];
-      return cfg.baseUrl!.replace(/\/$/, "");
-    }
-  }
-  if (spec.baseUrl) return spec.baseUrl.replace(/\/$/, "");
-  throw new Error(
-    `No base URL for spec "${spec.id}". Set the product env vars (e.g. CSAP_BASE_URL) or ensure the spec defines baseUrl.`
-  );
+  return resolveSpecBaseUrl(spec);
 }
 
 function applySpecAuth(spec: NormalizedApiSpec, headers: Record<string, string>): Record<string, string> {
-  const productId = productForSpec(spec);
+  const productId = productForSpecLocal(spec);
   if (productId) {
     const conn = getCywareProductConnector(productId);
     if (conn.configured) {
@@ -86,7 +70,7 @@ export function buildSpecRequest(
     (e) => e.method === method.toUpperCase() && e.path === normalizedPath
   );
   const safety = classifyHttp(method, opts.summary ?? endpoint?.description ?? `${method} ${path}`, {
-    provider: productForSpec(spec) ?? spec.id,
+    provider: productForSpecLocal(spec) ?? spec.id,
     allowDestructive: opts.allowDestructive,
   });
 

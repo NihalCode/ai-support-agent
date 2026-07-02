@@ -67,6 +67,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ challenge: body.challenge });
   }
 
+  const retryNum = req.headers.get("x-slack-retry-num");
+  if (retryNum && Number(retryNum) > 0) {
+    return NextResponse.json({ ok: true });
+  }
+
   const event = body.event;
   if (!event || event.bot_id || event.subtype || !event.channel || !event.ts) {
     return NextResponse.json({ ok: true });

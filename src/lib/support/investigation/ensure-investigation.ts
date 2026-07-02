@@ -9,8 +9,13 @@ import {
   formatPlainEnglishIntro,
   isSupportLikeMessage,
   missingInfoQuestions,
+  isCqlAuthoringRequest,
 } from "./extract-query";
 import { enrichWithEndpointInference, describeEndpointInference } from "./infer-api";
+import { detectCywareProducts } from "../api-context";
+import { formatQueryEndpointDisplay, formatResolvedEndpointList } from "../api-base-url";
+import { buildCqlMarkdownReply, formatCqlInvestigationMarkdown } from "./cql-investigation";
+import { runCqlAgent } from "../agents/cqlAgent";
 import type { InvestigateResponse, SupportQuery, InvestigationContext } from "./types";
 import { hasJira, getConfig } from "../config";
 import { isTestMode } from "@/lib/test-mode";
@@ -29,6 +34,154 @@ export interface AutoInvestigationResult extends InvestigateResponse {
 }
 
 export { isSupportLikeMessage };
+
+function resolvedEndpointsForQuery(
+  query: SupportQuery,
+  ctx?: Partial<InvestigationContext>
+): string[] {
+  const detected = detectCywareProducts(query.text ?? "");
+  const raw = query.inferredEndpoints ?? (query.endpoint ? [query.endpoint] : []);
+  return formatResolvedEndpointList(raw, query, ctx, detected);
+}
+
+function endpointDetailValue(query: SupportQuery, ctx?: Partial<InvestigationContext>): string {
+  return formatQueryEndpointDisplay(query, ctx, detectCywareProducts(query.text ?? ""));
+}
+
+/** Lightweight investigation for CQL authoring — skips incident endpoint inference. */
+async function createCqlAuthoringInvestigation(
+  userMessage: string,
+  existingInvestigationId?: string
+): Promise<AutoInvestigationResult> {
+  const query = enrichSupportQuery({ text: userMessage });
+  const cqlResult = await runCqlAgent(query);
+  const sessionId = newSessionId();
+  const markdownReport = await buildCqlMarkdownReply(userMessage);
+
+  const ctx: InvestigationContext = {
+    sessionId,
+    query,
+    missingQuestions: [],
+    cql: cqlResult.data,
+    rootCause: {
+      likelyCause: "N/A — CQL authoring request",
+      confidence: "high",
+      severity: "low",
+      category: "unknown",
+      evidenceIds: [],
+    },
+    fixProposal: {
+      fixable: false,
+      suspectedRootCause: "N/A",
+      affectedFiles: [],
+      testPlan: [],
+      rollbackPlan: "N/A",
+      riskLevel: "low",
+      confidence: "high",
+      requiresHumanReview: false,
+    },
+    report: {
+      title: "CQL query help",
+      plainEnglishSummary: cqlResult.data.summary,
+      currentStatus: "needs-more-information",
+      severity: "low",
+      confidence: "high",
+      whatWeFound: {
+        jira: "Not applicable.",
+        logs: "Not applicable.",
+        code: "Not applicable.",
+        deployments: "Not applicable.",
+        docs: "Not applicable.",
+        cql: cqlResult.data.summary,
+      },
+      likelyCause: "N/A — CQL authoring request",
+      isItFixed: "N/A",
+      recommendedNextStep: "Run the suggested CQL in CTIX after validating against grammar docs.",
+      customerResponse: markdownReport.slice(0, 1200),
+      developerNotes: "CQL-only request — no API incident investigation required.",
+      jiraTicket: {
+        title: "CQL query help",
+        summary: userMessage.slice(0, 500),
+        customerImpact: "N/A",
+        suspectedRootCause: "N/A",
+        severity: "low",
+        priority: "Low",
+        linkedTickets: [],
+        relatedFiles: [],
+        acceptanceCriteria: [],
+        questionsForCustomer: [],
+        status: "not-created",
+      },
+    },
+    jira: { tickets: [], openMatches: 0, closedMatches: 0, summary: "Not applicable.", mock: true },
+    code: { files: [], commits: [], pullRequests: [], summary: "Not applicable.", mock: true },
+    logs: { entries: [], patterns: [], summary: "Not applicable.", mock: true },
+    deployments: { deployments: [], regressionSuspected: false, summary: "Not applicable.", mock: true },
+    docs: { docs: [], summary: "Not applicable for CQL-only requests.", mock: true },
+    evidence: [],
+    chatHistory: [],
+    modes: { jira: "mock", github: "mock", vercel: "mock", vectors: "mock" },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveSession(ctx);
+
+  const knownDetails = [
+    { id: "type", label: "Request type", value: "CQL authoring (CTIX)", at: new Date().toISOString() },
+  ];
+
+  let investigationId = existingInvestigationId;
+  const investigationMarkdown = formatCqlInvestigationMarkdown(ctx);
+
+  if (investigationId) {
+    patchInvestigation(investigationId, {
+      sessionId,
+      status: "resolved",
+      knownDetails,
+      missingDetails: [],
+      relevantEndpoints: [],
+      suspectedRootCause: ctx.report.likelyCause,
+      confidence: "high",
+      customerFacingResponse: ctx.report.customerResponse,
+      developerHandoff: ctx.report.developerNotes,
+      recommendedNextStep: ctx.report.recommendedNextStep,
+    });
+  } else {
+    investigationId = createInvestigation({
+      title: "CQL query help",
+      userIssue: userMessage,
+      sessionId,
+      status: "resolved",
+      knownDetails,
+      missingDetails: [],
+      relevantEndpoints: [],
+      suspectedRootCause: ctx.report.likelyCause,
+      confidence: "high",
+      customerFacingResponse: ctx.report.customerResponse,
+      developerHandoff: ctx.report.developerNotes,
+      recommendedNextStep: ctx.report.recommendedNextStep,
+    }).id;
+  }
+
+  const result: InvestigateResponse = {
+    sessionId,
+    report: ctx.report,
+    context: ctx,
+    needsMoreInfo: false,
+    missingQuestions: [],
+    credentialGaps: [],
+    supervisorReason: "CQL authoring request — skipped incident investigation pipeline",
+    markdownReport: investigationMarkdown,
+  };
+
+  return {
+    ...result,
+    investigationId,
+    introMarkdown: markdownReport,
+    endpointInferenceNote: null,
+  };
+}
 
 /** Reuse an active session or create a new investigation from natural language. */
 export async function ensureInvestigationSession(input: EnsureInvestigationInput): Promise<AutoInvestigationResult> {
@@ -170,6 +323,9 @@ export async function createMockInvestigationFromNaturalLanguage(
   const details = extractNaturalLanguageDetails(userMessage);
   let query = buildSupportQueryFromDetails(details, userMessage);
   query = enrichSupportQuery(query);
+  if (isCqlAuthoringRequest(userMessage, query)) {
+    return createCqlAuthoringInvestigation(userMessage, existingInvestigationId);
+  }
   query = enrichWithEndpointInference(query);
   const missing = missingInfoQuestions(query);
   const endpointNote = describeEndpointInference(query);
@@ -190,7 +346,7 @@ export async function createMockInvestigationFromNaturalLanguage(
       label: "Symptom",
       value: details.symptom ?? query.symptom ?? "",
     },
-    query.endpoint && { id: "endpoint", label: "Endpoint", value: query.endpoint },
+    query.endpoint && { id: "endpoint", label: "Endpoint", value: endpointDetailValue(query) },
   ]
     .filter(Boolean)
     .map((d) => ({
@@ -207,7 +363,7 @@ export async function createMockInvestigationFromNaturalLanguage(
       status: "in_progress",
       knownDetails,
       missingDetails: missing.map((m) => ({ id: m.id, question: m.question, whyNeeded: m.whyNeeded })),
-      relevantEndpoints: query.inferredEndpoints ?? (query.endpoint ? [query.endpoint] : []),
+      relevantEndpoints: resolvedEndpointsForQuery(query),
       relevantJiraTickets: details.supportTicketId ? [details.supportTicketId] : [],
       suspectedRootCause: ctx.report.likelyCause,
       confidence: ctx.report.confidence,
@@ -247,6 +403,9 @@ export async function createInvestigationFromNaturalLanguage(
   const details = extractNaturalLanguageDetails(userMessage);
   let query = buildSupportQueryFromDetails(details, userMessage);
   query = enrichSupportQuery(query);
+  if (isCqlAuthoringRequest(userMessage, query)) {
+    return createCqlAuthoringInvestigation(userMessage, existingInvestigationId);
+  }
   query = enrichWithEndpointInference(query);
 
   const missing = missingInfoQuestions(query);
@@ -267,7 +426,11 @@ export async function createInvestigationFromNaturalLanguage(
       label: "Symptom",
       value: details.symptom ?? query.symptom ?? "",
     },
-    query.endpoint && { id: "endpoint", label: "Endpoint", value: query.endpoint },
+    query.endpoint && {
+      id: "endpoint",
+      label: "Endpoint",
+      value: endpointDetailValue(query, result.context),
+    },
   ]
     .filter(Boolean)
     .map((d) => ({
@@ -292,7 +455,7 @@ export async function createInvestigationFromNaturalLanguage(
         question: m.question,
         whyNeeded: m.whyNeeded,
       })),
-      relevantEndpoints: query.inferredEndpoints ?? (query.endpoint ? [query.endpoint] : []),
+      relevantEndpoints: resolvedEndpointsForQuery(query, result.context),
       relevantJiraTickets: details.supportTicketId ? [details.supportTicketId] : [],
       suspectedRootCause: result.report.likelyCause,
       confidence: result.report.confidence,
@@ -316,7 +479,7 @@ export async function createInvestigationFromNaturalLanguage(
         question: m.question,
         whyNeeded: m.whyNeeded,
       })),
-      relevantEndpoints: query.inferredEndpoints ?? (query.endpoint ? [query.endpoint] : []),
+      relevantEndpoints: resolvedEndpointsForQuery(query, result.context),
       relevantJiraTickets: details.supportTicketId ? [details.supportTicketId] : [],
       suspectedRootCause: result.report.likelyCause,
       confidence: result.report.confidence,
@@ -349,5 +512,6 @@ export function buildQueryFromMessage(message: string): SupportQuery {
   const details = extractNaturalLanguageDetails(message);
   let query = buildSupportQueryFromDetails(details, message);
   query = enrichSupportQuery(query);
+  if (isCqlAuthoringRequest(message, query)) return query;
   return enrichWithEndpointInference(query);
 }

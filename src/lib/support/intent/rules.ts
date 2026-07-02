@@ -202,6 +202,12 @@ export const INTENT_RULES: IntentRule[] = [
   // CQL / API
   {
     intent: "generate_cql",
+    weight: 10,
+    re: /\b(write (?:a )?cql(?: query)?|help (?:me )?write (?:a )?cql|cql query for)\b/i,
+    label: "write CQL query",
+  },
+  {
+    intent: "generate_cql",
     weight: 8,
     re: /\b(cql|cyware query|turn this into.{0,20}query|find indicators|last week|high confidence)\b/i,
     label: "CQL generation",
@@ -419,6 +425,14 @@ export function applyContextBoosts(
     const diag = boosted.find((s) => s.intent === "diagnose_support_issue");
     const cql = boosted.find((s) => s.intent === "generate_cql");
     if (diag && cql) diag.score += 4;
+  }
+
+  // CQL-only prompts must not route to incident investigation
+  if (/\b(write (?:a )?cql|cql query for|cql grammar)\b/i.test(message)) {
+    const cql = boosted.find((s) => s.intent === "generate_cql");
+    const diag = boosted.find((s) => s.intent === "diagnose_support_issue");
+    if (cql) cql.score += 6;
+    if (diag) diag.score = Math.max(0, diag.score - 8);
   }
 
   return boosted.sort((a, b) => b.score - a.score);
