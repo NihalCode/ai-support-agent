@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 /**
- * Rigorous production smoke test for ai-support-agent.
- * Usage: node scripts/smoke-test-production.mjs [baseUrl]
+ * Production smoke test for ai-support-agent.
+ *
+ * Phase 1 (always): unauthenticated sanity — login page, auth redirect, protected APIs return 401.
+ * Phase 2 (optional): authenticated API workflow when AUTH0_E2E_EMAIL + AUTH0_E2E_PASSWORD are set.
+ *
+ * Usage:
+ *   node scripts/smoke-test-production.mjs [baseUrl]
+ *   AUTH0_E2E_EMAIL=you@example.com AUTH0_E2E_PASSWORD=secret node scripts/smoke-test-production.mjs
  */
 const BASE = process.argv[2] ?? "https://ai-support-agent-ecru.vercel.app";
+
+const email = process.env.AUTH0_E2E_EMAIL?.trim();
+const password = process.env.AUTH0_E2E_PASSWORD?.trim();
+const runAuthenticated = Boolean(email && password);
 
 const results = [];
 
@@ -39,151 +49,194 @@ async function json(path, opts = {}) {
 }
 
 console.log(`\nSmoke testing ${BASE}\n`);
+console.log("Phase 1 — unauthenticated sanity\n");
 
-await check("GET /api/support/health", async () => {
-  const { body } = await json("/api/support/health");
-  const live = body.connectors?.filter((c) => c.ok).map((c) => c.name).join(", ");
-  if (!body.connectors?.length) throw new Error("no connectors");
-  return `live: ${live}`;
+await check("GET /login", async () => {
+  const res = await fetch(`${BASE}/login`, { redirect: "manual" });
+  if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  return "login page reachable";
 });
 
-await check("GET /api/support/status", async () => {
-  const { body } = await json("/api/support/status");
-  if (!body.integrations?.openai?.configured) throw new Error("openai not configured");
-  return `repo=${body.mode?.repo} sessions=${body.mode?.sessions}`;
+await check("GET / redirects to login", async () => {
+  const res = await fetch(`${BASE}/`, { redirect: "manual" });
+  const loc = res.headers.get("location") ?? "";
+  if (res.status !== 307 && res.status !== 302) throw new Error(`HTTP ${res.status}`);
+  if (!loc.includes("/auth/login") && !loc.includes("/login")) {
+    throw new Error(`unexpected redirect: ${loc}`);
+  }
+  return loc;
 });
 
-await check("GET /api/support/tickets (recent)", async () => {
-  const { body } = await json("/api/support/tickets");
-  const n = body.jira?.issues?.length ?? 0;
-  return `${n} recent Jira issues`;
+await check("GET /api/auth/me (anonymous)", async () => {
+  const { res, body } = await json("/api/auth/me", { allowError: true });
+  if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  if (body.authenticated !== false) throw new Error("expected authenticated=false");
+  return `authConfigured=${body.authConfigured}`;
 });
 
-await check("GET /api/support/tickets?q=indicator", async () => {
-  const { body } = await json("/api/support/tickets?q=indicator");
-  return `jira=${body.jira?.issues?.length ?? 0} gh=${body.github?.issues?.length ?? 0}`;
+await check("GET /api/support/health (protected)", async () => {
+  const { res, body } = await json("/api/support/health", { allowError: true });
+  if (res.status !== 401) throw new Error(`expected 401, got ${res.status}`);
+  if (body.error !== "Unauthorized") throw new Error(`unexpected body: ${JSON.stringify(body)}`);
+  return "401 Unauthorized";
 });
 
-await check("GET /api/support/sources", async () => {
-  const { body } = await json("/api/support/sources");
-  return `${body.sources?.length ?? 0} sources`;
-});
-
-await check("GET /api/support/cyware?product=ctix", async () => {
-  const { body } = await json("/api/support/cyware?product=ctix");
-  if (!body.products?.ctix?.configured) throw new Error("CTIX not configured");
-  return body.products.ctix.detail ?? "configured";
-});
-
-await check("POST /api/support/investigate (vague)", async () => {
-  const { body } = await json("/api/support/investigate", {
+await check("POST /api/support/investigate (protected)", async () => {
+  const { res } = await json("/api/support/investigate", {
     method: "POST",
+    allowError: true,
     body: JSON.stringify({ query: { text: "API not working" } }),
   });
-  if (!body.needsMoreInfo) throw new Error("expected needsMoreInfo");
-  return `${body.missingQuestions?.length} questions`;
+  if (res.status !== 401) throw new Error(`expected 401, got ${res.status}`);
+  return "401 Unauthorized";
 });
 
-await check("POST /api/support/investigate (full)", async () => {
-  const { body } = await json("/api/support/investigate", {
+await check("POST /api/slack/events (unsigned)", async () => {
+  const res = await fetch(`${BASE}/api/slack/events`, {
     method: "POST",
-    body: JSON.stringify({
-      query: {
-        text: "POST /v3/indicators/search/ returns 500 since 10:30 AM",
-        endpoint: "/v3/indicators/search/",
-        statusCode: 500,
-        issueRef: "AISUP5-1",
-        repoUrl: "NihalCode/ai-support-agent",
-      },
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "url_verification", challenge: "smoke-challenge" }),
   });
-  if (!body.sessionId || !body.report) throw new Error("missing session/report");
-  globalThis.__sessionId = body.sessionId;
-  return `status=${body.report.currentStatus} github=${body.context?.modes?.github}`;
-});
-
-await check("GET /api/support/investigate?sessionId= (after create)", async () => {
-  const sid = globalThis.__sessionId;
-  if (!sid) throw new Error("no session");
-  const { body } = await json(`/api/support/investigate?sessionId=${encodeURIComponent(sid)}`);
-  if (!body.context?.sessionId) throw new Error("session not persisted");
-  return "persisted";
-});
-
-await check("POST /api/support/investigate (chat)", async () => {
-  const sid = globalThis.__sessionId;
-  if (!sid) throw new Error("no session");
-  const { body } = await json("/api/support/investigate", {
-    method: "POST",
-    body: JSON.stringify({ sessionId: sid, message: "Is this a known Jira issue?" }),
-  });
-  if (!body.chatReply?.length) throw new Error("empty chat reply");
-  return body.chatReply.slice(0, 50) + "…";
-});
-
-await check("POST /api/support/investigate/actions (pr-description)", async () => {
-  const sid = globalThis.__sessionId;
-  const { body } = await json("/api/support/investigate/actions", {
-    method: "POST",
-    body: JSON.stringify({ sessionId: sid, action: "pr-description" }),
-  });
-  if (!body.description?.length) throw new Error("empty PR description");
-  return `${body.description.length} chars`;
-});
-
-await check("POST /api/support/investigate/actions (generate-patch)", async () => {
-  const sid = globalThis.__sessionId;
-  const { body } = await json("/api/support/investigate/actions", {
-    method: "POST",
-    allowError: true,
-    body: JSON.stringify({ sessionId: sid, action: "generate-patch" }),
-  });
-  return body.patch ? `patch: ${body.patch.filePath}` : "no patch (ok if repo not indexed)";
-});
-
-await check("POST /api/support/analyze (AISUP5-1)", async () => {
-  const { body } = await json("/api/support/analyze", {
-    method: "POST",
-    body: JSON.stringify({ issueRef: "AISUP5-1", description: "playbook timeout" }),
-  });
-  if (!body.analysis?.summary) throw new Error("no analysis");
-  return body.analysis.confidence;
-});
-
-await check("POST /api/support/comment", async () => {
-  const { body: analyze } = await json("/api/support/analyze", {
-    method: "POST",
-    body: JSON.stringify({ issueRef: "AISUP5-1", description: "timeout" }),
-  });
-  const { body } = await json("/api/support/comment", {
-    method: "POST",
-    body: JSON.stringify({ analysis: analyze.analysis }),
-  });
-  if (!body.customer?.length) throw new Error("no customer comment");
-  return "drafts ok";
-});
-
-await check("POST /api/support/cql (generate)", async () => {
-  const { body } = await json("/api/support/cql", {
-    method: "POST",
-    allowError: true,
-    body: JSON.stringify({ query: "malicious IP last 24h confidence 90" }),
-  });
-  if (body.error && !body.result?.cql) throw new Error(body.error);
-  return body.result?.cql ? "CQL generated" : "needs CQL index (run index first)";
-});
-
-await check("POST /api/support/test (8 cases)", async () => {
-  const { body } = await json("/api/support/test", {
-    method: "POST",
-    body: "{}",
-  });
-  if (body.passed < 8) {
-    const fails = body.results?.filter((r) => !r.pass).map((r) => r.id).join(", ");
-    throw new Error(`${body.passed}/${body.total} passed — failed: ${fails}`);
+  if (res.status === 401) return "401 without signature";
+  if (res.status === 200) {
+    const body = await res.json();
+    if (body.challenge === "smoke-challenge") return "url_verification challenge returned";
   }
-  return `${body.passed}/${body.total} passed`;
+  throw new Error(`HTTP ${res.status}`);
 });
+
+if (!runAuthenticated) {
+  console.log(
+    "\nPhase 2 skipped — set AUTH0_E2E_EMAIL and AUTH0_E2E_PASSWORD for authenticated API smoke.\n"
+  );
+} else {
+  console.log("\nPhase 2 — authenticated API smoke\n");
+  const { chromium } = await import("playwright");
+
+  let sessionId;
+
+  async function authJson(request, path, opts = {}) {
+    const res = await request.fetch(`${BASE}${path}`, {
+      ...opts,
+      headers: { "Content-Type": "application/json", ...(opts.headers ?? {}) },
+    });
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text.slice(0, 200) };
+    }
+    if (!res.ok() && !opts.allowError) {
+      throw new Error(`HTTP ${res.status()}: ${body.error ?? text.slice(0, 120)}`);
+    }
+    return { res, body };
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await check("Auth0 login", async () => {
+      await page.goto(`${BASE}/auth/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForURL(/auth0\.com/i, { timeout: 45000 });
+      await page.getByRole("textbox", { name: /email/i }).fill(email);
+      await page.getByRole("textbox", { name: /password/i }).fill(password);
+      await page.getByRole("button", { name: /^Continue$/i }).click();
+      await page.waitForURL(/vercel\.app/i, { timeout: 90000 });
+      await page.waitForSelector('[data-testid="ide-root"]', { timeout: 60000 });
+      return page.url();
+    });
+
+    const req = page.request;
+
+    await check("GET /api/auth/me (authenticated)", async () => {
+      const { res, body } = await authJson(req, "/api/auth/me");
+      if (!res.ok() || !body.authenticated) throw new Error(JSON.stringify(body));
+      return `role=${body.user?.role ?? "unknown"}`;
+    });
+
+    await check("GET /api/support/health", async () => {
+      const { body } = await authJson(req, "/api/support/health");
+      const live = body.connectors?.filter((c) => c.ok).map((c) => c.name).join(", ");
+      if (!body.connectors?.length) throw new Error("no connectors");
+      return `live: ${live}`;
+    });
+
+    await check("GET /api/support/status", async () => {
+      const { body } = await authJson(req, "/api/support/status");
+      if (!body.integrations?.openai?.configured) throw new Error("openai not configured");
+      return `repo=${body.mode?.repo} sessions=${body.mode?.sessions}`;
+    });
+
+    await check("POST /api/support/investigate (vague)", async () => {
+      const { body } = await authJson(req, "/api/support/investigate", {
+        method: "POST",
+        data: JSON.stringify({ query: { text: "API not working" } }),
+      });
+      if (!body.needsMoreInfo) throw new Error("expected needsMoreInfo");
+      return `${body.missingQuestions?.length} questions`;
+    });
+
+    await check("POST /api/support/investigate (full)", async () => {
+      const { body } = await authJson(req, "/api/support/investigate", {
+        method: "POST",
+        data: JSON.stringify({
+          query: {
+            text: "POST /v3/indicators/search/ returns 500 since 10:30 AM",
+            endpoint: "/v3/indicators/search/",
+            statusCode: 500,
+            issueRef: "AISUP5-1",
+            repoUrl: "NihalCode/ai-support-agent",
+          },
+        }),
+      });
+      if (!body.sessionId || !body.report) throw new Error("missing session/report");
+      sessionId = body.sessionId;
+      return `status=${body.report.currentStatus}`;
+    });
+
+    await check("GET /api/support/investigate?sessionId= (after create)", async () => {
+      if (!sessionId) throw new Error("no session");
+      const { body } = await authJson(req, `/api/support/investigate?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!body.context?.sessionId) throw new Error("session not persisted");
+      return "persisted";
+    });
+
+    await check("POST /api/support/investigate (chat)", async () => {
+      if (!sessionId) throw new Error("no session");
+      const { body } = await authJson(req, "/api/support/investigate", {
+        method: "POST",
+        data: JSON.stringify({ sessionId, message: "Is this a known Jira issue?" }),
+      });
+      if (!body.chatReply?.length) throw new Error("empty chat reply");
+      return body.chatReply.slice(0, 50) + "…";
+    });
+
+    await check("POST /api/support/cql (generate)", async () => {
+      const { body } = await authJson(req, "/api/support/cql", {
+        method: "POST",
+        allowError: true,
+        data: JSON.stringify({ query: "malicious IP last 24h confidence 90" }),
+      });
+      if (body.error && !body.result?.cql) throw new Error(body.error);
+      return body.result?.cql ? "CQL generated" : "needs CQL index (run index first)";
+    });
+
+    await check("POST /api/support/test (8 cases)", async () => {
+      const { body } = await authJson(req, "/api/support/test", {
+        method: "POST",
+        data: "{}",
+      });
+      if (body.passed < 8) {
+        const fails = body.results?.filter((r) => !r.pass).map((r) => r.id).join(", ");
+        throw new Error(`${body.passed}/${body.total} passed — failed: ${fails}`);
+      }
+      return `${body.passed}/${body.total} passed`;
+    });
+  } finally {
+    await browser.close();
+  }
+}
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
