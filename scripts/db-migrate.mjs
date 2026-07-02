@@ -1,13 +1,35 @@
 #!/usr/bin/env node
 /**
  * Apply Postgres schema for enterprise persistence.
- * Usage: DATABASE_URL=postgres://... node scripts/db-migrate.mjs
+ * Loads DATABASE_URL from .env.local when not set in the shell.
+ * Usage: npm run db:migrate
  */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { neon } from "@neondatabase/serverless";
 
-const url = process.env.DATABASE_URL?.trim();
+function loadEnvLocal() {
+  const file = path.join(process.cwd(), ".env.local");
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const m = trimmed.match(/^([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (!m) continue;
+    const [, key, raw] = m;
+    if (!process.env[key]) {
+      process.env[key] = raw.replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
+loadEnvLocal();
+
+const url =
+  process.env.DATABASE_URL?.trim() ||
+  process.env.DATABASE_POSTGRES_URL?.trim();
 if (!url) {
-  console.error("DATABASE_URL is required");
+  console.error("DATABASE_URL is required (set in .env.local or shell)");
   process.exit(1);
 }
 
