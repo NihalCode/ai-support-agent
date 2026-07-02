@@ -77,7 +77,7 @@ export interface VerifyProjectOpts {
 /** Shared verification from project record — safe for client and server. */
 export function verifyProjectState(
   project: BuildAppProject | null,
-  opts: VerifyProjectOpts = {}
+  _opts: VerifyProjectOpts = {}
 ): VerifiedBuildAppState {
   if (!project) return emptyVerifiedState();
 

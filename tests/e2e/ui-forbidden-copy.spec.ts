@@ -28,8 +28,8 @@ test.describe("Support Mode forbidden copy", () => {
     }
   });
 
-  test("home dashboard has no forbidden debug labels", async ({ page }) => {
-    const body = await page.getByTestId("home-dashboard").innerText();
+  test("home chat has no forbidden debug labels", async ({ page }) => {
+    const body = await page.getByTestId("chat-welcome-hero").innerText();
     for (const re of FORBIDDEN_SUPPORT_COPY) {
       expect(body).not.toMatch(re);
     }

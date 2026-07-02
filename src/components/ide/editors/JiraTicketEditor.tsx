@@ -11,8 +11,13 @@ export function JiraTicketEditor({ ticketKey }: { ticketKey: string }) {
 
   useEffect(() => {
     if (!ticketKey) return;
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
+    });
     fetch(`/api/support/tickets?ref=${encodeURIComponent(ticketKey)}`)
       .then(async (res) => {
         const data = await res.json();
@@ -25,7 +30,12 @@ export function JiraTicketEditor({ ticketKey }: { ticketKey: string }) {
         setIssue(null);
         setError(e instanceof Error ? e.message : "Failed to load ticket");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [ticketKey]);
 
   if (loading) return <p style={{ color: "var(--muted)" }}>Loading {ticketKey}…</p>;

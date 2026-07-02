@@ -10,9 +10,11 @@ import { runBuildPreflight, formatPreflightReport } from "./preflight";
 import {
   formatCommandLog,
   runCommand,
-  shouldMockProjectCommands,
   type CommandResult,
 } from "./command-runner";
+import { resolveBuildExecutionMode, buildModeLabel } from "./build-strategy";
+import { runVercelRemoteBuild } from "./vercel-remote-build";
+import { runWorkerRemoteBuild } from "./remote-build-worker";
 import { classifyBuildError } from "./error-classify";
 import {
   type BuildAppCredentials,
@@ -102,7 +104,8 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
 }
 
 async function runProjectBuildInner(projectId: string, p: NonNullable<ReturnType<typeof getProject>>): Promise<ProjectBuildResult> {
-  const mockMode = shouldMockProjectCommands();
+  const executionMode = resolveBuildExecutionMode();
+  const mockMode = executionMode === "mock";
   const mockFail = process.env.MOCK_BUILD_FAIL === "true";
   const preflight = runBuildPreflight(p.rootDir);
   const commands: CommandResult[] = [];
@@ -148,14 +151,66 @@ async function runProjectBuildInner(projectId: string, p: NonNullable<ReturnType
   const preface = [
     formatPreflightReport(preflight),
     sourceCheck.fixed.length ? `Source auto-fix: ${sourceCheck.fixed.join(", ")}` : "",
-    mockMode
-      ? process.env.VERCEL === "1"
-        ? "[MOCK MODE] Vercel serverless — install/build simulated. Set BUILD_APP_REAL_COMMANDS=true for real npm on a worker with network + disk."
-        : "[MOCK MODE] Commands are simulated — install/build not executed on disk."
-      : "",
+    buildModeLabel(executionMode),
+    mockMode ? "[MOCK MODE] Commands are simulated — test mode only." : "",
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  if (executionMode === "vercel-remote") {
+    const remote = await runVercelRemoteBuild(projectId, p);
+    commands.push(...remote.commands);
+    const output = `${preface}\n\n${remote.output}`;
+    if (remote.ok) {
+      p.buildOk = true;
+      p.buildMock = false;
+      p.buildOutput = output;
+      p.status = "ready";
+      if (remote.previewUrl) p.previewUrl = remote.previewUrl;
+      saveProject(p);
+      return { ok: true, buildOk: true, preflightOk: true, output, commands };
+    }
+    p.buildOk = false;
+    p.buildMock = false;
+    p.buildOutput = output;
+    p.status = "failed";
+    saveProject(p);
+    return {
+      ok: false,
+      buildOk: false,
+      preflightOk: true,
+      output,
+      commands,
+      classification: classifyBuildError(remote.output),
+    };
+  }
+
+  if (executionMode === "worker") {
+    const remote = await runWorkerRemoteBuild(projectId, p.rootDir);
+    commands.push(...remote.commands);
+    const output = `${preface}\n\n${remote.output}`;
+    if (remote.ok) {
+      p.buildOk = true;
+      p.buildMock = false;
+      p.buildOutput = output;
+      p.status = "ready";
+      saveProject(p);
+      return { ok: true, buildOk: true, preflightOk: true, output, commands };
+    }
+    p.buildOk = false;
+    p.buildMock = false;
+    p.buildOutput = output;
+    p.status = "failed";
+    saveProject(p);
+    return {
+      ok: false,
+      buildOk: false,
+      preflightOk: true,
+      output,
+      commands,
+      classification: classifyBuildError(remote.output),
+    };
+  }
 
   const install = runCommand("npm install --no-audit --no-fund", p.rootDir, {
     mock: mockMode,

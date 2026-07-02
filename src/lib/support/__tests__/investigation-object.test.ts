@@ -8,7 +8,7 @@ import {
 
 describe("investigation object store", () => {
   beforeEach(() => {
-    listInvestigations().forEach((i) => {
+    listInvestigations().forEach((_inv) => {
       /* fresh map per test file run — global store persists in process */
     });
   });

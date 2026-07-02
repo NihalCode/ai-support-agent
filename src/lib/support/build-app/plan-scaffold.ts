@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { BuildAppPlan, BuildAppRequest, BuildAppTemplateId } from "./types";
+import type { BuildAppPlan, BuildAppRequest } from "./types";
 import { selectTemplate, inferFeatures, isReadOnlyRequest, extractClarifyingQuestions } from "./classify-request";
 import { selectEndpointsForApp } from "./select-endpoints";
 import { generateEnvSnippet } from "./env-snippet";

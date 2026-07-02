@@ -16,7 +16,7 @@ const SOURCE_TYPES = [
 ] as const;
 
 export function SearchSidebar() {
-  const { openTabFromTarget, openTab, pinEvidenceToInvestigation, compareWithActive } = useWorkspace();
+  const { openTabFromTarget, pinEvidenceToInvestigation, compareWithActive } = useWorkspace();
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<SearchMode>("hybrid");
   const [filterType, setFilterType] = useState<string>("");

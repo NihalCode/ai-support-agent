@@ -9,7 +9,7 @@ import type {
   EvidenceItem,
   InvestigationChatMessage,
 } from "../investigation/types";
-import { enrichSupportQuery, missingInfoQuestions } from "../investigation/extract-query";
+import { enrichSupportQuery } from "../investigation/extract-query";
 import { enrichWithEndpointInference } from "../investigation/infer-api";
 import { newSessionId, saveSession, getSession } from "../investigation/session-store";
 import { runJiraAgent } from "../agents/jiraAgent";
@@ -28,7 +28,7 @@ import { planInvestigation, formatInvestigationMarkdown, detectCredentialGaps } 
 import type { CqlFinding } from "../agents/cqlAgent";
 import type { VersionFinding } from "../agents/versionAgent";
 import { ensureAutoImported } from "../bootstrap/auto-import";
-import { getConfig, hasOpenAI, hasPinecone } from "../config";
+import { getConfig, hasOpenAI } from "../config";
 import { getVectorStore } from "../vector-store";
 import { vercelMode } from "../services/vercelService";
 import { chatJson, type ChatMessage } from "../openai";

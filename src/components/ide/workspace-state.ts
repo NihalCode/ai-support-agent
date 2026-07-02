@@ -8,7 +8,6 @@ import {
   openTabInGroup,
   closeTabInGroup,
   setActiveTabInGroup,
-  getActiveGroup,
   migrateToEditorLayout,
 } from "./editor-layout-state";
 
@@ -45,6 +44,8 @@ export function activityToDefaultTab(activity: ActivityId): EditorTab | null {
       return { id: "mcp-config", kind: "mcp-config", title: "MCP" };
     case "settings":
       return { id: "settings", kind: "settings", title: "Settings" };
+    case "logs":
+      return { id: "audit-logs", kind: "audit-logs", title: "Audit Logs" };
     case "chat":
       return null;
     default:

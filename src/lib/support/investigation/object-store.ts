@@ -5,7 +5,6 @@ import path from "node:path";
 import type {
   InvestigationObject,
   InvestigationPatch,
-  InvestigationEvidence,
   InvestigationHypothesis,
   InvestigationTimelineEvent,
 } from "./object-types";
@@ -170,7 +169,14 @@ export function patchInvestigation(id: string, patch: InvestigationPatch): Inves
     }
   }
 
-  const { pinEvidence, unpinEvidence, addHypothesis, updateHypothesis, addTimeline: _at, ...rest } = patch;
+  const {
+    pinEvidence: _pinEvidence,
+    unpinEvidence: _unpinEvidence,
+    addHypothesis: _addHypothesis,
+    updateHypothesis: _updateHypothesis,
+    addTimeline: _at,
+    ...rest
+  } = patch;
   Object.assign(inv, rest, { updatedAt: now });
   persistInvestigation(inv);
   return inv;

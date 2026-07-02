@@ -13,7 +13,7 @@ import {
 import type { ApprovalAction } from "@/lib/support/types";
 import { isTestMode } from "@/lib/test-mode";
 import { searchConfluencePages, getConfluencePage } from "@/integrations/confluence/ConfluenceConnector";
-import { isConfluenceSyncInProgress, tryAcquireConfluenceSyncLock, releaseConfluenceSyncLock } from "@/integrations/confluence/sync-lock";
+import { tryAcquireConfluenceSyncLock, releaseConfluenceSyncLock } from "@/integrations/confluence/sync-lock";
 import { searchJiraIssues, getJiraIssue } from "@/integrations/jira/JiraConnector";
 import { sendSlackTestMessage } from "@/integrations/slack/SlackConnector";
 import { searchZendeskTickets, getZendeskTicket } from "@/integrations/zendesk/ZendeskConnector";

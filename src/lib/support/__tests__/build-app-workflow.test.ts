@@ -42,7 +42,7 @@ describe("build-app approval phrases", () => {
 
   it("detects build-after-approval intent", () => {
     expect(isBuildAfterApprovalPhrase("Now build the app")).toBe(true);
-    expect(isBuildAfterApprovalPhrase("yes, create my app")).toBe(false);
+    expect(isBuildAfterApprovalPhrase("yes, create my app")).toBe(true);
   });
 });
 

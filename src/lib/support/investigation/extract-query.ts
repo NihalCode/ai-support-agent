@@ -22,7 +22,6 @@ const GH_RE = /\bgh#(\d+)\b/i;
 
 /** Detect whether the reporter is likely non-technical from phrasing. */
 export function detectTechnicalLevel(text: string): "non-technical" | "technical" {
-  const t = text.toLowerCase();
   const nonTechnical =
     /\b(don't know|don't really know|not technical|plain english|in simple terms|my team is stuck|someone gave me|if that helps)\b/i.test(
       text

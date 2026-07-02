@@ -34,7 +34,9 @@ export function isBuildAfterApprovalPhrase(message: string): boolean {
   return (
     /\b(now\s+)?build(\s+the\s+app|\s+it)\b/i.test(lower) ||
     /\brun (the )?build\b/i.test(lower) ||
-    /\bstart building\b/i.test(lower)
+    /\bstart building\b/i.test(lower) ||
+    /\b(yes,? create|create my app|create the app)\b/i.test(lower) ||
+    /\btest my app\b/i.test(lower)
   );
 }
 

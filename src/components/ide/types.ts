@@ -35,7 +35,8 @@ export type EditorTabKind =
   | "diff"
   | "mcp-config"
   | "credentials"
-  | "settings";
+  | "settings"
+  | "audit-logs";
 
 export interface EditorTab {
   id: string;
@@ -68,11 +69,19 @@ export interface EditorOpenTarget {
 
 export type BottomPanelTab = "terminal" | "output" | "problems" | "logs" | "tests" | "mcp" | "imports" | "trace";
 
+export interface ChatMessageMeta {
+  intent?: string;
+  approvalId?: string;
+  approvalPreview?: string;
+  error?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   toolCards?: ToolCallCardState[];
+  meta?: ChatMessageMeta;
   at: string;
 }
 

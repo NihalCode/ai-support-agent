@@ -14,11 +14,6 @@ function endpointFromChunk(metadata: Record<string, unknown>): string {
   return `${method.toUpperCase()} ${path}`.trim();
 }
 
-function productFromChunk(metadata: Record<string, unknown>) {
-  const repo = String(metadata.repo ?? "");
-  return Object.values(CYWARE_PRODUCT_PRESETS).find((p) => p.specId === repo)?.id ?? null;
-}
-
 /** Infer likely API endpoints from imported specs when the user did not provide one. */
 export function inferEndpointsFromDocs(query: SupportQuery): string[] {
   if (query.endpoint) return [query.endpoint];

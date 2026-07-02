@@ -46,7 +46,9 @@ export function UserManagementPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function updateRole(userId: string, role: UserRole) {

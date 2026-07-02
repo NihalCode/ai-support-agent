@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "./WorkspaceProvider";
 import { SLASH_COMMANDS } from "./types";
 
@@ -36,6 +36,7 @@ export function CommandPalette() {
   const { state, setCommandPalette, runCommand } = useWorkspace();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
+  const wasOpenRef = useRef(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -44,15 +45,20 @@ export function CommandPalette() {
   }, [query]);
 
   useEffect(() => {
-    if (!state.commandPaletteOpen) {
-      setQuery("");
-      setSelected(0);
+    if (state.commandPaletteOpen && !wasOpenRef.current) {
+      queueMicrotask(() => {
+        setQuery("");
+        setSelected(0);
+      });
     }
+    wasOpenRef.current = state.commandPaletteOpen;
   }, [state.commandPaletteOpen]);
 
-  useEffect(() => {
+  function closePalette() {
+    setCommandPalette(false);
+    setQuery("");
     setSelected(0);
-  }, [query]);
+  }
 
   if (!state.commandPaletteOpen) return null;
 
@@ -62,7 +68,7 @@ export function CommandPalette() {
       role="dialog"
       aria-label="Command palette"
       data-testid="command-palette"
-      onClick={() => setCommandPalette(false)}
+      onClick={() => closePalette()}
     >
       <div className="ide-command-palette" onClick={(e) => e.stopPropagation()}>
         <input
@@ -70,9 +76,12 @@ export function CommandPalette() {
           className="ide-command-input"
           placeholder="Type a command…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelected(0);
+          }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") setCommandPalette(false);
+            if (e.key === "Escape") closePalette();
             if (e.key === "ArrowDown") setSelected((s) => Math.min(s + 1, filtered.length - 1));
             if (e.key === "ArrowUp") setSelected((s) => Math.max(s - 1, 0));
             if (e.key === "Enter" && filtered[selected]) {

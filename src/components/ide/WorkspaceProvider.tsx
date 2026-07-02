@@ -15,7 +15,6 @@ import type {
   BottomPanelTab,
   ChatMessage,
   EditorTab,
-  ToolCallCardState,
   WorkspaceState,
 } from "./types";
 import {
@@ -205,12 +204,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { canUseDeveloperMode } = useAuth();
 
   useEffect(() => {
-    const stored = readStoredProductMode();
-    if (stored === "developer" && !canUseDeveloperMode) {
-      setProductModeState("client");
-      return;
-    }
-    setProductModeState(stored);
+    queueMicrotask(() => {
+      const stored = readStoredProductMode();
+      if (stored === "developer" && !canUseDeveloperMode) {
+        setProductModeState("client");
+        return;
+      }
+      setProductModeState(stored);
+    });
   }, [canUseDeveloperMode]);
 
   const setProductMode = useCallback(

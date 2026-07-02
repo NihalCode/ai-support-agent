@@ -68,19 +68,22 @@ describe("command runner", () => {
     expect(allCommandsSucceeded([ok, bad])).toBe(false);
   });
 
-  it("defaults to mock on Vercel serverless", () => {
-    const prev = { VERCEL: process.env.VERCEL, TEST: process.env.TEST_MODE, REAL: process.env.BUILD_APP_REAL_COMMANDS };
+  it("uses local npm on Vercel without token unless BUILD_APP_MOCK_ON_VERCEL", () => {
+    const prev = { VERCEL: process.env.VERCEL, TEST: process.env.TEST_MODE, REAL: process.env.BUILD_APP_REAL_COMMANDS, MOCK: process.env.BUILD_APP_MOCK_ON_VERCEL };
     delete process.env.TEST_MODE;
     delete process.env.BUILD_APP_REAL_COMMANDS;
+    delete process.env.VERCEL_TOKEN;
     process.env.VERCEL = "1";
-    expect(shouldMockProjectCommands()).toBe(true);
-    process.env.BUILD_APP_REAL_COMMANDS = "true";
     expect(shouldMockProjectCommands()).toBe(false);
+    process.env.BUILD_APP_MOCK_ON_VERCEL = "true";
+    expect(shouldMockProjectCommands()).toBe(true);
     process.env.VERCEL = prev.VERCEL;
     if (prev.TEST === undefined) delete process.env.TEST_MODE;
     else process.env.TEST_MODE = prev.TEST;
     if (prev.REAL === undefined) delete process.env.BUILD_APP_REAL_COMMANDS;
     else process.env.BUILD_APP_REAL_COMMANDS = prev.REAL;
+    if (prev.MOCK === undefined) delete process.env.BUILD_APP_MOCK_ON_VERCEL;
+    else process.env.BUILD_APP_MOCK_ON_VERCEL = prev.MOCK;
   });
 });
 

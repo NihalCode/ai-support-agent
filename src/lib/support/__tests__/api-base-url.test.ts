@@ -2,7 +2,6 @@ import { describe, expect, it, afterEach } from "vitest";
 
 import {
   formatApiEndpointDisplay,
-  formatQueryEndpointDisplay,
   resolvePathWithBase,
 } from "../api-base-url";
 import { enrichSupportQuery, missingInfoQuestions } from "../investigation/extract-query";

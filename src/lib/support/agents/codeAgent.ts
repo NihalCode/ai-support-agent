@@ -33,7 +33,7 @@ export async function runCodeAgent(q: SupportQuery): Promise<AgentResult<CodeFin
   const commitChunks = chunks.filter((c) => c.metadata.sourceType === "commit");
   const prChunks = chunks.filter((c) => c.metadata.sourceType === "pr" || c.metadata.sourceType === "issue");
 
-  let files: EvidenceItem[] = codeChunks.map((c, i) => {
+  const files: EvidenceItem[] = codeChunks.map((c, i) => {
     const cit = citationFromChunk(c);
     return {
       id: `code-${i}`,

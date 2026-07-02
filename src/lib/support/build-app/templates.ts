@@ -1,6 +1,6 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, cpSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, cpSync } from "node:fs";
 import path from "node:path";
 import type { BuildAppTemplateId, BuildAppTemplateManifest } from "./types";
 

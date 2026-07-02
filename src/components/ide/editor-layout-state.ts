@@ -1,4 +1,4 @@
-import type { EditorTab, EditorLayout, EditorGroup, EditorLayoutOrientation } from "./types";
+import type { EditorTab, EditorLayout, EditorGroup } from "./types";
 
 export const DEFAULT_GROUP_ID = "group-primary";
 
@@ -76,11 +76,6 @@ export function setActiveGroup(layout: EditorLayout, groupId: string): EditorLay
   return { ...layout, activeGroupId: groupId };
 }
 
-function cloneActiveTabs(layout: EditorLayout, groupId: string): EditorTab[] {
-  const g = layout.groups.find((x) => x.id === groupId);
-  return g ? [...g.tabs] : [];
-}
-
 export function splitEditorRight(layout: EditorLayout, fromGroupId?: string): EditorLayout {
   const fromId = fromGroupId ?? layout.activeGroupId;
   const from = layout.groups.find((g) => g.id === fromId);
@@ -100,8 +95,7 @@ export function splitEditorRight(layout: EditorLayout, fromGroupId?: string): Ed
   };
 }
 
-export function splitEditorDown(layout: EditorLayout, fromGroupId?: string): EditorLayout {
-  const fromId = fromGroupId ?? layout.activeGroupId;
+export function splitEditorDown(layout: EditorLayout, _fromGroupId?: string): EditorLayout {
   if (layout.groups.length >= 2 && layout.orientation === "vertical") return layout;
   const newGroupId = `group-${crypto.randomUUID().slice(0, 8)}`;
   const welcome = createWelcomeTab();
@@ -174,7 +168,7 @@ export function compareWithActive(
   layout: EditorLayout,
   tab: EditorTab
 ): EditorLayout {
-  let next = splitEditorRight(layout);
+  const next = splitEditorRight(layout);
   const otherId = next.groups.find((g) => g.id !== layout.activeGroupId)?.id ?? next.activeGroupId;
   return openTabInGroup(next, tab, otherId);
 }

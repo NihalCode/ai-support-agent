@@ -3,7 +3,6 @@ import "server-only";
 import {
   getConfig,
   hasConfluence,
-  hasGitHub,
   hasJira,
   hasOpenAI,
   hasPinecone,

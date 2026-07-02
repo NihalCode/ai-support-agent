@@ -16,6 +16,7 @@ import { InvestigationObjectPanel } from "../investigation/InvestigationObjectPa
 import { BuildAppEditor } from "./editors/BuildAppEditor";
 import { SettingsEditor } from "./editors/SettingsEditor";
 import { JiraTicketEditor } from "./editors/JiraTicketEditor";
+import { AuditTimelinePanel } from "@/components/enterprise/AuditTimelinePanel";
 
 export function EditorArea({
   groupId,
@@ -91,6 +92,15 @@ export function EditorArea({
       {tab.kind === "cql" && <CqlWorkspaceEditor />}
       {tab.kind === "credentials" && <CredentialSetup />}
       {tab.kind === "settings" && <SettingsEditor />}
+      {tab.kind === "audit-logs" && (
+        <div style={{ padding: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Audit logs</h2>
+          <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 16 }}>
+            Unified timeline grouped by Slack threads, investigations, and approvals.
+          </p>
+          <AuditTimelinePanel />
+        </div>
+      )}
       {tab.kind === "investigation-object" && (
         <InvestigationObjectPanel investigationId={String(tab.payload?.investigationId ?? "")} />
       )}

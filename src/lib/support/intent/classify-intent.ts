@@ -12,7 +12,6 @@ import { SLASH_INTENT_MAP, applyContextBoosts, scoreMessageRules } from "./rules
 const TICKET_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
 
 function detectTechnicalLevel(message: string): UserTechnicalLevel {
-  const t = message.toLowerCase();
   const nonTechnical =
     /\b(don't know|not technical|plain english|simple terms|my manager|customer says|someone gave me)\b/i.test(
       message
@@ -71,7 +70,7 @@ function confidenceFromScore(top: number, second: number): IntentConfidence {
   return "low";
 }
 
-function planSummaryFor(intent: UserIntent, ctx: WorkspaceIntentContext): string {
+function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): string {
   switch (intent) {
     case "build_app":
       return "Pick a template, connect APIs, generate files, and prepare for test/preview.";

@@ -55,6 +55,7 @@ export default async function LoginPage({
           Full document navigation is required for OAuth — Next.js <Link> client routing
           can skip Set-Cookie on /auth/login and cause "The state parameter is invalid."
         */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full navigation required for OAuth Set-Cookie */}
         <a
           href="/auth/login"
           data-testid="login-continue"

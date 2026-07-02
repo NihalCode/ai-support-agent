@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AuditTimelinePanel } from "@/components/enterprise/AuditTimelinePanel";
 import type {
-  EnterpriseAuditLog,
   IntegrationHealthCard,
   KnowledgeSource,
   SetupChecklistItem,
@@ -127,36 +127,7 @@ export function SystemHealthPanel() {
 }
 
 export function AuditLogsPanel() {
-  const [entries, setEntries] = useState<EnterpriseAuditLog[]>([]);
-  const [actionFilter, setActionFilter] = useState("");
-
-  useEffect(() => {
-    const q = actionFilter ? `?action=${encodeURIComponent(actionFilter)}` : "";
-    fetchJson<{ entries: EnterpriseAuditLog[] }>(`/api/support/audit${q}`)
-      .then((d) => setEntries(d.entries as EnterpriseAuditLog[]))
-      .catch(() => setEntries([]));
-  }, [actionFilter]);
-
-  return (
-    <div data-testid="audit-logs-panel">
-      <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 13 }}>
-        Filter action
-        <input value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} />
-      </label>
-      <div style={{ maxHeight: 480, overflow: "auto" }}>
-        {entries.map((e) => (
-          <div key={e.id} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0", fontSize: 12 }}>
-            <div>
-              <strong>{e.action}</strong> · {e.targetSystem} · {e.status}
-            </div>
-            <div style={{ color: "var(--muted)" }}>
-              {e.actorEmail ?? e.actorUserId} · {new Date(e.createdAt).toLocaleString()}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <AuditTimelinePanel />;
 }
 
 export function SetupChecklistPanel({ onNavigate }: { onNavigate?: (section: string) => void }) {

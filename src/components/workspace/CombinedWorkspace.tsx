@@ -27,7 +27,7 @@ export function CombinedWorkspace() {
   const [investigation, setInvestigation] = useState<InvestigateResponse | null>(null);
 
   // Diagnose flow state (embedded when user switches or runs quick diagnose)
-  const [repoUrl, setRepoUrl] = useState("");
+  const [repoUrl] = useState("");
   const [issueRef, setIssueRef] = useState("");
   const [description, setDescription] = useState("");
   const [analyzing, setAnalyzing] = useState(false);

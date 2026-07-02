@@ -4,15 +4,15 @@ import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { isTestMode } from "@/lib/test-mode";
+import { resolveBuildExecutionMode, shouldMockProjectCommands as mockForMode } from "./build-strategy";
 
 export type CommandStatus = "success" | "failed" | "cancelled" | "timed_out";
 
-/** Real npm install/build on Vercel serverless is unreliable (home dir, timeouts). */
+/** Simulated commands only in test mode or explicit BUILD_APP_FORCE_MOCK. */
 export function shouldMockProjectCommands(): boolean {
   if (isTestMode()) return true;
-  if (process.env.BUILD_APP_REAL_COMMANDS === "true") return false;
-  if (process.env.VERCEL === "1") return true;
-  return false;
+  if (process.env.BUILD_APP_FORCE_MOCK === "true") return true;
+  return mockForMode(resolveBuildExecutionMode());
 }
 
 function npmEnvForCwd(cwd: string): NodeJS.ProcessEnv {

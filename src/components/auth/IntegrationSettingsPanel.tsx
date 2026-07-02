@@ -61,7 +61,9 @@ export function IntegrationSettingsPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   function draftFor(id: IntegrationId): Record<string, string> {

@@ -10,11 +10,6 @@ import {
   type VerifiedBuildAppIntegration,
   type VerifiedBuildAppState,
   verifyProjectState,
-  integrationHonestyNotes,
-  formatVerifiedBuildStatus,
-  safeBuildSuccessMessage,
-  safeFilesCreatedMessage,
-  safePreviewMessage,
   emptyVerifiedState,
 } from "./verified-claims";
 

@@ -9,11 +9,11 @@ test.beforeEach(async ({ page }) => {
   });
 });
 test.describe("App shell", () => {
-  test("loads client IDE with activity bar and home dashboard", async ({ page }) => {
+  test("loads client IDE with activity bar and welcome chat", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("ide-root")).toBeVisible();
     await expect(page.getByTestId("activity-bar")).toBeVisible();
-    await expect(page.getByTestId("home-dashboard")).toBeVisible();
+    await expect(page.getByTestId("chat-welcome-hero")).toBeVisible();
     await expect(page.getByTestId("open-command-palette")).toHaveCount(0);
   });
 
@@ -29,9 +29,10 @@ test.describe("App shell", () => {
     await expect(page.getByTestId("bottom-tab-terminal")).toHaveCount(0);
   });
 
-  test("developer mode shows bottom panel", async ({ page }) => {
+  test("developer mode shows bottom panel in editor view", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
   });
 
@@ -48,10 +49,13 @@ test.describe("Split editor", () => {
   test("splits editor right via command palette and persists", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await page.getByTestId("open-command-palette").click();
     await page.getByRole("button", { name: "Split Editor Right" }).click();
     await expect(page.locator(".ide-editor-group")).toHaveCount(2);
     await page.reload();
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await expect(page.locator(".ide-editor-group")).toHaveCount(2);
   });
 });
@@ -111,6 +115,7 @@ test.describe("Terminal", () => {
   test("runs allowlisted command", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await page.getByTestId("bottom-tab-terminal").click();
     await expect(page.getByTestId("terminal-panel")).toBeVisible();
     await page.getByTestId("terminal-input").fill("npm test");
@@ -123,6 +128,7 @@ test.describe("Terminal", () => {
   test("blocks unsafe command", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await page.getByTestId("bottom-tab-terminal").click();
     await page.getByTestId("terminal-input").fill("rm -rf /");
     await page.getByTestId("terminal-run").click();
@@ -138,17 +144,16 @@ test.describe("Chat build app routing", () => {
       "Build me a simple indicator search dashboard using Cyware APIs with search box and table results.";
     await page.getByTestId("ai-chat-input").fill(msg);
     await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("build-app-chat-input")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("build-app-chat-assistant").first()).toContainText(/indicator|template|Build App|plan|scaffold/i, {
+      timeout: 30000,
+    });
+    await page.getByTestId("activity-home").click();
     await expect(page.getByTestId("chat-assistant-message")).toContainText(
       /Build App|indicator search|template/i,
       { timeout: 20000 }
     );
-    await expect(page.getByText(/open_build_app|appBuilder/i).first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("build-app-input")).toHaveValue(msg, { timeout: 5000 });
-    await expect(page.getByTestId("build-app-chat-input")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId("build-app-chat-assistant").first()).toContainText(/indicator|template|Build App/i, {
-      timeout: 20000,
-    });
   });
 });
 
@@ -394,10 +399,11 @@ test.describe("Natural-language agent routing", () => {
       "I need a small internal tool where analysts can search indicators and click into details.";
     await page.getByTestId("ai-chat-input").fill(msg);
     await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
+    await page.getByTestId("activity-home").click();
     await expect(page.getByTestId("chat-assistant-message")).toContainText(/Understood as: build app|Build App|template/i, {
       timeout: 20000,
     });
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
   });
 
   test("E2E NL investigation auto-create", async ({ page }) => {
@@ -489,6 +495,7 @@ test.describe("Degraded mode", () => {
   test("shows problems panel warnings", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await page.getByTestId("bottom-tab-problems").click();
     await expect(page.getByTestId("problems-panel")).toBeVisible();
   });
@@ -543,14 +550,12 @@ test.describe("Client mode professionalism", () => {
 
   test("home page shows professional dashboard copy", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("home-dashboard")).toBeVisible();
-    await expect(page.getByText(/Describe what you want to build, fix, investigate, or deploy/i)).toBeVisible();
-    await expect(page.getByTestId("home-card-build")).toBeVisible();
-    await expect(page.getByTestId("home-card-investigate")).toBeVisible();
-    await expect(page.getByTestId("home-card-apis")).toBeVisible();
-    await expect(page.getByTestId("home-card-deploy")).toBeVisible();
-    await expect(page.getByText("Start building")).toBeVisible();
-    await expect(page.getByText("Start investigation")).toBeVisible();
+    await expect(page.getByTestId("chat-welcome-hero")).toBeVisible();
+    await expect(page.getByText(/Build, investigate, and resolve support issues with AI/i)).toBeVisible();
+    await expect(page.getByTestId("prompt-card-build")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-investigate")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-knowledge")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-deploy")).toBeVisible();
   });
 
   test("client mode shows friendly status and chat", async ({ page }) => {
@@ -558,15 +563,17 @@ test.describe("Client mode professionalism", () => {
     await expect(page.getByTestId("status-readiness")).toContainText(/Everything looks ready|issue/i);
     await expect(page.getByTestId("ai-chat-input")).toBeVisible();
     await expect(page.getByTestId("chat-empty-state")).toBeVisible();
-    await expect(page.getByTestId("chat-empty-state").getByText(/Build an indicator dashboard/i)).toBeVisible();
+    await expect(page.getByTestId("chat-empty-state").getByText(/indicator search dashboard/i)).toBeVisible();
   });
 
   test("developer mode reveals advanced panels", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-build-app").click();
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
     await expect(page.getByTestId("open-command-palette")).toBeVisible();
-    await expect(page.getByTestId("activity-mcp")).toBeVisible();
+    await page.getByTestId("sidebar-advanced-toggle").click();
+    await expect(page.getByTestId("sidebar-advanced-mcp")).toBeVisible();
   });
 
   test("client mode hides raw build errors until technical details expanded", async ({ page }) => {

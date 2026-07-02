@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AgentResult, DeploymentFinding, SupportQuery } from "../investigation/types";
-import { listDeployments, deploymentsToEvidence, vercelMode } from "../services/vercelService";
+import { listDeployments, deploymentsToEvidence } from "../services/vercelService";
 
 export async function runDeploymentAgent(q: SupportQuery): Promise<AgentResult<DeploymentFinding>> {
   const start = Date.now();

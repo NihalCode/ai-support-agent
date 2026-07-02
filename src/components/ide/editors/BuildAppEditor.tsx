@@ -140,11 +140,17 @@ export function BuildAppEditor({
   }, []);
 
   useEffect(() => {
-    if (initialProjectId) void loadProject(initialProjectId);
+    if (initialProjectId) {
+      queueMicrotask(() => void loadProject(initialProjectId));
+    }
   }, [initialProjectId, loadProject]);
 
-  useEffect(() => { if (initialTicketId) setTicketId(initialTicketId); }, [initialTicketId]);
-  useEffect(() => { if (initialTemplateId) setSuggestedTemplateId(initialTemplateId); }, [initialTemplateId]);
+  useEffect(() => {
+    if (initialTicketId) queueMicrotask(() => setTicketId(initialTicketId));
+  }, [initialTicketId]);
+  useEffect(() => {
+    if (initialTemplateId) queueMicrotask(() => setSuggestedTemplateId(initialTemplateId));
+  }, [initialTemplateId]);
 
   const conversationText = useCallback(
     (extraUserMessage?: string) => {
@@ -221,7 +227,7 @@ export function BuildAppEditor({
         setLoading(false);
       }
     },
-    [project, vercelToken, pushAssistant]
+    [project, vercelToken, pushAssistant, syncBuildProblem]
   );
 
   const runAgent = useCallback(
@@ -288,26 +294,32 @@ export function BuildAppEditor({
   useEffect(() => {
     if (seededRef.current || !initialMessage?.trim()) return;
     seededRef.current = true;
-    setChatMessages([{ role: "user", content: initialMessage.trim(), at: new Date().toISOString() }]);
+    queueMicrotask(() =>
+      setChatMessages([{ role: "user", content: initialMessage.trim(), at: new Date().toISOString() }])
+    );
   }, [initialMessage]);
 
   useEffect(() => {
     if (!autoStart || autoStartedRef.current) return;
 
-    if (mode === "deploy") {
-      if (!project) {
-        if (initialProjectId) void loadProject(initialProjectId);
+    queueMicrotask(() => {
+      if (!autoStart || autoStartedRef.current) return;
+
+      if (mode === "deploy") {
+        if (!project) {
+          if (initialProjectId) void loadProject(initialProjectId);
+          return;
+        }
+        autoStartedRef.current = true;
+        const target = /\bprod(uction)?\b/i.test(initialMessage ?? "") ? "production" : "preview";
+        void requestDeploy(target);
         return;
       }
-      autoStartedRef.current = true;
-      const target = /\bprod(uction)?\b/i.test(initialMessage ?? "") ? "production" : "preview";
-      void requestDeploy(target);
-      return;
-    }
 
-    if (!initialMessage?.trim()) return;
-    autoStartedRef.current = true;
-    void runAgent(initialMessage.trim(), { silentUser: true });
+      if (!initialMessage?.trim()) return;
+      autoStartedRef.current = true;
+      void runAgent(initialMessage.trim(), { silentUser: true });
+    });
   }, [autoStart, mode, initialMessage, runAgent, project, initialProjectId, loadProject, requestDeploy]);
 
   async function runFixBuildRedeploy(userText: string) {
@@ -452,8 +464,12 @@ export function BuildAppEditor({
     ) {
       setChatMessages((prev) => [...prev, { role: "user", content: text, at: new Date().toISOString() }]);
       if (project.buildOk !== true) {
-        pushAssistant("I'll run a test build first — click **Test my app** below, then ask again to share.");
-        return;
+        pushAssistant("Running a test build first…");
+        const built = await runBuild();
+        if (!built) {
+          pushAssistant("Build must pass before sharing. Fix any errors above, then ask again.");
+          return;
+        }
       }
       if (!vercelToken) {
         setAwaitingVercelToken(true);
@@ -584,8 +600,8 @@ export function BuildAppEditor({
     }
   }
 
-  async function runBuild() {
-    if (!project || actionInFlightRef.current || loading) return;
+  async function runBuild(): Promise<boolean> {
+    if (!project || actionInFlightRef.current || loading) return false;
     actionInFlightRef.current = true;
     setLoading(true);
     setError(null);
@@ -617,7 +633,7 @@ export function BuildAppEditor({
         pushAssistant(
           [summary, fix, "Open Show technical details below for the full command log."].filter(Boolean).join("\n\n")
         );
-        return;
+        return false;
       }
 
       syncBuildProblem(null);
@@ -625,11 +641,13 @@ export function BuildAppEditor({
         (data as { verified?: ReturnType<typeof verifyProjectState> }).verified ??
         verifyProjectState(data.project ?? project);
       pushAssistant(safeBuildSuccessMessage(verified));
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Build failed";
       setError(msg);
       syncBuildProblem(msg);
       pushAssistant(`Build failed: ${msg}`);
+      return false;
     } finally {
       setLoading(false);
       actionInFlightRef.current = false;
@@ -713,7 +731,7 @@ export function BuildAppEditor({
             <button
               type="button"
               data-testid="build-app-approve"
-              onClick={() => void approveAndApply()}
+              onClick={() => void approveAndApply({ runBuildAfter: !isEditApproval })}
               disabled={loading}
               style={btnPrimary}
             >

@@ -8,6 +8,7 @@ const steps = [
   { name: "test:intents", cmd: "npm", args: ["run", "test:intents"] },
   { name: "test", cmd: "npm", args: ["test"] },
   { name: "typecheck", cmd: "npm", args: ["run", "typecheck"] },
+  { name: "lint", cmd: "npm", args: ["run", "lint"] },
   { name: "build", cmd: "npm", args: ["run", "build"] },
   { name: "test:e2e", cmd: "npm", args: ["run", "test:e2e"] },
   { name: "mcp:check", cmd: "npm", args: ["run", "mcp:check"] },
