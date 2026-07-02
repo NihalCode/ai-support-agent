@@ -5,6 +5,7 @@ import {
   buildSupportQueryFromDetails,
   enrichSupportQuery,
   extractNaturalLanguageDetails,
+  isCqlAuthoringRequest,
 } from "../investigation/extract-query";
 import {
   formatAutoLinkedTicketsNote,
@@ -15,6 +16,7 @@ import { formatEvidenceLinksSlack } from "../investigation/evidence-links";
 import type { SupportQuery } from "../investigation/types";
 import { getSlackThread, setSlackThreadInvestigation } from "./thread-store";
 import { upsertInvestigationLinks } from "../enterprise/stores/investigation-links-store";
+import { buildCqlSlackReply } from "./cql-reply";
 
 const INVESTIGATION_KEYWORDS =
   /\b(error|fail|bug|issue|ticket|api|endpoint|cql|500|401|403|sync|help|investigate|broken|unauthorized|timeout|ctix|customer|production)\b/i;
@@ -67,6 +69,14 @@ export async function enrichSlackThread(input: {
 
   const thread = await getSlackThread(input.channelId, input.threadTs, input.teamId);
   const sessionId = thread?.investigationSessionId;
+  const combined = await threadQueryText(input.channelId, input.threadTs, latest);
+  const query = buildSupportQuery(combined);
+  const appBase = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL;
+
+  if (isCqlAuthoringRequest(combined, query)) {
+    const text = await buildCqlSlackReply(combined, appBase, sessionId);
+    return { text, sessionId, mode: sessionId ? "chat" : "investigation" };
+  }
 
   if (sessionId) {
     try {
@@ -77,12 +87,11 @@ export async function enrichSlackThread(input: {
     }
   }
 
-  const combined = await threadQueryText(input.channelId, input.threadTs, latest);
-  const query = buildSupportQuery(combined);
+  const query2 = query;
   const shouldInvestigate =
     combined.length >= 12 ||
     INVESTIGATION_KEYWORDS.test(combined) ||
-    Boolean(query.statusCode || query.endpoint || query.symptom);
+    Boolean(query2.statusCode || query2.endpoint || query2.symptom);
 
   if (!shouldInvestigate) {
     // Stay silent in channel threads until the user @mentions the bot.
@@ -95,10 +104,10 @@ export async function enrichSlackThread(input: {
     };
   }
 
-  const preResolved = await resolveTicketsFromContext(query);
+  const preResolved = await resolveTicketsFromContext(query2);
   const investigationQuery: SupportQuery = {
-    ...query,
-    issueRef: query.issueRef ?? preResolved.jiraIssueKey,
+    ...query2,
+    issueRef: query2.issueRef ?? preResolved.jiraIssueKey,
   };
 
   const result = await runInvestigation(investigationQuery);
@@ -120,7 +129,7 @@ export async function enrichSlackThread(input: {
     customerSummary: combined.slice(0, 500),
   }).catch(() => undefined);
 
-  const appBase = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL;
+  const appBase2 = appBase;
   const summary =
     result.chatReply ??
     result.report?.plainEnglishSummary ??
@@ -130,7 +139,7 @@ export async function enrichSlackThread(input: {
   const evidenceLinks = result.context ? formatEvidenceLinksSlack(result.context) : "";
 
   return {
-    text: formatInvestigationReply(summary, result.sessionId, appBase, ticketNote, evidenceLinks),
+    text: formatInvestigationReply(summary, result.sessionId, appBase2, ticketNote, evidenceLinks),
     sessionId: result.sessionId,
     mode: "investigation",
   };

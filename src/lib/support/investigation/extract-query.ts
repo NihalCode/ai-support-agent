@@ -182,6 +182,31 @@ export function enrichSupportQuery(raw: SupportQuery): SupportQuery {
   };
 }
 
+/** True when the user wants CQL syntax/help, not an incident investigation. */
+export function isCqlAuthoringRequest(text: string, q?: SupportQuery): boolean {
+  const t = text.trim();
+  if (!/\b(cql|cyware query language)\b/i.test(t)) return false;
+
+  const negatedIncident =
+    /\b(not (a|an)|isn'?t (a|an)|no)\s+(failure|incident|outage|error report)\b/i.test(t) ||
+    /\bn\/a\b/i.test(t) ||
+    /\b(documentation|grammar|syntax|authoring)\s+(request|only)\b/i.test(t) ||
+    /\bnot debugging\b/i.test(t);
+
+  const asksForCql =
+    /\b(write|build|generate|create|help|query|grammar|syntax|filter|find|search|malicious|indicator|confidence|operators?|link)\b/i.test(
+      t
+    ) || /\blast\s+\d+\s*(hours?|h|days?)\b/i.test(t);
+
+  const hasFailureSignal =
+    !negatedIncident &&
+    (Boolean(q?.statusCode && q.statusCode >= 400) ||
+      Boolean(q?.symptom && !/\bn\/a\b/i.test(q.symptom)) ||
+      /\b(500|401|403|502|503|timeout|outage|keep loading|production down)\b/i.test(t));
+
+  return asksForCql && !hasFailureSignal;
+}
+
 function plainEnglishFollowUps(q: SupportQuery): MissingInformationQuestion[] {
   const out: MissingInformationQuestion[] = [];
   if (!q.approximateStartTime && !q.timestamp) {
@@ -241,6 +266,8 @@ function technicalFollowUps(q: SupportQuery): MissingInformationQuestion[] {
 
 /** Return follow-up questions — plain English for non-technical reporters. Never blocks investigation. */
 export function missingInfoQuestions(q: SupportQuery): MissingInformationQuestion[] {
+  if (isCqlAuthoringRequest(q.text ?? "", q)) return [];
+
   const words = q.text.trim().split(/\s+/).filter(Boolean).length;
   const veryVague =
     words < 5 && !q.endpoint && !q.issueRef && !q.errorMessage && !q.statusCode && !q.workflowName;

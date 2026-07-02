@@ -2,7 +2,7 @@ import "server-only";
 
 import { listSpecs } from "@/lib/support/api-specs/registry";
 import type { SupportQuery } from "./types";
-import { buildSearchTerms } from "./extract-query";
+import { buildSearchTerms, isCqlAuthoringRequest } from "./extract-query";
 
 const WORKFLOW_TERMS: Record<string, string[]> = {
   block: ["indicator", "block", "action", "ip", "deny"],
@@ -65,6 +65,7 @@ export function inferEndpointsFromDocs(query: SupportQuery): string[] {
 
 /** Enrich query with inferred endpoint(s) for agent search — does not overwrite explicit endpoint. */
 export function enrichWithEndpointInference(query: SupportQuery): SupportQuery {
+  if (isCqlAuthoringRequest(query.text ?? "", query)) return query;
   if (query.endpoint) return query;
 
   const inferred = inferEndpointsFromDocs(query);
