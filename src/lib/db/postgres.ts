@@ -159,6 +159,13 @@ async function runSchemaMigrations(sql: NeonSql): Promise<void> {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS slack_event_dedup (
+      dedup_key TEXT PRIMARY KEY,
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS knowledge_sources (
       id TEXT PRIMARY KEY,
       org_id TEXT NOT NULL DEFAULT 'default',

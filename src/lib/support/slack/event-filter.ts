@@ -12,11 +12,10 @@ export interface SlackIncomingEvent {
   channel_type?: string;
 }
 
-/** Decide whether this Slack event should trigger exactly one bot reply. */
+/** Decide whether this Slack event should trigger a bot reply. */
 export function shouldHandleSlackEvent(
   envelopeType: string,
-  event: SlackIncomingEvent,
-  opts?: { threadHasSession?: boolean }
+  event: SlackIncomingEvent
 ): boolean {
   if (envelopeType !== "event_callback" || !event) return false;
   if (event.bot_id || event.subtype || !event.channel || !event.ts) return false;
@@ -29,15 +28,11 @@ export function shouldHandleSlackEvent(
 
   if (event.type !== "message") return false;
 
-  // @mentions are handled by app_mention — skip the duplicate message event.
+  // Channel @mentions are handled only via app_mention (avoids duplicate message events).
   if (BOT_MENTION.test(text)) return false;
 
-  if (isDm) return true;
+  // Non-DM channel messages are ignored — users must @mention the bot (max 1 reply per mention).
+  if (!isDm) return false;
 
-  // Thread follow-up without re-mentioning the bot (only when we already started work).
-  if (event.thread_ts && event.thread_ts !== event.ts && opts?.threadHasSession) {
-    return true;
-  }
-
-  return false;
+  return true;
 }

@@ -2,7 +2,10 @@ import { after, NextResponse } from "next/server";
 
 import { audit } from "@/lib/support/enterprise/audit-log";
 import { slackSigningSecret } from "@/lib/support/slack/credentials";
-import { handleSlackEventPayload } from "@/lib/support/slack/handle-event";
+import {
+  acceptSlackEventForProcessing,
+  handleSlackEventPayload,
+} from "@/lib/support/slack/handle-event";
 import { verifySlackSignature } from "@/lib/support/slack/signature";
 import { isTestMode } from "@/lib/test-mode";
 
@@ -78,6 +81,11 @@ export async function POST(req: Request) {
     teamId: body.team_id,
     event,
   };
+
+  const accepted = await acceptSlackEventForProcessing(payload);
+  if (!accepted) {
+    return NextResponse.json({ ok: true });
+  }
 
   after(async () => {
     await handleSlackEventPayload(payload);

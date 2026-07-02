@@ -4,10 +4,14 @@ import { audit } from "@/lib/support/enterprise/audit-log";
 import { redact } from "@/lib/support/redact";
 
 import { postSlackMessage } from "./client";
-import { claimSlackEventDelivery } from "./event-dedup";
+import {
+  claimSlackEventDelivery,
+  claimSlackThreadReplySlot,
+  claimSlackUserMessageReply,
+} from "./event-dedup";
 import { shouldHandleSlackEvent, type SlackIncomingEvent } from "./event-filter";
 import { enrichSlackThread } from "./enrich-thread";
-import { appendSlackThreadMessage, getSlackThread } from "./thread-store";
+import { appendSlackThreadMessage } from "./thread-store";
 
 export interface SlackEventPayload {
   eventId?: string;
@@ -15,28 +19,53 @@ export interface SlackEventPayload {
   event: SlackIncomingEvent;
 }
 
+function isDirectMessage(event: SlackIncomingEvent): boolean {
+  return event.channel_type === "im" || Boolean(event.channel?.startsWith("D"));
+}
+
+/**
+ * Fast gate + distributed dedup — call synchronously before scheduling async work.
+ * Returns false when this delivery must not produce a bot reply.
+ */
+export async function acceptSlackEventForProcessing(payload: SlackEventPayload): Promise<boolean> {
+  const event = payload.event;
+  if (!event.channel || !event.ts) return false;
+  if (event.bot_id || event.subtype) return false;
+
+  if (!shouldHandleSlackEvent("event_callback", event)) return false;
+
+  const threadTs = event.thread_ts ?? event.ts;
+
+  if (!(await claimSlackEventDelivery({
+    eventId: payload.eventId,
+    channelId: event.channel,
+    messageTs: event.ts,
+  }))) {
+    return false;
+  }
+
+  if (!(await claimSlackUserMessageReply({
+    channelId: event.channel,
+    userMessageTs: event.ts,
+  }))) {
+    return false;
+  }
+
+  if (!(await claimSlackThreadReplySlot({
+    channelId: event.channel,
+    threadTs,
+  }))) {
+    return false;
+  }
+
+  return true;
+}
+
 export async function handleSlackEventPayload(payload: SlackEventPayload): Promise<void> {
   const event = payload.event;
   if (!event.channel || !event.ts) return;
 
   const threadTs = event.thread_ts ?? event.ts;
-  const thread = await getSlackThread(event.channel, threadTs, payload.teamId);
-
-  if (
-    !shouldHandleSlackEvent("event_callback", event, {
-      threadHasSession: Boolean(thread?.investigationSessionId),
-    })
-  ) {
-    return;
-  }
-
-  const claimed = await claimSlackEventDelivery({
-    eventId: payload.eventId,
-    channelId: event.channel,
-    messageTs: event.ts,
-  });
-  if (!claimed) return;
-
   const text = redact(event.text ?? "");
 
   await appendSlackThreadMessage({
@@ -92,6 +121,8 @@ export async function handleSlackEventPayload(payload: SlackEventPayload): Promi
     target: `${event.channel}:${threadTs}`,
     approved: true,
     provider: "slack",
-    details: sessionId ? `investigation ${sessionId}` : "thread reply",
+    details: sessionId
+      ? `investigation ${sessionId}${isDirectMessage(event) ? " dm" : ""}`
+      : "thread reply",
   });
 }
