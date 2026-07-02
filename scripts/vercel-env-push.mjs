@@ -63,11 +63,23 @@ function parseEnvFile(content) {
 }
 
 const vars = parseEnvFile(readFileSync(envFile, "utf8"));
+/** Never push localhost APP_BASE_URL to Vercel — set VERCEL_APP_BASE_URL in .env.local for deploy target. */
+const prodBase = process.env.VERCEL_APP_BASE_URL?.trim();
+if (prodBase) vars.APP_BASE_URL = prodBase;
+else if (vars.APP_BASE_URL && /localhost|127\.0\.0\.1/i.test(vars.APP_BASE_URL)) {
+  delete vars.APP_BASE_URL;
+}
+
 const targets = ["production", "preview"];
 let ok = 0;
 let skip = 0;
 
 for (const [k, v] of Object.entries(vars)) {
+  if (!v?.trim()) {
+    skip++;
+    console.log(`SKIP ${k} (empty value)`);
+    continue;
+  }
   for (const target of targets) {
     const r = spawnSync(
       "npx",

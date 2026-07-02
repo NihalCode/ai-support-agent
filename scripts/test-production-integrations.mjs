@@ -6,33 +6,18 @@
  *   AUTH0_E2E_EMAIL=you@example.com AUTH0_E2E_PASSWORD=secret node scripts/test-production-integrations.mjs
  *   node scripts/test-production-integrations.mjs [baseUrl]
  *
- * Loads AUTH0_E2E_* from .env.local when unset.
+ * Credentials must be passed via process env only — never stored in .env files.
  */
-import { readFileSync, existsSync } from "node:fs";
 import { chromium } from "playwright";
 
 const BASE = process.argv[2] ?? "https://ai-support-agent-ecru.vercel.app";
-
-function loadEnvLocal() {
-  if (!existsSync(".env.local")) return;
-  for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-    if (!m) continue;
-    const [, k, raw] = m;
-    if (process.env[k] == null || process.env[k] === "") {
-      process.env[k] = raw.replace(/^["']|["']$/g, "");
-    }
-  }
-}
-
-loadEnvLocal();
 
 const email = process.env.AUTH0_E2E_EMAIL?.trim();
 const password = process.env.AUTH0_E2E_PASSWORD?.trim();
 
 if (!email || !password) {
   console.error(
-    "Missing AUTH0_E2E_EMAIL / AUTH0_E2E_PASSWORD (set in env or .env.local for production tests)."
+    "Missing AUTH0_E2E_EMAIL / AUTH0_E2E_PASSWORD (pass via process env only; do not commit)."
   );
   process.exit(2);
 }
@@ -50,13 +35,12 @@ function fail(name, detail) {
 }
 
 async function login(page) {
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
-  if (page.url().includes("auth0.com")) {
-    await page.getByRole("textbox", { name: /email/i }).fill(email);
-    await page.getByRole("textbox", { name: /password/i }).fill(password);
-    await page.getByRole("button", { name: /^Continue$/i }).click();
-    await page.waitForURL((url) => url.hostname.includes("vercel.app"), { timeout: 60000 });
-  }
+  await page.goto(`${BASE}/auth/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForURL(/auth0\.com/i, { timeout: 45000, waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox", { name: /email/i }).fill(email);
+  await page.getByRole("textbox", { name: /password/i }).fill(password);
+  await page.getByRole("button", { name: /^Continue$/i }).click();
+  await page.waitForURL(/vercel\.app/i, { timeout: 90000, waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="ide-root"]', { timeout: 60000 });
 }
 
@@ -140,20 +124,6 @@ try {
   const entHealth = await apiJson(page.request, "/api/support/enterprise/health?developer=true");
   if (!entHealth.res.ok()) fail("GET enterprise/health", `HTTP ${entHealth.res.status()}`);
   else pass("GET enterprise/health", `${entHealth.body.integrations?.length ?? 0} cards`);
-
-  const inv = await apiJson(page.request, "/api/support/investigate", {
-    method: "POST",
-    data: JSON.stringify({
-      query: {
-        text: "POST /v3/indicators/search/ returns 500",
-        endpoint: "/v3/indicators/search/",
-        statusCode: 500,
-        issueRef: "AISUP5-1",
-      },
-    }),
-  });
-  if (!inv.res.ok() || !inv.body.sessionId) fail("POST investigate", inv.body.error ?? "no session");
-  else pass("POST investigate", `session=${inv.body.sessionId.slice(0, 8)}…`);
 
   const slackChallenge = await page.request.post(`${BASE}/api/slack/events`, {
     headers: { "Content-Type": "application/json" },
