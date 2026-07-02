@@ -45,6 +45,9 @@ export interface IntegrationStatus {
   health: "unknown" | "healthy" | "degraded" | "error";
   detail?: string;
   lastCheckedAt?: string;
+  metadata?: Record<string, unknown>;
+  connectedByUserId?: string;
+  requiresDeveloperMode?: boolean;
 }
 
 export interface IntegrationCredentialPayload {

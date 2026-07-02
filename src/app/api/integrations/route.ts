@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { requirePermission } from "@/lib/auth/session";
+import { canConfigureJira, canDisconnectJira } from "@/lib/auth/roles";
 import { IntegrationAuditLog } from "@/integrations/core/IntegrationAuditLog";
 import { IntegrationRegistry } from "@/integrations/core/IntegrationRegistry";
 import { credentialFieldsFor } from "@/integrations/core/integrationCredentialFields";
 import { runIntegrationHealthCheck } from "@/integrations/core/IntegrationHealthCheck";
 import { CredentialStore, hasCredentialEncryption } from "@/integrations/core/CredentialStore";
+import {
+  configureIntegration,
+  disconnectIntegration,
+  isEnterpriseIntegrationId,
+} from "@/integrations/core/integration-route-handlers";
 import type { IntegrationId } from "@/integrations/core/IntegrationTypes";
 import { INTEGRATION_IDS } from "@/integrations/core/IntegrationTypes";
 
@@ -62,8 +68,22 @@ export async function POST(request: Request) {
   const orgId = sessionOrResponse.user.orgId;
   const actor = sessionOrResponse.user;
 
+  if (integrationId === "jira" && body.action === "save" && !canConfigureJira(actor.role)) {
+    return NextResponse.json(
+      { error: "Custom Jira configuration requires Developer/Admin Mode." },
+      { status: 403 }
+    );
+  }
+
+  if (integrationId === "jira" && body.action === "delete" && !canDisconnectJira(actor.role)) {
+    return NextResponse.json(
+      { error: "Disconnecting Jira requires Owner or Admin role." },
+      { status: 403 }
+    );
+  }
+
   if (body.action === "health_check") {
-    const health = await runIntegrationHealthCheck(integrationId);
+    const health = await runIntegrationHealthCheck(integrationId, orgId);
     await IntegrationAuditLog.append({
       orgId,
       actorId: actor.id,
@@ -76,6 +96,10 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "delete") {
+    if (isEnterpriseIntegrationId(integrationId)) {
+      const result = await disconnectIntegration(sessionOrResponse, integrationId);
+      return NextResponse.json(result);
+    }
     const removed = await CredentialStore.delete(integrationId, orgId);
     await IntegrationAuditLog.append({
       orgId,
@@ -91,6 +115,17 @@ export async function POST(request: Request) {
   if (body.action === "save") {
     if (!body.credentials || typeof body.credentials !== "object") {
       return NextResponse.json({ error: "credentials required" }, { status: 400 });
+    }
+    if (isEnterpriseIntegrationId(integrationId)) {
+      try {
+        const result = await configureIntegration(sessionOrResponse, integrationId, {
+          credentials: body.credentials,
+        });
+        return NextResponse.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Save failed";
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
     }
     try {
       await CredentialStore.save(integrationId, body.credentials, orgId, actor.id);

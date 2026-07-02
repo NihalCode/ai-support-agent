@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { EnterpriseIntegrationCards } from "@/components/auth/EnterpriseIntegrationCards";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { IntegrationId } from "@/integrations/core/IntegrationTypes";
 import type { CredentialFieldDef } from "@/integrations/core/integrationCredentialFields";
+
+const ENTERPRISE_IDS = new Set(["slack", "confluence", "zendesk", "jira"]);
 
 interface IntegrationRow {
   id: IntegrationId;
@@ -12,6 +15,11 @@ interface IntegrationRow {
   category: string;
   configured: boolean;
   source: "env" | "store" | "mock";
+  health: "unknown" | "healthy" | "degraded" | "error";
+  detail?: string;
+  lastCheckedAt?: string;
+  metadata?: Record<string, unknown>;
+  requiresDeveloperMode?: boolean;
 }
 
 export function IntegrationSettingsPanel() {
@@ -37,7 +45,12 @@ export function IntegrationSettingsPanel() {
         credentialFields?: Partial<Record<IntegrationId, CredentialFieldDef[]>>;
         credentialStore?: { encryptionAvailable?: boolean };
       };
-      setIntegrations(data.integrations ?? []);
+      setIntegrations(
+        (data.integrations ?? []).map((row) => ({
+          ...row,
+          health: row.health ?? "unknown",
+        }))
+      );
       setCredentialFields(data.credentialFields ?? {});
       setEncryptionAvailable(Boolean(data.credentialStore?.encryptionAvailable));
     } catch {
@@ -154,13 +167,20 @@ export function IntegrationSettingsPanel() {
           Set INTEGRATION_SECRET_KEY to save credentials in the encrypted store. Env-based credentials still work.
         </p>
       )}
+      <EnterpriseIntegrationCards
+        integrations={integrations}
+        credentialFields={credentialFields}
+        encryptionAvailable={encryptionAvailable}
+        onRefresh={load}
+      />
       {message && (
         <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }} data-testid="integration-settings-message">
           {message}
         </p>
       )}
+      <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>Other integrations</h3>
       <div style={{ display: "grid", gap: 8 }}>
-        {integrations.map((row) => {
+        {integrations.filter((row) => !ENTERPRISE_IDS.has(row.id)).map((row) => {
           const fields = credentialFields[row.id] ?? [];
           const expanded = expandedId === row.id;
           const hasForm = canWrite && fields.length > 0;

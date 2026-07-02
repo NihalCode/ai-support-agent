@@ -79,3 +79,16 @@ export function canConfigureIntegrations(role: UserRole): boolean {
 export function canUseDeveloperMode(role: UserRole): boolean {
   return roleHasPermission(role, "developer:mode");
 }
+
+export function canConfigureJira(role: UserRole): boolean {
+  if (!canUseDeveloperMode(role)) return false;
+  return role === "owner" || role === "admin" || role === "developer";
+}
+
+export function canDisconnectJira(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function canManageIntegrations(user: { role: UserRole }): boolean {
+  return canConfigureIntegrations(user.role);
+}

@@ -13,13 +13,9 @@ import {
   hasVercel,
 } from "@/lib/support/config";
 import { getCywareProductConnector } from "@/lib/support/connectors/cyware-product";
-import { getConfluenceDocs, getZendeskTickets } from "@/lib/support/connectors";
-import {
-  jiraCredentialsConfigured,
-  resolveJiraCredentials,
-  resolveSlackCredentials,
-  slackCredentialsConfigured,
-} from "./resolveIntegrationCredentials";
+import { getEnterpriseConnector } from "./EnterpriseConnectorRegistry";
+import { IntegrationHealthService } from "./IntegrationHealthService";
+import { IntegrationMetadataStore } from "./IntegrationMetadataStore";
 import { CredentialStore } from "./CredentialStore";
 import type {
   IntegrationDefinition,
@@ -61,7 +57,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     category: "chat",
     description: "Slack bot for approvals and triage (Phase C).",
     envKeys: ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET"],
-    supportsHealthCheck: false,
+    supportsHealthCheck: true,
     supportsWrite: true,
   },
   {
@@ -138,10 +134,6 @@ const DEFINITIONS: IntegrationDefinition[] = [
   },
 ];
 
-function envConfigured(keys: string[]): boolean {
-  return keys.every((k) => Boolean(process.env[k]?.trim()));
-}
-
 function legacyConfigured(id: IntegrationId, cfg: ReturnType<typeof getConfig>): boolean {
   switch (id) {
     case "jira":
@@ -185,31 +177,51 @@ export class IntegrationRegistry {
   static async statusForOrg(orgId: string): Promise<IntegrationStatus[]> {
     const cfg = getConfig();
     const stored = await CredentialStore.listConfigured(orgId);
-    const now = new Date().toISOString();
 
-    return DEFINITIONS.map((def) => {
-      const fromStore = stored.includes(def.id);
-      const fromEnv = legacyConfigured(def.id, cfg);
-      const configured = fromStore || fromEnv;
-      return {
-        id: def.id,
-        name: def.name,
-        category: def.category,
-        configured,
-        source: fromStore ? "store" : fromEnv ? "env" : "mock",
-        health: configured ? "unknown" : "unknown",
-        lastCheckedAt: now,
-      } satisfies IntegrationStatus;
-    });
+    return Promise.all(
+      DEFINITIONS.map(async (def) => {
+        const fromStore = stored.includes(def.id);
+        const fromEnv = legacyConfigured(def.id, cfg);
+        const configured = fromStore || fromEnv;
+        const metadataRecord = await IntegrationMetadataStore.get(orgId, def.id);
+        const latestHealth = await IntegrationHealthService.latest(orgId, def.id);
+
+        let health: IntegrationStatus["health"] = "unknown";
+        let detail: string | undefined;
+        let lastCheckedAt: string | undefined;
+
+        if (latestHealth) {
+          health = latestHealth.status === "success" ? "healthy" : "error";
+          detail = latestHealth.message;
+          lastCheckedAt = latestHealth.checkedAt;
+        } else if (!configured) {
+          health = "degraded";
+          detail = "Not configured — using mock/offline mode";
+        }
+
+        return {
+          id: def.id,
+          name: def.name,
+          category: def.category,
+          configured,
+          source: fromStore ? "store" : fromEnv ? "env" : "mock",
+          health,
+          detail,
+          lastCheckedAt,
+          metadata: metadataRecord?.metadata,
+          connectedByUserId: metadataRecord?.createdByUserId,
+          requiresDeveloperMode: def.id === "jira",
+        } satisfies IntegrationStatus;
+      })
+    );
   }
 
-  static async healthCheck(id: IntegrationId): Promise<{ ok: boolean; detail: string }> {
-    if (id === "jira") {
-      const creds = await resolveJiraCredentials();
-      if (!jiraCredentialsConfigured(creds)) {
-        return { ok: false, detail: "Jira not configured (using mock connector)" };
-      }
-      return { ok: true, detail: "Jira credentials present" };
+  static async healthCheck(id: IntegrationId, orgId = "default"): Promise<{ ok: boolean; detail: string }> {
+    const enterprise = getEnterpriseConnector(id);
+    if (enterprise) {
+      const result = await enterprise.healthCheck();
+      await IntegrationHealthService.record(orgId, id, result);
+      return { ok: result.ok, detail: result.message };
     }
     if (id === "ctix") {
       const ctix = getCywareProductConnector("ctix");
@@ -217,23 +229,6 @@ export class IntegrationRegistry {
         return { ok: false, detail: "CTIX not configured" };
       }
       return ctix.testConnection();
-    }
-    if (id === "zendesk") {
-      const { connector, mock } = await getZendeskTickets();
-      if (mock) return { ok: false, detail: "Zendesk not configured (using mock connector)" };
-      return connector.testConnection?.() ?? { ok: true, detail: "Zendesk credentials present" };
-    }
-    if (id === "confluence") {
-      const { connector, mock } = await getConfluenceDocs();
-      if (mock) return { ok: false, detail: "Confluence not configured (using mock connector)" };
-      return connector.testConnection?.() ?? { ok: true, detail: "Confluence credentials present" };
-    }
-    if (id === "slack") {
-      const creds = await resolveSlackCredentials();
-      if (!slackCredentialsConfigured(creds)) {
-        return { ok: false, detail: "Slack not configured" };
-      }
-      return { ok: true, detail: "Slack bot token and signing secret present" };
     }
     const def = IntegrationRegistry.getDefinition(id);
     if (!def) return { ok: false, detail: "Unknown integration" };

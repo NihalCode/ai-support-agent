@@ -641,6 +641,58 @@ test.describe("Keyword search", () => {
   });
 });
 
+test.describe("Enterprise integrations API", () => {
+  test("lists integrations and enterprise status routes", async ({ request }) => {
+    for (const path of [
+      "/api/integrations",
+      "/api/integrations/slack",
+      "/api/integrations/confluence",
+      "/api/integrations/zendesk",
+      "/api/integrations/jira",
+    ]) {
+      const res = await request.get(path);
+      expect(res.ok(), `${path} should succeed in test mode`).toBeTruthy();
+    }
+  });
+
+  test("zendesk ticket search returns mock results", async ({ request }) => {
+    const res = await request.get("/api/integrations/zendesk/tickets?q=sync");
+    expect(res.ok()).toBeTruthy();
+    const data = (await res.json()) as { tickets?: unknown[] };
+    expect(Array.isArray(data.tickets)).toBe(true);
+  });
+
+  test("confluence page search returns results", async ({ request }) => {
+    const res = await request.get("/api/integrations/confluence/pages?q=runbook");
+    expect(res.ok()).toBeTruthy();
+    const data = (await res.json()) as { pages?: unknown[] };
+    expect(Array.isArray(data.pages)).toBe(true);
+  });
+});
+
+test.describe("Settings enterprise cards", () => {
+  test("shows enterprise integration cards in settings", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-settings").click();
+    await expect(page.getByTestId("enterprise-integration-cards")).toBeVisible();
+    await expect(page.getByTestId("enterprise-integration-slack")).toBeVisible();
+    await expect(page.getByTestId("enterprise-integration-jira")).toBeVisible();
+  });
+
+  test("hides Jira configure in client mode", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("activity-settings").click();
+    await expect(page.getByTestId("enterprise-configure-jira")).toHaveCount(0);
+  });
+
+  test("shows Jira configure in developer mode", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await page.getByTestId("activity-settings").click();
+    await expect(page.getByTestId("enterprise-configure-jira")).toBeVisible();
+  });
+});
+
 test.describe("API smoke (authenticated test mode)", () => {
   test("core support APIs respond", async ({ request }) => {
     for (const path of [

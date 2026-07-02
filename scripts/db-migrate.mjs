@@ -233,4 +233,34 @@ await sql`
   ON oauth_transactions (expires_at)
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS integrations (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'not_connected',
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_by_user_id TEXT NOT NULL DEFAULT 'system',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (org_id, type)
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS integration_health_checks (
+    id TEXT PRIMARY KEY,
+    integration_id TEXT NOT NULL,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    status TEXT NOT NULL,
+    message TEXT NOT NULL,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_integration_health_org
+  ON integration_health_checks (org_id, integration_id, checked_at DESC)
+`;
+
 console.log("Schema applied successfully.");

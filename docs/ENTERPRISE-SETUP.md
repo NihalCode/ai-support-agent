@@ -238,7 +238,25 @@ Stored credentials **override** env for Jira, Zendesk, Confluence, and Slack at 
 | `slack` | botToken, signingSecret |
 | `github`, `vercel`, Cyware products, `openai`, `pinecone` | See Settings form labels |
 
-Health checks: **Test** button → `POST /api/integrations` with `action: "health_check"`.
+Health checks: **Test** button → `POST /api/integrations/{type}` with `action: "test"` or legacy `POST /api/integrations` with `action: "health_check"`.
+
+### Enterprise API routes
+
+| Integration | Route | Notes |
+|-------------|-------|-------|
+| All four | `GET/POST /api/integrations/{slack\|confluence\|zendesk\|jira}` | Status, configure, test, disconnect |
+| Slack | `POST /api/integrations/slack/test-message` | Send test message to channel |
+| Slack | `POST /api/integrations/slack/events` | Alias of `/api/slack/events` |
+| Confluence | `GET/POST /api/integrations/confluence/pages` | Search (`?q=`) / read page |
+| Confluence | `GET/POST /api/integrations/confluence/sync` | Sync spaces into knowledge index |
+| Zendesk | `GET/POST /api/integrations/zendesk/tickets` | Search / read ticket |
+| Zendesk | `POST /api/integrations/zendesk/actions` | Link, draft, approval-gated writes |
+| Jira | `GET /api/integrations/jira/issues` | Search / read (Support can search linked issues) |
+| Jira | `POST /api/integrations/jira/actions` | Link, draft create, approval-gated writes |
+
+**Custom Jira** configure/disconnect requires **`integrations:write`** plus **`developer:mode`** (Owner, Admin, Developer). Support Mode users see a friendly message; the server returns `403` on configure attempts.
+
+External writes (Zendesk reply/note/create, Jira create/comment/transition) always enqueue an approval — never execute directly from the investigation UI.
 
 ---
 
@@ -259,7 +277,7 @@ Health checks: **Test** button → `POST /api/integrations` with `action: "healt
 
 | Event | URL |
 |-------|-----|
-| Event Subscriptions | `{APP_BASE_URL}/api/slack/events` |
+| Event Subscriptions | `{APP_BASE_URL}/api/slack/events` or `{APP_BASE_URL}/api/integrations/slack/events` |
 | Interactivity | `{APP_BASE_URL}/api/slack/interactions` |
 
 Subscribe to bot events: `app_mention`, `message.channels` (and/or `message.groups`).

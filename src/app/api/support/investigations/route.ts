@@ -8,6 +8,7 @@ import {
   exportInvestigationMarkdown,
   ensureTestInvestigation,
 } from "@/lib/support/investigation/object-store";
+import { getInvestigationLinks } from "@/lib/support/enterprise/stores/investigation-links-store";
 import type { InvestigationPatch } from "@/lib/support/investigation/object-types";
 import { isTestMode } from "@/lib/test-mode";
 
@@ -31,6 +32,18 @@ export async function GET(req: Request) {
     if (format === "markdown") {
       return new NextResponse(exportInvestigationMarkdown(inv), {
         headers: { "Content-Type": "text/markdown" },
+      });
+    }
+    if (url.searchParams.get("links") === "1") {
+      const links = await getInvestigationLinks(id);
+      return NextResponse.json({
+        links: links
+          ? {
+              zendeskTicketId: links.zendeskTicketId,
+              jiraIssueKey: links.jiraIssueKey,
+              slackThreadId: links.slackThreadId,
+            }
+          : null,
       });
     }
     return NextResponse.json(inv);

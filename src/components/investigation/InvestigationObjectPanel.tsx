@@ -1,25 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { InvestigationObject } from "@/lib/support/investigation/object-types";
+import { InvestigationIntegrationsPanel } from "@/components/investigation/InvestigationIntegrationsPanel";
 
 export function InvestigationObjectPanel({ investigationId }: { investigationId?: string }) {
   const [inv, setInv] = useState<InvestigationObject | null>(null);
+  const [links, setLinks] = useState<{ zendeskTicketId?: string; jiraIssueKey?: string } | null>(null);
   const [hypTitle, setHypTitle] = useState("");
   const [hypDesc, setHypDesc] = useState("");
+
+  function refreshLinks(id: string) {
+    fetch(`/api/support/investigations?id=${encodeURIComponent(id)}&links=1`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.links) setLinks(d.links);
+      })
+      .catch(() => undefined);
+  }
 
   useEffect(() => {
     const id = investigationId;
     if (!id) {
       fetch("/api/support/investigations")
         .then((r) => r.json())
-        .then((d) => setInv(d.investigations?.[0] ?? null))
+        .then((d) => {
+          const first = d.investigations?.[0] ?? null;
+          setInv(first);
+          if (first?.id) refreshLinks(first.id);
+        })
         .catch(() => undefined);
       return;
     }
     fetch(`/api/support/investigations?id=${encodeURIComponent(id)}`)
       .then((r) => r.json())
-      .then(setInv)
+      .then((data) => {
+        setInv(data);
+        refreshLinks(id);
+      })
       .catch(() => undefined);
   }, [investigationId]);
 
@@ -116,6 +134,14 @@ export function InvestigationObjectPanel({ investigationId }: { investigationId?
       <button type="button" className="ide-tree-item" onClick={() => void exportMd()}>
         Export Markdown report
       </button>
+
+      {inv && (
+        <InvestigationIntegrationsPanel
+          investigationId={inv.id}
+          links={links}
+          onLinksChange={() => refreshLinks(inv.id)}
+        />
+      )}
     </div>
   );
 }
