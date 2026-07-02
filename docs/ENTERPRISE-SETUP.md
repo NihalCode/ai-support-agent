@@ -141,6 +141,8 @@ Use this when you want **Continue with Google** on the login page (instead of em
 
 After a failed callback, the app redirects to `/login` with a friendly message instead of a blank error page.
 
+**Permanent fix (v88b2617+):** `/auth/login` returns a **200 HTML bridge page** that stores the OAuth transaction cookie before redirecting to Auth0 (browsers often drop cookies on immediate 307 redirects to external sites). If the cookie is still missing on callback, the app **restores it from Postgres** (`oauth_transactions` table — auto-created when `DATABASE_URL` is set). Run `npm run db:migrate` once if you manage schema manually.
+
 ---
 
 ## Persistent database (production)
