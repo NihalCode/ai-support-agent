@@ -83,6 +83,10 @@ export async function enrichSlackThread(input: {
     Boolean(query.statusCode || query.endpoint || query.symptom);
 
   if (!shouldInvestigate) {
+    // Stay silent in channel threads until the user @mentions the bot.
+    if (!thread?.investigationSessionId && !input.channelId.startsWith("D")) {
+      return { text: "", mode: "ack" };
+    }
     return {
       text: "I'm tracking this thread. Describe what's failing (product, error, when it started) and I'll match Zendesk/Jira tickets and investigate.",
       mode: "ack",

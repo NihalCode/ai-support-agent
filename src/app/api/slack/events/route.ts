@@ -1,12 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { audit } from "@/lib/support/enterprise/audit-log";
-import { redact } from "@/lib/support/redact";
-import { postSlackMessage } from "@/lib/support/slack/client";
 import { slackSigningSecret } from "@/lib/support/slack/credentials";
-import { enrichSlackThread } from "@/lib/support/slack/enrich-thread";
+import { handleSlackEventPayload } from "@/lib/support/slack/handle-event";
 import { verifySlackSignature } from "@/lib/support/slack/signature";
-import { appendSlackThreadMessage } from "@/lib/support/slack/thread-store";
 import { isTestMode } from "@/lib/test-mode";
 
 export const runtime = "nodejs";
@@ -18,10 +15,12 @@ interface SlackUrlVerification {
 
 interface SlackEventCallback {
   type: "event_callback";
+  event_id?: string;
   team_id?: string;
   event: {
     type: string;
     channel?: string;
+    channel_type?: string;
     user?: string;
     text?: string;
     ts?: string;
@@ -74,62 +73,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const threadTs = event.thread_ts ?? event.ts;
-  const text = redact(event.text ?? "");
-
-  await appendSlackThreadMessage({
-    channelId: event.channel,
-    threadTs,
+  const payload = {
+    eventId: body.event_id,
     teamId: body.team_id,
-    message: {
-      role: "user",
-      userId: event.user,
-      text,
-    },
-  });
+    event,
+  };
 
-  let reply: string;
-  let sessionId: string | undefined;
-  try {
-    const enriched = await enrichSlackThread({
-      channelId: event.channel,
-      threadTs,
-      latestMessage: text,
-      teamId: body.team_id,
-    });
-    reply = enriched.text;
-    sessionId = enriched.sessionId;
-  } catch (err) {
-    reply =
-      "I hit an error running the investigation. Open AI Support Studio for the full workflow, or try again with a ticket key or endpoint.";
-    await audit({
-      action: "slack:enrich-error",
-      target: `${event.channel}:${threadTs}`,
-      approved: false,
-      provider: "slack",
-      details: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  await postSlackMessage({
-    channel: event.channel,
-    threadTs,
-    text: reply,
-  }).catch(() => undefined);
-
-  await appendSlackThreadMessage({
-    channelId: event.channel,
-    threadTs,
-    teamId: body.team_id,
-    message: { role: "assistant", text: reply },
-  });
-
-  await audit({
-    action: "slack:event",
-    target: `${event.channel}:${threadTs}`,
-    approved: true,
-    provider: "slack",
-    details: sessionId ? `investigation ${sessionId}` : "thread reply",
+  after(async () => {
+    await handleSlackEventPayload(payload);
   });
 
   return NextResponse.json({ ok: true });

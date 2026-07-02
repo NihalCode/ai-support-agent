@@ -10,6 +10,6 @@ describe("enrichSlackThread", () => {
       latestMessage: "hi",
     });
     expect(result.mode).toBe("ack");
-    expect(result.text).toMatch(/ticket|endpoint|error/i);
+    expect(result.text).toBe("");
   });
 });
