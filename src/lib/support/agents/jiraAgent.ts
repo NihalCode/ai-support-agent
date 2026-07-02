@@ -2,7 +2,11 @@ import "server-only";
 
 import type { AgentResult, EvidenceItem, JiraFinding, SupportQuery } from "../investigation/types";
 import { getJiraTickets } from "../connectors";
-import { buildSearchTerms } from "../investigation/extract-query";
+import {
+  contextSearchQuery,
+  parseExplicitTicketRefs,
+  scoreTicketAgainstQuery,
+} from "../investigation/ticket-context";
 import type { NormalizedIssue } from "../types";
 
 function toEvidence(issue: NormalizedIssue): EvidenceItem {
@@ -41,15 +45,23 @@ export async function runJiraAgent(q: SupportQuery): Promise<AgentResult<JiraFin
   const start = Date.now();
   const warnings: string[] = [];
   const { connector, mock } = await getJiraTickets();
-  const terms = buildSearchTerms(q);
   let tickets: NormalizedIssue[] = [];
 
-  if (q.issueRef && /^[A-Z][A-Z0-9]+-\d+$/.test(q.issueRef)) {
-    const one = await connector.getIssue(q.issueRef);
+  const explicit = parseExplicitTicketRefs(q.text ?? "");
+  const jiraRef = q.issueRef && !/^ZD-/i.test(q.issueRef) ? q.issueRef : explicit.jira;
+
+  if (jiraRef && /^[A-Z][A-Z0-9]+-\d+$/.test(jiraRef)) {
+    const one = await connector.getIssue(jiraRef);
     if (one) tickets = [one];
   }
-  if (tickets.length === 0 && terms.trim()) {
-    tickets = await connector.searchIssues(terms, 8);
+
+  const searchQ = contextSearchQuery(q);
+  if (tickets.length === 0 && searchQ.trim()) {
+    const hits = await connector.searchIssues(searchQ, 10);
+    tickets = hits
+      .map((issue) => ({ issue, score: scoreTicketAgainstQuery(issue, q) }))
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.issue);
   }
 
   const evidence = tickets.map(toEvidence);

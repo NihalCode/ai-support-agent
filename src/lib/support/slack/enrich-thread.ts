@@ -1,13 +1,22 @@
 import "server-only";
 
 import { runInvestigation, runInvestigationChat } from "../agents/orchestratorAgent";
-import { extractNaturalLanguageDetails } from "../investigation/extract-query";
+import {
+  buildSupportQueryFromDetails,
+  enrichSupportQuery,
+  extractNaturalLanguageDetails,
+} from "../investigation/extract-query";
+import {
+  formatAutoLinkedTicketsNote,
+  mergeResolvedTicketLinks,
+  resolveTicketsFromContext,
+} from "../investigation/ticket-context";
 import type { SupportQuery } from "../investigation/types";
 import { getSlackThread, setSlackThreadInvestigation } from "./thread-store";
 import { upsertInvestigationLinks } from "../enterprise/stores/investigation-links-store";
 
 const INVESTIGATION_KEYWORDS =
-  /\b(error|fail|bug|issue|ticket|api|endpoint|cql|500|401|403|sync|help|investigate|broken)\b/i;
+  /\b(error|fail|bug|issue|ticket|api|endpoint|cql|500|401|403|sync|help|investigate|broken|unauthorized|timeout|ctix|customer|production)\b/i;
 
 async function threadQueryText(channelId: string, threadTs: string, latest: string): Promise<string> {
   const thread = await getSlackThread(channelId, threadTs);
@@ -21,18 +30,18 @@ async function threadQueryText(channelId: string, threadTs: string, latest: stri
 
 function buildSupportQuery(text: string): SupportQuery {
   const details = extractNaturalLanguageDetails(text);
-  return {
-    text,
-    issueRef: details.supportTicketId,
-    endpoint: details.endpoint,
-    feature: details.workflowName,
-  };
+  return enrichSupportQuery(buildSupportQueryFromDetails(details, text));
 }
 
-function formatInvestigationReply(summary: string, sessionId: string, appBase?: string | null): string {
+function formatInvestigationReply(
+  summary: string,
+  sessionId: string,
+  appBase?: string | null,
+  ticketNote?: string
+): string {
   const base = appBase?.replace(/\/$/, "") ?? "";
   const link = base ? `\nOpen in AI Support Studio: ${base}/?investigation=${sessionId}` : "";
-  return `${summary.slice(0, 2800)}${link}`.trim();
+  return `${summary.slice(0, 2400)}${ticketNote ?? ""}${link}`.trim();
 }
 
 function formatChatReply(reply: string): string {
@@ -49,7 +58,7 @@ export async function enrichSlackThread(input: {
   const latest = input.latestMessage.trim();
   if (!latest) {
     return {
-      text: "Send a ticket ID, endpoint, or error description and I’ll investigate.",
+      text: "Describe the customer issue — symptoms, product, and when it started. I'll find matching tickets and investigate.",
       mode: "ack",
     };
   }
@@ -67,17 +76,26 @@ export async function enrichSlackThread(input: {
   }
 
   const combined = await threadQueryText(input.channelId, input.threadTs, latest);
+  const query = buildSupportQuery(combined);
   const shouldInvestigate =
-    combined.length >= 12 || INVESTIGATION_KEYWORDS.test(combined) || Boolean(buildSupportQuery(combined).issueRef);
+    combined.length >= 12 ||
+    INVESTIGATION_KEYWORDS.test(combined) ||
+    Boolean(query.statusCode || query.endpoint || query.symptom);
 
   if (!shouldInvestigate) {
     return {
-      text: "I’m tracking this thread. Share a ticket key, API path, or error message and I’ll run an investigation.",
+      text: "I'm tracking this thread. Describe what's failing (product, error, when it started) and I'll match Zendesk/Jira tickets and investigate.",
       mode: "ack",
     };
   }
 
-  const result = await runInvestigation(buildSupportQuery(combined));
+  const preResolved = await resolveTicketsFromContext(query);
+  const investigationQuery: SupportQuery = {
+    ...query,
+    issueRef: query.issueRef ?? preResolved.jiraIssueKey,
+  };
+
+  const result = await runInvestigation(investigationQuery);
   await setSlackThreadInvestigation(
     input.channelId,
     input.threadTs,
@@ -85,12 +103,14 @@ export async function enrichSlackThread(input: {
     input.teamId
   );
 
+  const links = mergeResolvedTicketLinks(preResolved, result.context);
   const slackThreadId = `${input.channelId}:${input.threadTs}`;
-  const query = buildSupportQuery(combined);
+
   await upsertInvestigationLinks(result.sessionId, {
     sourceSystem: "slack",
     slackThreadId,
-    zendeskTicketId: query.issueRef,
+    jiraIssueKey: links.jiraIssueKey,
+    zendeskTicketId: links.zendeskTicketId,
     customerSummary: combined.slice(0, 500),
   }).catch(() => undefined);
 
@@ -100,8 +120,10 @@ export async function enrichSlackThread(input: {
     result.markdownReport?.slice(0, 500) ??
     result.report?.plainEnglishSummary ??
     "Investigation started.";
+  const ticketNote = formatAutoLinkedTicketsNote(links);
+
   return {
-    text: formatInvestigationReply(summary, result.sessionId, appBase),
+    text: formatInvestigationReply(summary, result.sessionId, appBase, ticketNote),
     sessionId: result.sessionId,
     mode: "investigation",
   };
