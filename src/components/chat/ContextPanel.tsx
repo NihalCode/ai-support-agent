@@ -109,6 +109,33 @@ export function ContextPanel({
         )}
       </SectionCard>
 
+      <SectionCard title="Uploaded Context">
+        {state.conversationAttachments.length > 0 ? (
+          <ul className="space-y-2 text-sm text-slate-300">
+            {state.conversationAttachments.map((a) => (
+              <li key={a.id} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="font-medium text-white">{a.filename}</div>
+                <div className="text-xs text-slate-500">{a.detectedType}</div>
+                {a.summary && <p className="mt-1 text-xs leading-5 text-slate-400">{a.summary}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-400">Attach OpenAPI specs, STIX bundles, Sigma rules, or IOC CSVs in chat.</p>
+        )}
+        {state.conversationAttachments.some((a) => a.detectedType === "openapi") && (
+          <button
+            type="button"
+            onClick={() =>
+              suggest("Explain this OpenAPI spec and generate curl/Python request snippets for the key endpoints")
+            }
+            className="mt-3 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left text-sm text-slate-300 transition-all hover:border-violet-400/25"
+          >
+            Explain API spec &amp; generate snippets
+          </button>
+        )}
+      </SectionCard>
+
       <SectionCard title="Suggested Actions">
         <div className="flex flex-col gap-2">
           {[

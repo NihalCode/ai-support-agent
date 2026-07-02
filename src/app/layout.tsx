@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AI Support Studio",
   description:
-    "Build apps, investigate issues, and work with Cyware APIs using natural language.",
+    "Investigate support issues and work with Cyware APIs using natural language.",
 };
 
 export default function RootLayout({

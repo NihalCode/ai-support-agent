@@ -6,7 +6,6 @@ import type {
   UserTechnicalLevel,
   WorkspaceIntentContext,
 } from "./types";
-import { isScaffoldApprovalMessage } from "../build-app/approval-phrases";
 import { SLASH_INTENT_MAP, applyContextBoosts, scoreMessageRules } from "./rules";
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
@@ -73,11 +72,13 @@ function confidenceFromScore(top: number, second: number): IntentConfidence {
 function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): string {
   switch (intent) {
     case "build_app":
-      return "Pick a template, connect APIs, generate files, and prepare for test/preview.";
+    case "unsupported_app_build_request":
+      return "App building is not available — I can help with API endpoints, CQL, and implementation guidance.";
     case "edit_app":
-      return "Clean up UI, remove demo copy, improve layout, show diff, and run build.";
+      return "Generated app editing is not available — I can help with API snippets and developer handoffs instead.";
     case "preview_app":
-      return "Check build readiness, then prepare a shareable preview link.";
+    case "deploy_app":
+      return "App preview and deploy are not available — I can help with API troubleshooting and support investigations.";
     case "deploy_app":
       return "Verify build passed, check env vars, then request approval before deploying.";
     case "explain_app":
@@ -281,8 +282,16 @@ export function classifyUserIntent(input: ClassifyIntentInput): IntentClassifica
   };
 }
 
-/** Whether main chat should route to Build App workspace. */
+/** Whether main chat should route to Build App workspace. @deprecated Build App removed — always false. */
 export function shouldRouteToBuildAppFromIntent(
+  _classification: IntentClassification,
+  _ctx: WorkspaceIntentContext
+): boolean {
+  return false;
+}
+
+/** Whether the user is requesting app building, editing, preview, or deploy (unsupported). */
+export function isAppBuildRequest(
   classification: IntentClassification,
   ctx: WorkspaceIntentContext
 ): boolean {
@@ -292,12 +301,18 @@ export function shouldRouteToBuildAppFromIntent(
     "explain_app",
     "preview_app",
     "deploy_app",
-    "commit_changes",
-    "fix_error",
-    "run_tests",
+    "unsupported_app_build_request",
   ];
   if (buildIntents.includes(classification.primaryIntent)) return true;
-  if (ctx.buildProjectId && classification.secondaryIntents.some((i) => buildIntents.includes(i))) return true;
+  if (
+    ctx.buildProjectId &&
+    ["fix_error", "run_tests", "commit_changes"].includes(classification.primaryIntent)
+  ) {
+    return true;
+  }
+  if (ctx.buildProjectId && classification.secondaryIntents.some((i) => buildIntents.includes(i))) {
+    return true;
+  }
   return false;
 }
 
@@ -333,12 +348,12 @@ export function buildAppModeFromIntent(
   return "plan";
 }
 
-/** Classify Build App workspace chat (deploy, approve, edit, etc.). */
+/** @deprecated Build App removed — delegates to standard intent classification. */
 export function classifyBuildAppWorkspaceMessage(
   message: string,
   ctx: { hasProject: boolean; buildOk?: boolean | null; pendingChanges?: boolean; awaitingToken?: boolean }
 ): IntentClassification {
-  const classification = classifyUserIntent({
+  return classifyUserIntent({
     message,
     context: {
       buildProjectId: ctx.hasProject ? "active" : null,
@@ -347,30 +362,6 @@ export function classifyBuildAppWorkspaceMessage(
       pendingApproval: ctx.pendingChanges,
     },
   });
-
-  // Approve patterns — must not match edit requests like "apply a filter"
-  if (ctx.pendingChanges && isScaffoldApprovalMessage(message)) {
-      return {
-        ...classification,
-        primaryIntent: "edit_app",
-        confidence: "high",
-        recommendedRoute: "build_app:apply",
-        planSummary: "Apply pending file changes.",
-        needsClarification: false,
-      };
-  }
-
-  if (ctx.awaitingToken && /\b(skip|no token|demo|without|mock)\b/i.test(message)) {
-    return {
-      ...classification,
-      primaryIntent: "preview_app",
-      confidence: "high",
-      recommendedRoute: "build_app:deploy_demo",
-      needsClarification: false,
-    };
-  }
-
-  return classification;
 }
 
 export function formatIntentSummary(classification: IntentClassification): string {

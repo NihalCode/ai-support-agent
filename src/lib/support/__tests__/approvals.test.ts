@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { enqueueApproval, getApproval, listApprovals, setApprovalStatus } from "../approvals";
 import { classifyAction } from "../safety";
 
-describe("approval queue", () => {
+describe.sequential("approval queue", () => {
   it("enqueues, lists, fetches, and redacts the preview", async () => {
     const safety = classifyAction({ kind: "jira", method: "POST", summary: "add a comment" });
     const req = await enqueueApproval({

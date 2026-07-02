@@ -10,8 +10,7 @@ import { LogsSidebar } from "./sidebars/LogsSidebar";
 import { McpSidebar } from "./sidebars/McpSidebar";
 import { InvestigationsSidebar } from "./sidebars/InvestigationsSidebar";
 import { SourceControlSidebar } from "./sidebars/SourceControlSidebar";
-import { BuildAppSidebar } from "./sidebars/BuildAppSidebar";
-import { DeploymentsSidebar } from "./sidebars/DeploymentsSidebar";
+import { FeatureRemovedEditor } from "./editors/FeatureRemovedEditor";
 
 const TITLES: Record<string, string> = {
   explorer: "Explorer",
@@ -42,8 +41,18 @@ export function PrimarySidebar() {
       {activity === "investigations" && <InvestigationsSidebar />}
       {activity === "api-registry" && <ApiRegistrySidebar />}
       {activity === "cql" && <CqlSidebar />}
-      {activity === "build-app" && <BuildAppSidebar />}
-      {activity === "deployments" && <DeploymentsSidebar />}
+      {activity === "build-app" && (
+        <FeatureRemovedEditor
+          feature="Build App"
+          alternatives={["Use API Registry", "Ask in main chat about endpoints or CQL"]}
+        />
+      )}
+      {activity === "deployments" && (
+        <FeatureRemovedEditor
+          feature="Generated app deployments"
+          alternatives={["Investigate API issues in chat", "Use API Registry for endpoint testing"]}
+        />
+      )}
       {activity === "jira" && <JiraSidebar />}
       {activity === "logs" && <LogsSidebar />}
       {activity === "mcp" && <McpSidebar />}

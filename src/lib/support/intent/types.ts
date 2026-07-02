@@ -6,6 +6,7 @@ export type UserIntent =
   | "explain_app"
   | "preview_app"
   | "deploy_app"
+  | "unsupported_app_build_request"
   | "commit_changes"
   | "diagnose_support_issue"
   | "continue_investigation"

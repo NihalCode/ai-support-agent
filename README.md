@@ -66,7 +66,7 @@ The UI is a **multi-panel investigation IDE** inspired by modern AI coding tools
 
 | Region | Purpose |
 |--------|---------|
-| **Activity bar** | Explorer, Search, Source Control, Investigations, API Registry, CQL, **Build App**, **Deployments**, Jira, Logs, MCP, Settings |
+| **Activity bar** | Explorer, Search, Source Control, Investigations, API Registry, CQL, Jira, Logs, MCP, Settings |
 | **Primary sidebar** | Context for the active activity (imports, search, tickets, MCP status) |
 | **Editor tabs** | Investigation, diagnose, API registry, endpoint detail, API runner, integrations, CQL, MCP config |
 | **AI chat panel** | Support agent chat, slash commands (`/investigate`, `/validate-cql`, …), follow-ups when a session exists |

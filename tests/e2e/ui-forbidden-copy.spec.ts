@@ -19,7 +19,7 @@ test.describe("Support Mode forbidden copy", () => {
   });
 
   test("hides custom Jira configuration in Support Mode", async ({ page }) => {
-    await page.getByTestId("activity-settings").click();
+    await page.getByTestId("activity-integrations").click();
     const jira = page.getByTestId("enterprise-integration-jira");
     if ((await jira.count()) > 0) {
       await expect(jira.getByRole("button", { name: /Configure|Save credentials/i })).toHaveCount(0);
@@ -33,12 +33,5 @@ test.describe("Support Mode forbidden copy", () => {
     for (const re of FORBIDDEN_SUPPORT_COPY) {
       expect(body).not.toMatch(re);
     }
-  });
-
-  test("Build App workspace has no raw undefined in readiness sidebar", async ({ page }) => {
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    const readiness = await page.getByTestId("build-app-readiness").innerText();
-    expect(readiness).not.toMatch(/undefined|null|\[object Object\]/);
   });
 });

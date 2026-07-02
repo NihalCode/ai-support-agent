@@ -24,6 +24,16 @@ export function ChatPanelContent({
     contextLabel,
     zendeskStatus,
     messagesEndRef,
+    chatMode,
+    chatModeLabel,
+    onChatModeChange,
+    modeError,
+    canUseDeveloperMode,
+    pendingAttachments,
+    onAttachClick,
+    onFilesSelected,
+    removePendingAttachment,
+    fileInputRef,
   } = panel;
 
   return (
@@ -37,7 +47,7 @@ export function ChatPanelContent({
               {!compact && <WelcomeHero onSelectPrompt={setInput} />}
               {compact && (
                 <p className="text-sm text-slate-400">
-                  No messages yet. Ask the agent to build, investigate, or summarize.
+                  No messages yet. Ask the agent to investigate, explore APIs, or summarize.
                 </p>
               )}
             </div>
@@ -57,11 +67,20 @@ export function ChatPanelContent({
         onSend={send}
         onStop={stop}
         streaming={streaming}
-        modeLabel={isClientMode ? "Support Mode" : "Developer Mode"}
+        modeLabel={isClientMode ? "Support Mode" : chatModeLabel}
         contextLabel={contextLabel}
         zendeskStatus={zendeskStatus}
         isClientMode={isClientMode}
         setCommandPalette={setCommandPalette}
+        chatMode={chatMode}
+        onChatModeChange={onChatModeChange}
+        canUseDeveloperMode={canUseDeveloperMode}
+        modeError={modeError}
+        pendingAttachments={pendingAttachments}
+        onAttach={onAttachClick}
+        onFilesSelected={onFilesSelected}
+        removePendingAttachment={removePendingAttachment}
+        fileInputRef={fileInputRef}
       />
     </>
   );

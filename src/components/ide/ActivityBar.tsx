@@ -5,10 +5,8 @@ import { useWorkspace } from "./WorkspaceProvider";
 
 const CLIENT_ITEMS: { id: ActivityId; icon: string; label: string }[] = [
   { id: "home", icon: "🏠", label: "Home" },
-  { id: "build-app", icon: "🛠", label: "Build" },
   { id: "investigations", icon: "🔬", label: "Investigate" },
   { id: "api-registry", icon: "📡", label: "APIs" },
-  { id: "deployments", icon: "🚀", label: "Deploy" },
   { id: "settings", icon: "⚙", label: "Settings" },
 ];
 
@@ -21,8 +19,6 @@ const DEVELOPER_ITEMS: { id: ActivityId; icon: string; title: string }[] = [
   { id: "investigations", icon: "🔬", title: "Investigations" },
   { id: "api-registry", icon: "📡", title: "API Registry" },
   { id: "cql", icon: "⌗", title: "CQL" },
-  { id: "build-app", icon: "🛠", title: "Build App" },
-  { id: "deployments", icon: "🚀", title: "Deployments" },
   { id: "jira", icon: "🎫", title: "Jira" },
   { id: "logs", icon: "📋", title: "Logs" },
   { id: "mcp", icon: "🔌", title: "MCP" },

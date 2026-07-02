@@ -7,7 +7,7 @@ import {
 } from "@/lib/support/approvals";
 import { classifyAction } from "@/lib/support/safety";
 
-describe("approval idempotency", () => {
+describe.sequential("approval idempotency", () => {
   it("allows only one execution claim per pending approval", async () => {
     const safety = classifyAction({ kind: "jira", method: "POST", summary: "comment" });
     const req = await enqueueApproval({

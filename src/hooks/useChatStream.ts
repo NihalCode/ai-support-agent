@@ -4,7 +4,8 @@ import { useCallback, useRef } from "react";
 import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
 import { shouldFallbackToInvestigate } from "@/lib/support/chat/stream-fallback";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
-import type { ToolCallCardState } from "@/components/ide/types";
+import { useAuth } from "@/components/auth/AuthProvider";
+import type { ChatMessageMeta, ToolCallCardState } from "@/components/ide/types";
 
 export function useChatStream() {
   const {
@@ -13,20 +14,39 @@ export function useChatStream() {
     updateChatMessage,
     setInvestigationSession,
     setActiveInvestigation,
-    setActiveBuildProject,
     openTab,
-    setActivity,
   } = useWorkspace();
+  const { canUseDeveloperMode } = useAuth();
 
   const sendingRef = useRef(false);
 
   const sendStream = useCallback(
-    async (text: string, opts?: { onStreamingChange?: (v: boolean) => void; signal?: AbortSignal }) => {
+    async (
+      text: string,
+      opts?: {
+        onStreamingChange?: (v: boolean) => void;
+        signal?: AbortSignal;
+        attachmentIds?: string[];
+      }
+    ) => {
       if (sendingRef.current) return null;
       sendingRef.current = true;
       opts?.onStreamingChange?.(true);
 
-      const userId = addChatMessage({ role: "user", content: text });
+      const attachmentIds = opts?.attachmentIds ?? [];
+      const attachmentMeta = state.conversationAttachments
+        .filter((a) => attachmentIds.includes(a.id))
+        .map((a) => ({
+          filename: a.filename,
+          summary: a.summary,
+          detectedType: a.detectedType,
+        }));
+
+      const userId = addChatMessage({
+        role: "user",
+        content: text,
+        meta: attachmentMeta.length ? { attachmentIds, attachments: attachmentMeta } : undefined,
+      });
       const assistantId = addChatMessage({
         role: "assistant",
         content: "",
@@ -37,7 +57,7 @@ export function useChatStream() {
       const toolCards: ToolCallCardState[] = [];
       let content = "";
       let streamHadProgress = false;
-      let intentSummary: string | undefined;
+      let messageMeta: ChatMessageMeta = {};
 
       try {
         const res = await fetch("/api/support/agent/chat/stream", {
@@ -47,7 +67,10 @@ export function useChatStream() {
             message: text,
             sessionId: state.investigationSessionId ?? undefined,
             investigationId: state.activeInvestigationId ?? undefined,
-            buildProjectId: state.activeBuildProjectId ?? undefined,
+            chatMode: state.chatMode,
+            attachmentIds,
+            conversationId: state.conversationId,
+            canUseDeveloperMode,
           }),
           signal: opts?.signal,
         });
@@ -70,14 +93,14 @@ export function useChatStream() {
             const event = JSON.parse(line.slice(5).trim()) as ChatStreamEvent;
             if (event.type === "intent_classified") {
               streamHadProgress = true;
-              intentSummary = event.summary;
               content = `${event.summary}\n\n`;
-              updateChatMessage(assistantId, { content, meta: { intent: event.summary } });
+              messageMeta = { ...messageMeta, intent: event.summary };
+              updateChatMessage(assistantId, { content, meta: messageMeta });
             }
             if (event.type === "token") {
               streamHadProgress = true;
               content += event.text;
-              updateChatMessage(assistantId, { content, meta: { intent: intentSummary } });
+              updateChatMessage(assistantId, { content, meta: messageMeta });
             }
             if (event.type === "session_created") {
               streamHadProgress = true;
@@ -92,45 +115,12 @@ export function useChatStream() {
                 });
               }
             }
-            if (event.type === "build_app_handoff") {
-              streamHadProgress = true;
-              const tabId = event.projectId ? `build-app-${event.projectId}` : "build-app-new";
-              openTab({
-                id: tabId,
-                kind: "build-app",
-                title: event.title,
-                payload: {
-                  projectId: event.projectId,
-                  initialMessage: event.description,
-                  initialTicketId: event.ticketId,
-                  initialTemplateId: event.templateId,
-                  autoStart: event.autoStart,
-                  mode: event.mode,
-                },
-              });
-              setActivity("build-app", { sidebarNavId: "activity-build-app", skipDefaultTab: true });
-            }
-            if (event.type === "build_app_created") {
-              setActiveBuildProject(event.projectId);
-              openTab({
-                id: `build-app-${event.projectId}`,
-                kind: "build-app",
-                title: event.title,
-                payload: { projectId: event.projectId },
-              });
-              setActivity("build-app", { sidebarNavId: "activity-build-app", skipDefaultTab: true });
-            }
-            if (event.type === "build_app_updated" && event.projectId) {
-              setActiveBuildProject(event.projectId);
-            }
             if (event.type === "approval_required") {
-              updateChatMessage(assistantId, {
-                content,
-                meta: {
-                  intent: intentSummary,
-                  approvalId: event.approvalId,
-                },
-              });
+              messageMeta = {
+                ...messageMeta,
+                approvalId: event.approvalId,
+              };
+              updateChatMessage(assistantId, { content, meta: messageMeta });
             }
             if (event.type === "tool_call_start") {
               toolCards.push({
@@ -140,7 +130,7 @@ export function useChatStream() {
                 status: "running",
                 summary: event.summary ?? event.name,
               });
-              updateChatMessage(assistantId, { toolCards: [...toolCards], content, meta: { intent: intentSummary } });
+              updateChatMessage(assistantId, { toolCards: [...toolCards], content, meta: messageMeta });
             }
             if (event.type === "tool_call_result") {
               const card = toolCards.find((c) => c.id === event.toolCallId);
@@ -148,12 +138,12 @@ export function useChatStream() {
                 card.status = event.status;
                 card.summary = event.summary;
               }
-              updateChatMessage(assistantId, { toolCards: [...toolCards], content, meta: { intent: intentSummary } });
+              updateChatMessage(assistantId, { toolCards: [...toolCards], content, meta: messageMeta });
             }
             if (event.type === "error") {
               updateChatMessage(assistantId, {
                 content,
-                meta: { intent: intentSummary, error: event.error },
+                meta: { ...messageMeta, error: event.error },
               });
             }
           }
@@ -212,12 +202,13 @@ export function useChatStream() {
       updateChatMessage,
       state.investigationSessionId,
       state.activeInvestigationId,
-      state.activeBuildProjectId,
+      state.chatMode,
+      state.conversationId,
+      state.conversationAttachments,
+      canUseDeveloperMode,
       setInvestigationSession,
       setActiveInvestigation,
-      setActiveBuildProject,
       openTab,
-      setActivity,
     ]
   );
 

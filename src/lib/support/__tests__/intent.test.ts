@@ -149,25 +149,23 @@ describe("intent classification — specific scenarios", () => {
 });
 
 describe("intent routing", () => {
-  it("routes active app vague UI to build_app workspace edit", () => {
+  it("routes active app vague UI to unsupported app build", () => {
     const classification = classifyUserIntent({
       message: "Make this client-ready.",
       context: { buildProjectId: "p1" },
     });
     const route = chooseAgentRoute(classification, { buildProjectId: "p1" });
-    expect(route.kind).toBe("build_app");
-    expect(route.buildAppMode).toBe("edit");
-    expect(shouldRouteToBuildAppFromIntent(classification, { buildProjectId: "p1" })).toBe(true);
+    expect(route.kind).toBe("unsupported_app_build");
+    expect(shouldRouteToBuildAppFromIntent(classification, { buildProjectId: "p1" })).toBe(false);
   });
 
-  it("routes share request to build_app deploy with active project", () => {
+  it("routes share request to unsupported app build with active project", () => {
     const classification = classifyUserIntent({
       message: "Can I share this with my team?",
       context: { buildProjectId: "p1", buildOk: true },
     });
     const route = chooseAgentRoute(classification, { buildProjectId: "p1" });
-    expect(route.kind).toBe("build_app");
-    expect(route.buildAppMode).toBe("deploy");
+    expect(route.kind).toBe("unsupported_app_build");
   });
 
   it("routes support issue to investigation create", () => {
@@ -193,18 +191,18 @@ describe("intent routing", () => {
       hasProject: true,
       buildOk: true,
     });
-    expect(["preview_app", "deploy_app"]).toContain(r.primaryIntent);
+    expect(["preview_app", "deploy_app", "unsupported_app_build_request"]).toContain(r.primaryIntent);
   });
 });
 
 describe("safety — deploy never auto-executes from classification alone", () => {
-  it("deploy intent still requires approval route not direct execute", () => {
+  it("deploy intent routes to unsupported app build, not direct execute", () => {
     const r = classifyUserIntent({
       message: "Just publish it.",
       context: { buildProjectId: "p1", buildOk: true },
     });
     expect(r.primaryIntent).toBe("deploy_app");
-    expect(r.recommendedRoute).toBe("build_app:deploy");
-    expect(r.recommendedRoute).not.toMatch(/execute|auto/);
+    const route = chooseAgentRoute(r, { buildProjectId: "p1", buildOk: true });
+    expect(route.kind).toBe("unsupported_app_build");
   });
 });

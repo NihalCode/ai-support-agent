@@ -1,44 +1,27 @@
 import { describe, it, expect } from "vitest";
 import { classifyUserIntent } from "../intent/classify-intent";
 import { chooseAgentRoute } from "../intent/choose-route";
-import { runAppBuilderAgent } from "../build-app/appBuilderAgent";
-import { handleBuildAppPlan } from "../build-app/orchestrate";
-import { applyFileChanges } from "../build-app/project-store";
 
-describe("intent integration — build app flows", () => {
-  it("active app + make this client-ready triggers edit pipeline", () => {
-    const plan = handleBuildAppPlan({
+describe("intent integration — unsupported app build", () => {
+  it("build request routes to unsupported_app_build", () => {
+    const classification = classifyUserIntent({
       message: "Build indicator search dashboard",
     });
-    const pid = plan.project!.id;
-    applyFileChanges(pid, plan.pendingChanges!);
-
-    const classification = classifyUserIntent({
-      message: "Make this client-ready.",
-      context: { buildProjectId: pid },
-    });
-    expect(classification.primaryIntent).toBe("edit_app");
-
-    const edit = runAppBuilderAgent({
-      message: "This looks too much like a demo. Make it client-ready.",
-      projectId: pid,
-    });
-    expect(edit.explanation).not.toMatch(/Tell me what you'd like changed/i);
-    expect(edit.needsApproval).toBe(true);
-    expect(edit.pendingChanges?.length).toBeGreaterThan(0);
+    expect(classification.primaryIntent).toBe("build_app");
+    const route = chooseAgentRoute(classification, {}, classification.extractedEntities.supportIssue ?? "Build indicator search dashboard");
+    expect(route.kind).toBe("unsupported_app_build");
   });
 
-  it("active app + share phrasing chooses deploy route", () => {
+  it("active app + share phrasing routes to unsupported app build", () => {
     const classification = classifyUserIntent({
       message: "Can I share this with my team?",
       context: { buildProjectId: "proj-1", buildOk: true },
     });
     const route = chooseAgentRoute(classification, { buildProjectId: "proj-1", buildOk: true });
-    expect(route.kind).toBe("build_app");
-    expect(route.buildAppMode).toBe("deploy");
+    expect(route.kind).toBe("unsupported_app_build");
   });
 
-  it("build failed + fix it routes to fix_error", () => {
+  it("active app + fix error routes to unsupported app build", () => {
     const classification = classifyUserIntent({
       message: "Fix that error.",
       context: { buildProjectId: "proj-1", buildOk: false, buildFailed: true },
@@ -49,8 +32,7 @@ describe("intent integration — build app flows", () => {
       buildOk: false,
       buildFailed: true,
     });
-    expect(route.kind).toBe("build_app");
-    expect(route.buildAppMode).toBe("edit");
+    expect(route.kind).toBe("unsupported_app_build");
   });
 });
 

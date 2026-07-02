@@ -8,18 +8,23 @@ import { streamChatText, simulateStream } from "@/lib/support/openai-stream";
 import { encodeSseEvent } from "@/lib/support/chat/stream-events";
 import { isTestMode } from "@/lib/test-mode";
 import { redact } from "@/lib/support/redact";
+import { UNSUPPORTED_APP_BUILD_MESSAGE } from "@/lib/support/unsupported-app-build";
 import {
   ensureInvestigationSession,
 } from "@/lib/support/investigation/ensure-investigation";
 import { extractNaturalLanguageDetails } from "@/lib/support/investigation/extract-query";
-import { streamBuildAppHandoffFromChat } from "@/lib/support/build-app/chat-stream";
-import { classifyUserIntent, formatIntentSummary } from "@/lib/support/intent/classify-intent";
+import { formatIntentSummary } from "@/lib/support/intent/classify-intent";
 import {
   chooseAgentRoute,
   buildClarificationReply,
 } from "@/lib/support/intent/choose-route";
 import type { WorkspaceIntentContext } from "@/lib/support/intent/types";
 import { buildCqlMarkdownReply } from "@/lib/support/investigation/cql-investigation";
+import {
+  classifyWithAttachments,
+  normalizeChatMode,
+} from "@/agent/UnifiedChatOrchestrator";
+import type { ChatMode } from "@/agent/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -30,6 +35,10 @@ interface StreamBody {
   investigationId?: string;
   buildProjectId?: string;
   buildOk?: boolean | null;
+  chatMode?: ChatMode;
+  attachmentIds?: string[];
+  conversationId?: string;
+  canUseDeveloperMode?: boolean;
 }
 
 function investigationTitle(message: string): string {
@@ -77,8 +86,19 @@ export async function POST(req: Request) {
           buildOk: body.buildOk,
           buildFailed: body.buildOk === false,
         };
-        const classification = classifyUserIntent({ message, context: intentCtx });
-        const route = chooseAgentRoute(classification, intentCtx, message);
+
+        const chatMode = normalizeChatMode(
+          body.chatMode,
+          body.canUseDeveloperMode ?? true
+        );
+
+        const { classification, enrichedMessage } = classifyWithAttachments({
+          message,
+          context: intentCtx,
+          attachmentIds: body.attachmentIds ?? [],
+          chatMode,
+        });
+        const route = chooseAgentRoute(classification, intentCtx, enrichedMessage);
 
         send({
           type: "intent_classified",
@@ -89,16 +109,11 @@ export async function POST(req: Request) {
           recommendedRoute: classification.recommendedRoute,
         });
 
-        if (route.kind === "build_app") {
-          const build = await streamBuildAppHandoffFromChat({
-            message,
-            projectId: buildProjectId,
-            buildOk: body.buildOk,
-            messageId,
-            send,
-            classification,
-          });
-          fullText = build.fullText;
+        if (route.kind === "unsupported_app_build") {
+          fullText = UNSUPPORTED_APP_BUILD_MESSAGE;
+          for await (const chunk of simulateStream(fullText)) {
+            send({ type: "token", messageId, text: chunk });
+          }
         } else if (route.kind === "investigation_create") {
           const createToolId = crypto.randomUUID();
           send({
@@ -301,14 +316,6 @@ export async function POST(req: Request) {
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }
-        }
-
-        if (buildProjectId) {
-          send({
-            type: "build_app_updated",
-            projectId: buildProjectId,
-            patch: { updatedAt: new Date().toISOString() },
-          });
         }
 
         if (investigationId) {

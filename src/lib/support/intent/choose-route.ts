@@ -2,14 +2,14 @@ import "server-only";
 
 import type { IntentClassification, WorkspaceIntentContext } from "./types";
 import {
-  shouldRouteToBuildAppFromIntent,
   shouldAutoInvestigateFromIntent,
   formatIntentSummary,
+  isAppBuildRequest,
 } from "./classify-intent";
 import { enrichSupportQuery, isCqlAuthoringRequest } from "../investigation/extract-query";
 
 export type ChatRouteKind =
-  | "build_app"
+  | "unsupported_app_build"
   | "investigation_create"
   | "investigation_chat"
   | "investigation_customer_response"
@@ -21,7 +21,6 @@ export type ChatRouteKind =
 
 export interface ChosenChatRoute {
   kind: ChatRouteKind;
-  buildAppMode?: "plan" | "edit" | "deploy";
   investigationPromptHint?: string;
 }
 
@@ -38,28 +37,12 @@ export function chooseAgentRoute(
     }
   }
 
-  if (classification.needsClarification && classification.confidence === "low" && classification.primaryIntent === "unknown") {
-    return { kind: "clarify" };
+  if (isAppBuildRequest(classification, ctx)) {
+    return { kind: "unsupported_app_build" };
   }
 
-  if (shouldRouteToBuildAppFromIntent(classification, ctx)) {
-    let mode: "plan" | "edit" | "deploy" = "plan";
-    if (ctx.buildProjectId) {
-      if (classification.primaryIntent === "deploy_app" || classification.primaryIntent === "preview_app") {
-        mode = "deploy";
-      } else if (
-        ["edit_app", "fix_error", "explain_app", "run_tests", "commit_changes"].includes(
-          classification.primaryIntent
-        )
-      ) {
-        mode = "edit";
-      } else if (classification.primaryIntent === "build_app") {
-        mode = "edit";
-      } else {
-        mode = "edit";
-      }
-    }
-    return { kind: "build_app", buildAppMode: mode };
+  if (classification.needsClarification && classification.confidence === "low" && classification.primaryIntent === "unknown") {
+    return { kind: "clarify" };
   }
 
   if (ctx.sessionId || ctx.investigationId) {
@@ -113,7 +96,7 @@ export function buildClarificationReply(classification: IntentClassification): s
     const choices = classification.clarificationChoices?.map((c, i) => `${i + 1}. ${c}`).join("\n");
     return [classification.clarificationQuestion, choices].filter(Boolean).join("\n\n");
   }
-  return "Describe what you want to build, fix, investigate, or change — I’ll figure out the best next step.";
+  return "Describe what you want to investigate, which API endpoint you need, or what CQL query you want help with — I'll figure out the best next step.";
 }
 
 export function buildIntentAwareIntro(classification: IntentClassification): string {

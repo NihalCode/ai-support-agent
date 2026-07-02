@@ -1,44 +1,44 @@
 "use client";
 
-import { Blocks, MessageSquare, SearchCheck, BookOpen, Send, Rocket, Sparkles } from "lucide-react";
+import { Code2, FileSearch, MessageSquare, SearchCheck, Send, Sparkles, Terminal } from "lucide-react";
 import { PromptSuggestionCard } from "./PromptSuggestionCard";
 
 const PROMPTS = [
   {
-    title: "Build an app",
-    example: "Create an indicator search dashboard for analysts.",
-    icon: Blocks,
-    testId: "prompt-card-build",
-  },
-  {
-    title: "Investigate an issue",
-    example: "The blocking workflow has been timing out since yesterday.",
+    title: "Investigate an API issue",
+    example: "The CTIX indicator search endpoint is returning 500s for a customer.",
     icon: SearchCheck,
-    testId: "prompt-card-investigate",
+    testId: "prompt-card-investigate-api",
   },
   {
-    title: "Work with support tickets",
-    example: "Summarize Zendesk ticket 1842 and check Jira for related bugs.",
+    title: "Find an endpoint",
+    example: "Which CSAP endpoint should I use to add tags?",
+    icon: FileSearch,
+    testId: "prompt-card-endpoint",
+  },
+  {
+    title: "Generate API snippet",
+    example: "Give me a curl and Python example for the CFTR enrichment endpoint.",
+    icon: Code2,
+    testId: "prompt-card-snippet",
+  },
+  {
+    title: "Write CQL",
+    example: "Find high-confidence malicious IP indicators from the last 7 days.",
+    icon: Terminal,
+    testId: "prompt-card-cql",
+  },
+  {
+    title: "Explain a payload",
+    example: "Explain this Orchestrate workflow payload.",
     icon: MessageSquare,
-    testId: "prompt-card-tickets",
+    testId: "prompt-card-payload",
   },
   {
-    title: "Search internal knowledge",
-    example: "Find the Confluence runbook for malicious IP blocking.",
-    icon: BookOpen,
-    testId: "prompt-card-knowledge",
-  },
-  {
-    title: "Prepare customer response",
-    example: "Draft a customer-safe update and developer handoff.",
+    title: "Draft support response",
+    example: "Write a customer-safe update for this API issue.",
     icon: Send,
     testId: "prompt-card-response",
-  },
-  {
-    title: "Deploy or share",
-    example: "Prepare a preview link I can share with my team.",
-    icon: Rocket,
-    testId: "prompt-card-deploy",
   },
 ] as const;
 
@@ -52,12 +52,12 @@ export function WelcomeHero({ onSelectPrompt }: { onSelectPrompt: (text: string)
         </div>
 
         <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
-          Build, investigate, and resolve support issues with AI.
+          Investigate issues and work with Cyware APIs.
         </h1>
 
         <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
           Ask in plain English. The agent can investigate tickets, search internal knowledge, draft
-          customer responses, create developer handoffs, and build support tools.
+          customer responses, generate CQL, explain API endpoints, and create developer handoffs.
         </p>
       </div>
 

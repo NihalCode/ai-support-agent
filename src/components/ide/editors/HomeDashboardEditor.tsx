@@ -5,16 +5,6 @@ import { useWorkspace } from "../WorkspaceProvider";
 
 const CARDS = [
   {
-    id: "build",
-    title: "Build an App",
-    description:
-      "Create a working app from a plain-English idea.",
-    example: "Build an indicator search dashboard for analysts.",
-    action: "build-app" as const,
-    testId: "home-card-build",
-    button: "Start building",
-  },
-  {
     id: "investigate",
     title: "Investigate an Issue",
     description:
@@ -34,13 +24,22 @@ const CARDS = [
     button: "Explore APIs",
   },
   {
-    id: "deploy",
-    title: "Prepare a Preview or Deployment",
-    description: "Review readiness, generate a preview link, and deploy after approval.",
-    example: "Can I share this with my team?",
-    action: "deployments" as const,
-    testId: "home-card-deploy",
-    button: "Prepare preview",
+    id: "endpoint",
+    title: "Find an Endpoint",
+    description: "Look up CSAP, CFTR, CTIX, or Orchestrate endpoints and parameters.",
+    example: "Which CSAP endpoint should I use to add tags?",
+    action: "api-registry" as const,
+    testId: "home-card-endpoint",
+    button: "Search APIs",
+  },
+  {
+    id: "cql",
+    title: "Write or Explain CQL",
+    description: "Generate, validate, or troubleshoot CQL queries for CTIX.",
+    example: "Write a CQL query for high-confidence malicious IP indicators.",
+    action: "cql" as const,
+    testId: "home-card-cql",
+    button: "Open CQL",
   },
 ] as const;
 
@@ -49,17 +48,14 @@ export function HomeDashboardEditor() {
 
   function startCard(action: (typeof CARDS)[number]["action"]) {
     switch (action) {
-      case "build-app":
-        runCommand("build-app");
-        break;
       case "investigate":
         runCommand("investigate");
         break;
       case "api-registry":
         setActivity("api-registry");
         break;
-      case "deployments":
-        setActivity("deployments");
+      case "cql":
+        setActivity("cql");
         break;
     }
   }
@@ -80,15 +76,13 @@ export function HomeDashboardEditor() {
           <article key={card.id} className="home-card" data-testid={card.testId}>
             <h2 className="home-card-title">{card.title}</h2>
             <p className="home-card-desc">{card.description}</p>
-            <p className="home-card-example">
-              <span className="home-card-example-label">Example:</span> &ldquo;{card.example}&rdquo;
-            </p>
+            <p className="home-card-example">&ldquo;{card.example}&rdquo;</p>
             <div className="home-card-actions">
-              <button type="button" className="home-btn-primary" onClick={() => startCard(card.action)}>
+              <button type="button" className="home-card-btn" onClick={() => startCard(card.action)}>
                 {card.button}
               </button>
-              {isClientMode && (
-                <button type="button" className="home-btn-ghost" onClick={() => tryExample(card.example)}>
+              {!isClientMode && (
+                <button type="button" className="home-card-link" onClick={() => tryExample(card.example)}>
                   Try example
                 </button>
               )}
@@ -96,18 +90,6 @@ export function HomeDashboardEditor() {
           </article>
         ))}
       </div>
-
-      {isClientMode && (
-        <section className="home-dashboard-hints" data-testid="home-chat-hints">
-          <p className="home-hints-title">Try in the assistant:</p>
-          <ul className="home-hints-list">
-            <li>&ldquo;Build an indicator dashboard.&rdquo;</li>
-            <li>&ldquo;The blocking workflow stopped working yesterday.&rdquo;</li>
-            <li>&ldquo;Make this app client-ready.&rdquo;</li>
-            <li>&ldquo;Create a preview link for my team.&rdquo;</li>
-          </ul>
-        </section>
-      )}
     </div>
   );
 }

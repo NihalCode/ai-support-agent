@@ -11,8 +11,6 @@ const COMMANDS = [
   { id: "import-api", label: "Import docs URL" },
   { id: "api-registry", label: "Open API Registry" },
   { id: "cql", label: "Open CQL Workspace" },
-  { id: "build-app", label: "Build Cyware App" },
-  { id: "deployments", label: "Open Deployments" },
   { id: "investigate", label: "Start Investigation" },
   { id: "diagnose", label: "Diagnose Current Error" },
   { id: "jira", label: "Search Jira" },

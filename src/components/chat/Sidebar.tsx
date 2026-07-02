@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   Activity,
-  Blocks,
   BookOpen,
   Bot,
   ChevronDown,
@@ -32,7 +31,6 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { label: "AI Chat", icon: MessageSquare, activity: "home", testId: "activity-home" },
   { label: "Investigations", icon: SearchCheck, activity: "investigations", testId: "activity-investigations" },
-  { label: "Build App", icon: Blocks, activity: "build-app", testId: "activity-build-app" },
   { label: "Integrations", icon: Plug, activity: "settings", testId: "activity-integrations", settingsSection: "integrations" },
   { label: "Knowledge", icon: BookOpen, activity: "search", testId: "activity-search" },
   { label: "Approvals", icon: ShieldCheck, activity: "settings", testId: "activity-approvals", integrationsTab: "approvals" },
@@ -45,7 +43,6 @@ const DEV_EXTRA_ITEMS: NavItem[] = [
   { label: "Explorer", icon: Bot, activity: "explorer", testId: "activity-explorer" },
   { label: "API Registry", icon: Plug, activity: "api-registry", testId: "activity-api-registry" },
   { label: "CQL", icon: Activity, activity: "cql", testId: "activity-cql" },
-  { label: "Deployments", icon: Blocks, activity: "deployments", testId: "activity-deployments" },
   { label: "Jira", icon: ScrollText, activity: "jira", testId: "activity-jira" },
   { label: "MCP", icon: Plug, activity: "mcp", testId: "activity-mcp" },
 ];

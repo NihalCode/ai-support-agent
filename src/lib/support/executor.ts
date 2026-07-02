@@ -184,18 +184,11 @@ export async function executeAction(
 
     case "build-app-scaffold":
     case "build-app-write":
-    case "build-app-deploy": {
-      const { applyApprovedBuildAction } = await import("./build-app/orchestrate");
-      const detail = await applyApprovedBuildAction(action);
-      await audit({ action: `write:${action.type}`, target: action.projectId, approved: true, provider: "build-app", safetyClass: "WRITE_MEDIUM_RISK", details: detail.slice(0, 200) });
-      return { ok: true, detail };
-    }
-
+    case "build-app-deploy":
     case "build-app-git-commit": {
-      const { commitBuildAppProject } = await import("./build-app/git");
-      const detail = await commitBuildAppProject(action.projectId, action.message, action.branch);
-      await audit({ action: "write:build-app-git-commit", target: action.projectId, approved: true, provider: "git", safetyClass: "WRITE_MEDIUM_RISK", details: detail.slice(0, 200) });
-      return { ok: true, detail };
+      throw new Error(
+        "The app-building workflow has been removed. Historical approvals cannot be executed."
+      );
     }
 
     default: {

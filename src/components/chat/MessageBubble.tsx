@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Paperclip, Sparkles } from "lucide-react";
 import type { ChatMessage } from "@/components/ide/types";
 import { sanitizeSupportText } from "@/lib/chat/support-sanitize";
 import { IntentCard } from "./cards/IntentCard";
@@ -55,6 +55,19 @@ export function MessageBubble({
     return (
       <div className="flex justify-end chat-fade-in">
         <div className="max-w-[78%] rounded-2xl rounded-tr-md border border-white/10 bg-white/[0.075] px-4 py-3 text-sm leading-6 text-slate-100">
+          {message.meta?.attachments && message.meta.attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5" data-testid="user-message-attachments">
+              {message.meta.attachments.map((a) => (
+                <span
+                  key={a.filename}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300"
+                >
+                  <Paperclip className="h-3 w-3" />
+                  {a.filename}
+                </span>
+              ))}
+            </div>
+          )}
           {message.content}
         </div>
       </div>

@@ -13,7 +13,7 @@ import { WelcomeEditor } from "./editors/WelcomeEditor";
 import { DiagnoseEditor } from "./editors/DiagnoseEditor";
 import { EndpointEditor } from "./editors/EndpointEditor";
 import { InvestigationObjectPanel } from "../investigation/InvestigationObjectPanel";
-import { BuildAppEditor } from "./editors/BuildAppEditor";
+import { FeatureRemovedEditor } from "./editors/FeatureRemovedEditor";
 import { SettingsEditor } from "./editors/SettingsEditor";
 import { JiraTicketEditor } from "./editors/JiraTicketEditor";
 import { AuditTimelinePanel } from "@/components/enterprise/AuditTimelinePanel";
@@ -136,20 +136,24 @@ export function EditorArea({
         </div>
       )}
       {tab.kind === "build-app" && (
-        <BuildAppEditor
-          projectId={tab.payload?.projectId as string | undefined}
-          initialMessage={tab.payload?.initialMessage as string | undefined}
-          initialTicketId={tab.payload?.initialTicketId as string | undefined}
-          initialTemplateId={tab.payload?.initialTemplateId as string | undefined}
-          autoStart={tab.payload?.autoStart as boolean | undefined}
-          mode={tab.payload?.mode as "plan" | "edit" | "deploy" | undefined}
+        <FeatureRemovedEditor
+          feature="Build App"
+          alternatives={[
+            "Ask about CSAP, CFTR, CTIX, or Orchestrate endpoints",
+            "Generate CQL queries",
+            "Start a support investigation",
+            "Draft a developer handoff",
+          ]}
         />
       )}
       {tab.kind === "deployments" && (
-        <div style={{ padding: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Deployments</h2>
-          <p style={{ color: "var(--muted)" }}>Use the Deployments sidebar to view Build App deployment history.</p>
-        </div>
+        <FeatureRemovedEditor
+          feature="Generated app deployments"
+          alternatives={[
+            "Use API Registry for endpoint testing",
+            "Investigate API failures in main chat",
+          ]}
+        />
       )}
       {tab.kind === "jira-ticket" && (
         <JiraTicketEditor ticketKey={String(tab.payload?.key ?? tab.title)} />

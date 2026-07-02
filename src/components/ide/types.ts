@@ -74,6 +74,29 @@ export interface ChatMessageMeta {
   approvalId?: string;
   approvalPreview?: string;
   error?: string;
+  projectId?: string;
+  attachmentIds?: string[];
+  attachments?: { filename: string; summary?: string; detectedType?: string }[];
+  buildPlan?: {
+    title: string;
+    summary: string;
+    templateId: string;
+    templateReason: string;
+    endpointCount: number;
+    features: string[];
+  };
+  pendingChanges?: { path: string; action: string; preview: string }[];
+}
+
+export type ChatMode = "instant" | "balanced" | "deep" | "developer";
+
+export interface ConversationAttachmentRef {
+  id: string;
+  filename: string;
+  detectedType: string;
+  summary?: string;
+  sizeBytes: number;
+  status: string;
 }
 
 export interface ChatMessage {
@@ -122,6 +145,9 @@ export interface WorkspaceState {
   activeInvestigationId: string | null;
   activeBuildProjectId: string | null;
   problems: { id: string; severity: "error" | "warn"; message: string }[];
+  chatMode: ChatMode;
+  conversationId: string;
+  conversationAttachments: ConversationAttachmentRef[];
 }
 
 export const DEFAULT_LAYOUT: LayoutState = {
@@ -134,8 +160,6 @@ export const DEFAULT_LAYOUT: LayoutState = {
 };
 
 export const SLASH_COMMANDS = [
-  { cmd: "/build-app", label: "Build Cyware app", action: "build-app" },
-  { cmd: "/deploy-app", label: "Deployments", action: "deployments" },
   { cmd: "/diagnose", label: "Diagnose issue", action: "diagnose" },
   { cmd: "/investigate", label: "Start investigation", action: "investigate" },
   { cmd: "/import-api", label: "Import API source", action: "import-api" },

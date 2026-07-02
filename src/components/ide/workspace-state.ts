@@ -103,6 +103,9 @@ export function initialWorkspaceState(): WorkspaceState {
     activeInvestigationId: null,
     activeBuildProjectId: null,
     problems: [],
+    chatMode: "balanced",
+    conversationId: crypto.randomUUID(),
+    conversationAttachments: [],
   };
 }
 

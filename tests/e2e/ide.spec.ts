@@ -1,4 +1,18 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function openDeveloperInvestigations(page: Page) {
+  await page.getByTestId("product-mode-toggle").selectOption("developer");
+  await page.getByTestId("activity-investigations").click();
+}
+
+async function openDeveloperBottomPanel(page: Page) {
+  await openDeveloperInvestigations(page);
+  await page.getByTestId("open-command-palette").click();
+  await page.getByRole("button", { name: "Toggle Bottom Panel" }).click();
+  if (await page.getByTestId("chat-dock-close").isVisible().catch(() => false)) {
+    await page.getByTestId("chat-dock-close").click();
+  }
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -31,8 +45,7 @@ test.describe("App shell", () => {
 
   test("developer mode shows bottom panel in editor view", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperBottomPanel(page);
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
   });
 
@@ -48,14 +61,12 @@ test.describe("App shell", () => {
 test.describe("Split editor", () => {
   test("splits editor right via command palette and persists", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperInvestigations(page);
     await page.getByTestId("open-command-palette").click();
     await page.getByRole("button", { name: "Split Editor Right" }).click();
     await expect(page.locator(".ide-editor-group")).toHaveCount(2);
     await page.reload();
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperInvestigations(page);
     await expect(page.locator(".ide-editor-group")).toHaveCount(2);
   });
 });
@@ -114,8 +125,7 @@ test.describe("Chat streaming", () => {
 test.describe("Terminal", () => {
   test("runs allowlisted command", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperBottomPanel(page);
     await page.getByTestId("bottom-tab-terminal").click();
     await expect(page.getByTestId("terminal-panel")).toBeVisible();
     await page.getByTestId("terminal-input").fill("npm test");
@@ -127,8 +137,7 @@ test.describe("Terminal", () => {
 
   test("blocks unsafe command", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperBottomPanel(page);
     await page.getByTestId("bottom-tab-terminal").click();
     await page.getByTestId("terminal-input").fill("rm -rf /");
     await page.getByTestId("terminal-run").click();
@@ -137,273 +146,35 @@ test.describe("Terminal", () => {
 });
 
 test.describe("Chat build app routing", () => {
-  test("routes build request from main chat to app builder", async ({ page }) => {
+  test("returns graceful unsupported response for build requests", async ({ page }) => {
     test.setTimeout(60000);
     await page.goto("/");
     const msg =
       "Build me a simple indicator search dashboard using Cyware APIs with search box and table results.";
     await page.getByTestId("ai-chat-input").fill(msg);
-    await page.getByTestId("ai-chat-input").press("Enter");
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("build-app-chat-input")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId("build-app-chat-assistant").first()).toContainText(/indicator|template|Build App|plan|scaffold/i, {
-      timeout: 30000,
-    });
-    await page.getByTestId("activity-home").click();
+    await page.getByTestId("chat-send-button").click();
     await expect(page.getByTestId("chat-assistant-message")).toContainText(
-      /Build App|indicator search|template/i,
-      { timeout: 20000 }
+      /no longer builds full applications|cannot build full apps|endpoint|CQL|developer handoff/i,
+      { timeout: 45000 }
     );
-  });
-});
-
-test.describe("Build App workspace", () => {
-  test("generates scaffold plan and approves in test mode", async ({ page }) => {
-    test.setTimeout(90000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    const msg =
-      "Build me a simple indicator search dashboard using Cyware APIs. Search box, optional CQL filter, table results, and details panel. Prepare for Vercel deployment.";
-    await page.getByTestId("build-app-chat-input").fill(msg);
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-chat-assistant").first()).toContainText(/indicator-search-dashboard|indicator search|template/i, {
-      timeout: 15000,
-    });
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-approve").click();
-    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Preview ready|Build checked/i, {
-      timeout: 15000,
-    });
-    await expect(page.getByTestId("build-app-deploy-preview")).toBeVisible({ timeout: 5000 });
-    await page.getByTestId("build-app-deploy-preview").click();
-    await page.getByRole("button", { name: "Show technical details" }).click();
-    await expect(page.getByTestId("build-app-preview-url")).toContainText(/vercel\.app/i, {
-      timeout: 20000,
-    });
-  });
-
-  test("shows build failure and hides preview when build fails", async ({ page }) => {
-    test.setTimeout(90000);
-    await page.route("**/api/support/build-app", async (route, request) => {
-      if (request.method() === "POST") {
-        const body = request.postDataJSON() as { action?: string };
-        if (body.action === "build") {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              ok: false,
-              buildOk: false,
-              preflightOk: true,
-              output: "sh: line 1: next: command not found\nCommand failed: npm run build",
-              classification: {
-                kind: "missing_command",
-                summary: "The Next.js CLI is not installed in the generated app.",
-                suggestedFix: "Run npm install in the generated app folder.",
-              },
-              project: { id: "test", status: "failed", buildOk: false },
-            }),
-          });
-          return;
-        }
-      }
-      await route.continue();
-    });
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build|Build check failed/i, {
-      timeout: 15000,
-    });
-    await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
-    await expect(
-      page.getByTestId("build-app-workspace").getByText(/Next\.js CLI is not installed|build check failed|required dependency/i).first()
-    ).toBeVisible();
-    await expect(page.getByTestId("build-app-output")).toBeHidden();
-    await page.getByRole("button", { name: "Show technical details" }).click();
-    await expect(page.getByTestId("build-app-output")).toBeVisible();
-    await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
-  });
-
-  test("edit after scaffold: no raw prompt, make it cleaner runs edit pipeline", async ({ page }) => {
-    test.setTimeout(120000);
-    const scaffoldMsg =
-      "Build me an indicator search dashboard. I want a simple page where I can type in an indicator or CQL query, search, see a table, and open details.";
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill(scaffoldMsg);
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
-
-    // Scaffolded page must not contain raw prompt in explanation/diff
-    await page.getByRole("button", { name: "Show technical details" }).click();
-    const diffPanel = page.getByTestId("build-app-diff-panel");
-    await expect(diffPanel).toBeVisible({ timeout: 5000 });
-    await expect(diffPanel).not.toContainText(/Build me an indicator search dashboard\. I want a simple page/i);
-
-    await page.getByTestId("build-app-chat-input").fill("make it cleaner");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-chat-assistant").first()).not.toContainText(
-      /Tell me what you'd like changed/i,
-      { timeout: 15000 }
-    );
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("build-app-approve")).toContainText(/Apply changes/i);
-    await page.getByTestId("build-app-approve").click();
-    await expect(page.getByTestId("build-app-chat-assistant").last()).toContainText(/Build passed|Build check|Changes applied|test build|simulated/i, {
-      timeout: 30000,
-    });
-  });
-
-  test("E2E pending scaffold edit does not show describe fallback", async ({ page }) => {
-    test.setTimeout(90000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard with search and table");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-chat-input").fill(
-      "make the UI cleaner, the landing page should not have any unnecessary text"
-    );
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
-      /Describe the app you want to build/i,
-      { timeout: 15000 }
-    );
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 10000 });
-  });
-
-  test('E2E "Now build the app" approves and runs build', async ({ page }) => {
-    test.setTimeout(120000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-chat-input").fill("Now build the app");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 30000 });
-    await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Build checked|Preview ready|simulated/i, {
-      timeout: 45000,
-    });
-  });
-
-  test("E2E Zendesk dashboard does not claim live connection", async ({ page }) => {
-    test.setTimeout(90000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill("Build a Zendesk ticket triage dashboard.");
-    await page.getByTestId("build-app-chat-send").click();
-    const assistant = page.getByTestId("build-app-chat-assistant").first();
-    await expect(assistant).toContainText(/Zendesk|template|approve|diff/i, { timeout: 15000 });
-    await expect(assistant).not.toContainText(/Zendesk is connected and ready/i);
-    await expect(assistant).not.toContainText(/Zendesk dashboard ready/i);
-  });
-
-  test("E2E generated scaffold has no raw prompt in pending diff", async ({ page }) => {
-    test.setTimeout(90000);
-    const scaffoldMsg =
-      "Build me an indicator search dashboard. I want a simple page where I can type in an indicator or CQL query, search, see a table, and open details.";
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-chat-input").fill(scaffoldMsg);
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByRole("button", { name: "Show technical details" }).click();
-    const diffPanel = page.getByTestId("build-app-diff-panel");
-    await expect(diffPanel).toBeVisible({ timeout: 5000 });
-    await expect(diffPanel).not.toContainText(/Build me an indicator search dashboard\. I want a simple page/i);
-  });
-
-  test('E2E edit after scaffold: "make it client-ready"', async ({ page }) => {
-    test.setTimeout(120000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-chat-input").fill("Build indicator search dashboard");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-chat-input").fill("make it client-ready");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
-      /Describe the app you want to build/i,
-      { timeout: 15000 }
-    );
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-  });
-
-  test("E2E build failure shows client-friendly error without fake success", async ({ page }) => {
-    test.setTimeout(90000);
-    await page.route("**/api/support/build-app", async (route, request) => {
-      if (request.method() === "POST") {
-        const body = request.postDataJSON() as { action?: string };
-        if (body.action === "build") {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              ok: false,
-              buildOk: false,
-              preflightOk: true,
-              output: "sh: line 1: next: command not found",
-              classification: {
-                kind: "missing_command",
-                summary: "The build check failed because a required dependency is missing.",
-              },
-              project: { id: "test", status: "failed", buildOk: false },
-            }),
-          });
-          return;
-        }
-      }
-      await route.continue();
-    });
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("build-app-chat-input").fill("Build indicator dashboard");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build|Build check failed/i, {
-      timeout: 15000,
-    });
-    await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
-    await expect(
-      page.getByTestId("build-app-workspace").getByText(/required dependency is missing|build check failed/i).first()
-    ).toBeVisible();
+    await expect(page.getByTestId("chat-app-plan-card")).toHaveCount(0);
+    await expect(page.getByTestId("build-app-workspace")).toHaveCount(0);
   });
 });
 
 test.describe("Natural-language agent routing", () => {
-  test("E2E NL build app from main chat", async ({ page }) => {
+  test("E2E NL build app from main chat returns unsupported message", async ({ page }) => {
     test.setTimeout(60000);
     await page.goto("/");
     const msg =
       "I need a small internal tool where analysts can search indicators and click into details.";
     await page.getByTestId("ai-chat-input").fill(msg);
-    await page.getByTestId("ai-chat-input").press("Enter");
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("activity-home").click();
-    await expect(page.getByTestId("chat-assistant-message")).toContainText(/Understood as: build app|Build App|template/i, {
-      timeout: 20000,
-    });
+    await page.getByTestId("chat-send-button").click();
+    await expect(page.getByTestId("chat-app-plan-card")).toHaveCount(0);
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(
+      /no longer builds full applications|cannot build full apps|endpoint|CQL/i,
+      { timeout: 45000 }
+    );
   });
 
   test("E2E NL investigation auto-create", async ({ page }) => {
@@ -433,26 +204,8 @@ test.describe("Natural-language agent routing", () => {
     await expect(page.getByTestId("chat-assistant-message")).not.toContainText(/\{\{base_url\}\}/);
   });
 
-  test("E2E NL edit in build app workspace", async ({ page }) => {
-    test.setTimeout(120000);
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill(
-      "I need a dashboard where analysts can search indicators and open details."
-    );
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await page.getByTestId("build-app-chat-input").fill(
-      "This looks too much like a demo. Make it client-ready."
-    );
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-chat-assistant").last()).not.toContainText(
-      /Tell me what you'd like changed/i,
-      { timeout: 15000 }
-    );
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
+  test("E2E NL edit in build app workspace", async () => {
+    test.skip(true, "Build App workspace removed");
   });
 });
 
@@ -494,9 +247,7 @@ test.describe("CQL workspace", () => {
 test.describe("Degraded mode", () => {
   test("shows problems panel warnings", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
-    await page.getByTestId("bottom-tab-problems").click();
+    await openDeveloperBottomPanel(page);
     await expect(page.getByTestId("problems-panel")).toBeVisible();
   });
 });
@@ -551,11 +302,10 @@ test.describe("Client mode professionalism", () => {
   test("home page shows professional dashboard copy", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("chat-welcome-hero")).toBeVisible();
-    await expect(page.getByText(/Build, investigate, and resolve support issues with AI/i)).toBeVisible();
-    await expect(page.getByTestId("prompt-card-build")).toBeVisible();
-    await expect(page.getByTestId("prompt-card-investigate")).toBeVisible();
-    await expect(page.getByTestId("prompt-card-knowledge")).toBeVisible();
-    await expect(page.getByTestId("prompt-card-deploy")).toBeVisible();
+    await expect(page.getByText(/Investigate issues and work with Cyware APIs/i)).toBeVisible();
+    await expect(page.getByTestId("prompt-card-investigate-api")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-endpoint")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-cql")).toBeVisible();
   });
 
   test("client mode shows friendly status and chat", async ({ page }) => {
@@ -563,62 +313,20 @@ test.describe("Client mode professionalism", () => {
     await expect(page.getByTestId("status-readiness")).toContainText(/Everything looks ready|issue/i);
     await expect(page.getByTestId("ai-chat-input")).toBeVisible();
     await expect(page.getByTestId("chat-empty-state")).toBeVisible();
-    await expect(page.getByTestId("chat-empty-state").getByText(/indicator search dashboard/i)).toBeVisible();
+    await expect(page.getByTestId("chat-empty-state").getByText(/CTIX indicator search endpoint/i)).toBeVisible();
   });
 
   test("developer mode reveals advanced panels", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await openDeveloperBottomPanel(page);
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
     await expect(page.getByTestId("open-command-palette")).toBeVisible();
     await page.getByTestId("sidebar-advanced-toggle").click();
     await expect(page.getByTestId("sidebar-advanced-mcp")).toBeVisible();
   });
 
-  test("client mode hides raw build errors until technical details expanded", async ({ page }) => {
-    test.setTimeout(60000);
-    await page.route("**/api/support/build-app", async (route, request) => {
-      if (request.method() === "POST") {
-        const body = request.postDataJSON() as { action?: string };
-        if (body.action === "build") {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              ok: false,
-              buildOk: false,
-              output: "sh: line 1: next: command not found",
-              classification: {
-                kind: "missing_command",
-                summary: "The build check failed because a required dependency is missing.",
-                suggestedFix: "I can update the project setup and run the check again.",
-              },
-              project: { id: "test", status: "failed", buildOk: false },
-            }),
-          });
-          return;
-        }
-      }
-      await route.continue();
-    });
-    await page.goto("/");
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
-    await page.getByTestId("build-app-chat-input").fill("Build indicator dashboard");
-    await page.getByTestId("build-app-chat-send").click();
-    await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
-    await page.getByTestId("build-app-approve").click();
-    await page.getByTestId("build-app-build").click();
-    await expect(
-      page.getByTestId("build-app-workspace").getByText(/required dependency is missing|build check failed/i).first()
-    ).toBeVisible({
-      timeout: 15000,
-    });
-    await expect(page.getByText(/next: command not found/i)).toBeHidden();
-    await page.getByRole("button", { name: "Show technical details" }).click();
-    await expect(page.getByTestId("build-app-output")).toBeVisible();
-    await expect(page.getByTestId("build-app-output")).toContainText(/next: command not found/i);
+  test("client mode hides raw build errors until technical details expanded", async () => {
+    test.skip(true, "Build App workspace removed");
   });
 });
 
@@ -636,7 +344,7 @@ test.describe("Settings and integrations", () => {
   test("opens integration registry with configure forms", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-settings").click();
+    await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("settings-editor")).toBeVisible();
     await expect(page.getByTestId("integration-health-panel")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("integration-settings-panel")).toBeVisible({ timeout: 10000 });
@@ -712,7 +420,7 @@ test.describe("Enterprise integrations API", () => {
 test.describe("Settings enterprise cards", () => {
   test("shows enterprise integration cards in settings", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("activity-settings").click();
+    await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("enterprise-integration-cards")).toBeVisible();
     await expect(page.getByTestId("enterprise-integration-slack")).toBeVisible();
     await expect(page.getByTestId("enterprise-integration-zendesk")).toBeVisible();
@@ -720,14 +428,14 @@ test.describe("Settings enterprise cards", () => {
 
   test("hides Jira configure in client mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("activity-settings").click();
+    await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("enterprise-configure-jira")).toHaveCount(0);
   });
 
   test("shows Jira configure in developer mode", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-settings").click();
+    await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("enterprise-configure-jira")).toBeVisible();
   });
 });

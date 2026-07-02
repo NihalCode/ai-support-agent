@@ -5,14 +5,14 @@ export type ProductMode = "client" | "developer";
 export const productConfig = {
   appName: "AI Support Studio",
   appSubtitle:
-    "Build apps, investigate issues, and work with Cyware APIs using natural language.",
+    "Investigate support issues and work with Cyware APIs using natural language.",
   companyName: "",
   tagline:
-    "Describe what you want to build, fix, investigate, or deploy. The assistant will understand your request, choose the right workflow, and guide you step by step.",
+    "Describe an API issue, endpoint question, or CQL query. The assistant will investigate, search docs, and guide you step by step.",
   defaultMode: "client" as ProductMode,
   showDeveloperToolsByDefault: false,
   chatPlaceholder:
-    "Tell the agent what you want to build, fix, investigate, or deploy…",
+    "Describe an API issue, endpoint, CQL query, or support ticket…",
   chatPanelTitle: "Assistant",
 } as const;
 

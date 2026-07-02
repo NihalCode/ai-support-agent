@@ -14,6 +14,8 @@ import type {
   ActivityId,
   BottomPanelTab,
   ChatMessage,
+  ChatMode,
+  ConversationAttachmentRef,
   EditorTab,
   WorkspaceState,
 } from "./types";
@@ -71,6 +73,9 @@ type Action =
   | { type: "SET_ACTIVE_INVESTIGATION"; id: string | null }
   | { type: "SET_ACTIVE_BUILD_PROJECT"; id: string | null }
   | { type: "SET_PROBLEMS"; problems: WorkspaceState["problems"] }
+  | { type: "SET_CHAT_MODE"; mode: WorkspaceState["chatMode"] }
+  | { type: "ADD_CONVERSATION_ATTACHMENT"; attachment: WorkspaceState["conversationAttachments"][number] }
+  | { type: "REMOVE_CONVERSATION_ATTACHMENT"; id: string }
   | { type: "HYDRATE"; state: Partial<WorkspaceState> };
 
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
@@ -159,6 +164,21 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
       return { ...state, activeBuildProjectId: action.id };
     case "SET_PROBLEMS":
       return { ...state, problems: action.problems };
+    case "SET_CHAT_MODE":
+      return { ...state, chatMode: action.mode };
+    case "ADD_CONVERSATION_ATTACHMENT":
+      return {
+        ...state,
+        conversationAttachments: [
+          ...state.conversationAttachments.filter((a) => a.id !== action.attachment.id),
+          action.attachment,
+        ],
+      };
+    case "REMOVE_CONVERSATION_ATTACHMENT":
+      return {
+        ...state,
+        conversationAttachments: state.conversationAttachments.filter((a) => a.id !== action.id),
+      };
     case "HYDRATE":
       return {
         ...state,
@@ -203,6 +223,10 @@ export interface WorkspaceContextValue {
   runCommand: (commandId: string) => void;
   handleSlashInput: (input: string) => boolean;
   setLayoutSize: (partial: Partial<WorkspaceState["layout"]>) => void;
+  chatMode: ChatMode;
+  setChatMode: (mode: ChatMode) => void;
+  addConversationAttachment: (attachment: ConversationAttachmentRef) => void;
+  removeConversationAttachment: (id: string) => void;
   productMode: ProductMode;
   isClientMode: boolean;
   setProductMode: (mode: ProductMode) => void;
@@ -243,6 +267,41 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
     [canUseDeveloperMode]
   );
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const stored = sessionStorage.getItem("chat-mode") as ChatMode | null;
+        if (stored === "instant" || stored === "balanced" || stored === "deep" || stored === "developer") {
+          const next = stored === "developer" && !canUseDeveloperMode ? "balanced" : stored;
+          dispatch({ type: "SET_CHAT_MODE", mode: next });
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [canUseDeveloperMode]);
+
+  const setChatMode = useCallback(
+    (mode: ChatMode) => {
+      const next = mode === "developer" && !canUseDeveloperMode ? "balanced" : mode;
+      dispatch({ type: "SET_CHAT_MODE", mode: next });
+      try {
+        sessionStorage.setItem("chat-mode", next);
+      } catch {
+        /* ignore */
+      }
+    },
+    [canUseDeveloperMode]
+  );
+
+  const addConversationAttachment = useCallback((attachment: ConversationAttachmentRef) => {
+    dispatch({ type: "ADD_CONVERSATION_ATTACHMENT", attachment });
+  }, []);
+
+  const removeConversationAttachment = useCallback((id: string) => {
+    dispatch({ type: "REMOVE_CONVERSATION_ATTACHMENT", id });
+  }, []);
 
   useEffect(() => {
     try {
@@ -330,12 +389,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_ACTIVITY", activity: "cql" });
         break;
       case "build-app":
-        dispatch({ type: "OPEN_TAB", tab: { id: "build-app-new", kind: "build-app", title: "Build App" } });
-        dispatch({ type: "SET_ACTIVITY", activity: "build-app" });
-        break;
       case "deployments":
-        dispatch({ type: "OPEN_TAB", tab: { id: "deployments", kind: "deployments", title: "Deployments" } });
-        dispatch({ type: "SET_ACTIVITY", activity: "deployments" });
+        dispatch({ type: "SET_ACTIVITY", activity: "home" });
+        dispatch({
+          type: "ADD_CHAT",
+          message: {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content:
+              "The app-building workflow has been removed from AI Support Agent. I can still help with Cyware API endpoints, CQL, troubleshooting, and developer handoffs — what would you like to work on?",
+            at: new Date().toISOString(),
+          },
+        });
         break;
       case "jira":
         dispatch({ type: "SET_ACTIVITY", activity: "jira" });
@@ -486,11 +551,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       runCommand,
       handleSlashInput,
       setLayoutSize: (partial) => dispatch({ type: "SET_LAYOUT", partial }),
+      chatMode: state.chatMode,
+      setChatMode,
+      addConversationAttachment,
+      removeConversationAttachment,
       productMode,
       isClientMode: productMode === "client",
       setProductMode,
     }),
-    [state, runCommand, handleSlashInput, pinEvidenceToInvestigation, productMode, setProductMode]
+    [
+      state,
+      runCommand,
+      handleSlashInput,
+      pinEvidenceToInvestigation,
+      productMode,
+      setProductMode,
+      setChatMode,
+      addConversationAttachment,
+      removeConversationAttachment,
+    ]
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

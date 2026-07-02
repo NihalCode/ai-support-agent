@@ -28,13 +28,14 @@ test.describe("Premium chat UI", () => {
 
   test("prompt cards render", async ({ page }) => {
     await expect(page.getByTestId("prompt-suggestion-grid")).toBeVisible();
-    await expect(page.getByTestId("prompt-card-build")).toBeVisible();
-    await expect(page.getByTestId("prompt-card-investigate")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-investigate-api")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-endpoint")).toBeVisible();
+    await expect(page.getByTestId("prompt-card-cql")).toBeVisible();
   });
 
   test("clicking prompt card fills composer", async ({ page }) => {
-    await page.getByTestId("prompt-card-build").click();
-    await expect(page.getByTestId("ai-chat-input")).toHaveValue(/indicator search dashboard/i);
+    await page.getByTestId("prompt-card-endpoint").click();
+    await expect(page.getByTestId("ai-chat-input")).toHaveValue(/CSAP endpoint.*add tags/i);
   });
 
   test("composer sends message", async ({ page }) => {
@@ -114,21 +115,20 @@ test.describe("Premium chat UI", () => {
     }
   });
 
-  test("chat dock keeps main chat history after build-app handoff", async ({ page }) => {
+  test("chat dock keeps main chat history when switching activity", async ({ page }) => {
     await page.getByTestId("product-mode-toggle").selectOption("developer");
     const msg = "Persistence check message for chat dock";
     await page.getByTestId("ai-chat-input").fill(msg);
     await page.getByTestId("chat-send-button").click();
     await expect(page.getByText(msg)).toBeVisible({ timeout: 5000 });
-    await page.getByTestId("activity-build-app").click();
-    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("activity-investigations").click();
     await expect(page.getByTestId("chat-dock")).toBeVisible();
     await expect(page.getByTestId("chat-dock").getByText(msg)).toBeVisible();
   });
 
   test("topbar chat toggle opens and closes dock", async ({ page }) => {
     await page.getByTestId("product-mode-toggle").selectOption("developer");
-    await page.getByTestId("activity-build-app").click();
+    await page.getByTestId("activity-investigations").click();
     await expect(page.getByTestId("chat-dock")).toBeVisible();
     await page.getByTestId("topbar-toggle-chat").click();
     await expect(page.getByTestId("chat-dock-fab")).toBeVisible();
