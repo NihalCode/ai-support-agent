@@ -52,8 +52,11 @@ export function workflowStateFromProject(project: BuildAppProject | null, opts?:
     return "install_failed";
   }
   if (project.status === "deploying") return "deploying";
-  if (project.status === "deployed" || project.previewUrl) return project.previewUrl ? "deployed" : "preview_ready";
+  if (project.status === "deployed" || (project.previewUrl && project.buildOk === true)) {
+    return project.previewUrl ? "deployed" : "preview_ready";
+  }
   if (project.status === "ready" && project.buildOk) return "preview_ready";
+  if (project.buildOk === false) return "build_failed";
   if (project.status === "scaffolded") return "scaffolding";
 
   return "idle";

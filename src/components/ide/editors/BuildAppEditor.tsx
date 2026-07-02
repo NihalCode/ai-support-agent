@@ -7,6 +7,11 @@ import { classifyBuildAppWorkspaceMessage } from "@/lib/support/intent/classify-
 import { isBuildAfterApprovalPhrase } from "@/lib/support/build-app/approval-phrases";
 import { sessionFromProject, sessionStatusLabel } from "@/lib/support/build-app/session-ui";
 import { workflowLabel, workflowStateFromProject } from "@/lib/support/build-app/workflow-state";
+import {
+  readinessItems,
+  safeBuildSuccessMessage,
+  verifyProjectState,
+} from "@/lib/support/build-app/verified-claims";
 import { useWorkspace } from "../WorkspaceProvider";
 import { BuildAppChat, type BuildAppChatMessage } from "./BuildAppChat";
 
@@ -23,7 +28,7 @@ type BuildStep = "describe" | "review" | "create" | "test" | "share";
 
 function stepFromProject(project: BuildAppProject | null, approvalId: string | null): BuildStep {
   if (!project) return approvalId ? "review" : "describe";
-  if (project.previewUrl) return "share";
+  if (project.previewUrl && project.buildOk === true) return "share";
   if (project.buildOk === false) return "test";
   if (project.status === "ready" && project.buildOk) return "share";
   if (project.status === "scaffolded" || project.status === "ready" || project.status === "failed") return "test";
@@ -109,6 +114,7 @@ export function BuildAppEditor({
   const autoStartedRef = useRef(false);
   const redeployAfterFixRef = useRef(false);
   const seededRef = useRef(false);
+  const actionInFlightRef = useRef(false);
 
   const step = stepFromProject(project, approvalId);
   const workflowState = workflowStateFromProject(project, { awaitingApproval: Boolean(approvalId) });
@@ -397,7 +403,7 @@ export function BuildAppEditor({
       }
 
       syncBuildProblem(null);
-      pushAssistant("Build passed after the fix.");
+      pushAssistant(safeBuildSuccessMessage(verifyProjectState(proj)));
 
       if (redeployAfterFixRef.current || /\b(redeploy|deploy again|push.*live)\b/i.test(userText)) {
         redeployAfterFixRef.current = false;
@@ -417,6 +423,7 @@ export function BuildAppEditor({
 
   // --- chat send: routes deploy, approval, token, and normal messages ---
   async function handleChatSend(text: string) {
+    if (actionInFlightRef.current || loading) return;
     const wsIntent = classifyBuildAppWorkspaceMessage(text, {
       hasProject: Boolean(project),
       buildOk: project?.buildOk,
@@ -487,8 +494,9 @@ export function BuildAppEditor({
   }
 
   async function approveAndApply(opts?: { runBuildAfter?: boolean }) {
-    if (!project) return;
+    if (!project || actionInFlightRef.current || loading) return;
     const isEdit = (project.appliedChanges?.length ?? 0) > 0;
+    actionInFlightRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -519,13 +527,14 @@ export function BuildAppEditor({
         return;
       }
 
-      pushAssistant("Done — your app files are created. Click Test my app when you're ready, or ask me to change anything.");
+      pushAssistant("Files are ready on disk. Click **Test my app** when you want me to verify the build.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not apply changes";
       setError(msg);
       pushAssistant(`Sorry, I couldn't apply the changes: ${msg}`);
     } finally {
       setLoading(false);
+      actionInFlightRef.current = false;
     }
   }
 
@@ -544,9 +553,13 @@ export function BuildAppEditor({
         project?: BuildAppProject;
       };
       setBuildOutput(data.output ?? data.error ?? "");
-      if (data.project) setProject(data.project);
-
       const passed = res.ok && data.ok === true && data.buildOk === true;
+      if (data.project) {
+        setProject((prev) => (prev ? { ...prev, ...data.project! } : data.project!));
+      } else if (!passed) {
+        setProject((prev) => (prev ? { ...prev, buildOk: false, status: "failed" } : prev));
+      }
+
       if (!passed) {
         const summary = data.classification?.summary ?? data.error ?? "Build failed.";
         setError(summary);
@@ -556,7 +569,7 @@ export function BuildAppEditor({
       }
 
       syncBuildProblem(null);
-      pushAssistant("Done. Build passed — preview is ready when you want to deploy.");
+      pushAssistant(safeBuildSuccessMessage(verifyProjectState(data.project ?? proj)));
       if (redeployAfterFixRef.current) {
         redeployAfterFixRef.current = false;
         await requestDeploy("preview");
@@ -572,7 +585,8 @@ export function BuildAppEditor({
   }
 
   async function runBuild() {
-    if (!project) return;
+    if (!project || actionInFlightRef.current || loading) return;
+    actionInFlightRef.current = true;
     setLoading(true);
     setError(null);
     pushAssistant("Installing dependencies and running a test build in your generated app folder…");
@@ -588,9 +602,13 @@ export function BuildAppEditor({
         project?: BuildAppProject;
       };
       setBuildOutput(data.output ?? data.error ?? "");
-      if (data.project) setProject(data.project);
-
       const passed = res.ok && data.ok === true && data.buildOk === true;
+      if (data.project) {
+        setProject((prev) => (prev ? { ...prev, ...data.project! } : data.project!));
+      } else if (!passed && project) {
+        setProject({ ...project, buildOk: false, status: "failed" });
+      }
+
       if (!passed) {
         const summary = data.classification?.summary ?? data.error ?? "Build failed.";
         const fix = data.classification?.suggestedFix;
@@ -603,22 +621,10 @@ export function BuildAppEditor({
       }
 
       syncBuildProblem(null);
-      const isMock = data.output?.includes("[MOCK]");
-      if (isMock) {
-        setAwaitingVercelToken(false);
-        pushAssistant(
-          isClientMode
-            ? "Build check passed. Say deploy in the chat when you want a preview link for your team, or paste a Vercel token for a live preview."
-            : "Test build passed (mock mode — no real compile on Vercel serverless).\n\nType deploy in the chat to get a link. Paste your Vercel token from vercel.com/account/tokens to get a real preview URL, or say skip for a demo link."
-        );
-      } else {
-        setAwaitingVercelToken(false);
-        pushAssistant(
-          isClientMode
-            ? "Build passed. Say deploy in the chat when you are ready for a preview link."
-            : "Build passed! Type deploy in the chat when you're ready. Paste your Vercel token to get a real preview link, or say skip for a demo."
-        );
-      }
+      const verified =
+        (data as { verified?: ReturnType<typeof verifyProjectState> }).verified ??
+        verifyProjectState(data.project ?? project);
+      pushAssistant(safeBuildSuccessMessage(verified));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Build failed";
       setError(msg);
@@ -626,6 +632,7 @@ export function BuildAppEditor({
       pushAssistant(`Build failed: ${msg}`);
     } finally {
       setLoading(false);
+      actionInFlightRef.current = false;
     }
   }
 
@@ -640,7 +647,7 @@ export function BuildAppEditor({
     pendingChanges.length > 0;
 
   const headerHint = !project
-    ? "Describe the app you want to build. I'll pick the right template, connect APIs, generate files, test, and prepare a preview."
+    ? "Tell me what app you want — I'll propose a plan and file diffs for your approval before creating anything."
     : isEditApproval || pendingChanges.length > 0
       ? "Review the proposed changes and apply when ready."
       : "Tell me what to change — e.g. \"make it cleaner,\" \"add a filter,\" or \"remove that text.\"";
@@ -774,7 +781,7 @@ export function BuildAppEditor({
           Generate plan
         </button>
 
-        {project?.previewUrl && (
+        {project?.previewUrl && project.buildOk === true && (
           <p data-testid="build-app-preview-url" style={{ marginTop: 12, fontSize: 12 }}>
             Preview:{" "}
             <a href={project.previewUrl} target="_blank" rel="noreferrer">{project.previewUrl}</a>
@@ -810,13 +817,7 @@ export function BuildAppEditor({
           data-testid="build-app-readiness"
           style={{ margin: "0 0 16px", paddingLeft: 0, listStyle: "none", fontSize: 12, lineHeight: 1.8 }}
         >
-          {[
-            { label: "App plan created", done: Boolean(project?.plan || approvalId) },
-            { label: "Awaiting approval", done: Boolean((project?.files?.length ?? 0) > 0) },
-            { label: "Files created", done: Boolean((project?.files?.length ?? 0) > 0) },
-            { label: "Build checked", done: project?.buildOk === true },
-            { label: "Preview ready", done: Boolean(project?.previewUrl) },
-          ].map((item) => (
+          {readinessItems(project, Boolean(project?.plan || approvalId)).map((item) => (
             <li key={item.label} style={{ color: item.done ? "var(--green)" : "var(--muted)" }}>
               {item.done ? "✓" : "○"} {item.label}
             </li>

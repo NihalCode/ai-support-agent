@@ -77,6 +77,8 @@ function mapWorkflowToSessionState(
     case "deployed":
       return "deployed";
     default:
+      if (project.buildOk === false) return "build_failed";
+      if (project.status === "ready" && project.buildOk === true) return "build_passed";
       if (project.status === "scaffolded" || project.status === "ready") return "scaffolded";
       return "idle";
   }

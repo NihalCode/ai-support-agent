@@ -14,7 +14,24 @@ import type { BuildAppFileChange, BuildAppProject, BuildAppProjectStatus } from 
 import { supportDataRoot } from "../data-root";
 import { validateAndFixProjectSources } from "./source-validation";
 
-const g = globalThis as unknown as { __buildAppProjects?: Map<string, BuildAppProject> };
+const g = globalThis as unknown as { __buildAppProjects?: Map<string, BuildAppProject>; __buildLocks?: Set<string> };
+
+function buildLocks(): Set<string> {
+  if (!g.__buildLocks) g.__buildLocks = new Set();
+  return g.__buildLocks;
+}
+
+/** Prevent concurrent builds for the same project (double-click / retry). */
+export function tryAcquireBuildLock(projectId: string): boolean {
+  const locks = buildLocks();
+  if (locks.has(projectId)) return false;
+  locks.add(projectId);
+  return true;
+}
+
+export function releaseBuildLock(projectId: string): void {
+  buildLocks().delete(projectId);
+}
 
 function dataRoot(): string {
   return supportDataRoot("build-apps");

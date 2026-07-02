@@ -81,6 +81,15 @@ test.describe("Chat streaming", () => {
     await expect(page.getByText(/No active session|Start an investigation first|Run Investigate first/i)).toHaveCount(0);
   });
 
+  test("double send does not duplicate user message", async ({ page }) => {
+    await page.goto("/");
+    const msg = "duplicate send guard check";
+    const input = page.getByTestId("ai-chat-input");
+    await input.fill(msg);
+    await Promise.all([input.press("Enter"), input.press("Enter")]);
+    await expect(page.getByText(msg, { exact: true })).toHaveCount(1);
+  });
+
   test("auto-creates investigation from non-technical support message", async ({ page }) => {
     test.setTimeout(90000);
     await page.goto("/");
@@ -206,7 +215,7 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
     await page.getByTestId("build-app-approve").click();
     await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build/i, {
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build|Build check failed/i, {
       timeout: 15000,
     });
     await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
@@ -247,7 +256,7 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("build-app-approve")).toContainText(/Apply changes/i);
     await page.getByTestId("build-app-approve").click();
-    await expect(page.getByTestId("build-app-chat-assistant").last()).toContainText(/Build passed|Changes applied|test build/i, {
+    await expect(page.getByTestId("build-app-chat-assistant").last()).toContainText(/Build passed|Build check|Changes applied|test build|simulated/i, {
       timeout: 30000,
     });
   });
@@ -282,9 +291,23 @@ test.describe("Build App workspace", () => {
     await page.getByTestId("build-app-chat-input").fill("Now build the app");
     await page.getByTestId("build-app-chat-send").click();
     await expect(page.getByTestId("build-app-build")).toBeVisible({ timeout: 30000 });
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Build checked|Preview ready/i, {
+    await page.getByTestId("build-app-build").click();
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build passed|Build checked|Preview ready|simulated/i, {
       timeout: 45000,
     });
+  });
+
+  test("E2E Zendesk dashboard does not claim live connection", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.goto("/");
+    await page.getByTestId("activity-build-app").click();
+    await expect(page.getByTestId("build-app-workspace")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("build-app-chat-input").fill("Build a Zendesk ticket triage dashboard.");
+    await page.getByTestId("build-app-chat-send").click();
+    const assistant = page.getByTestId("build-app-chat-assistant").first();
+    await expect(assistant).toContainText(/Zendesk|template|approve|diff/i, { timeout: 15000 });
+    await expect(assistant).not.toContainText(/Zendesk is connected and ready/i);
+    await expect(assistant).not.toContainText(/Zendesk dashboard ready/i);
   });
 
   test("E2E generated scaffold has no raw prompt in pending diff", async ({ page }) => {
@@ -353,7 +376,7 @@ test.describe("Build App workspace", () => {
     await expect(page.getByTestId("build-app-approve")).toBeVisible({ timeout: 15000 });
     await page.getByTestId("build-app-approve").click();
     await page.getByTestId("build-app-build").click();
-    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build/i, {
+    await expect(page.getByTestId("build-app-workflow-state")).toContainText(/Build failed|fix build|Build check failed/i, {
       timeout: 15000,
     });
     await expect(page.getByTestId("build-app-deploy-preview")).toHaveCount(0);
@@ -685,7 +708,7 @@ test.describe("Settings enterprise cards", () => {
     await page.getByTestId("activity-settings").click();
     await expect(page.getByTestId("enterprise-integration-cards")).toBeVisible();
     await expect(page.getByTestId("enterprise-integration-slack")).toBeVisible();
-    await expect(page.getByTestId("enterprise-integration-jira")).toBeVisible();
+    await expect(page.getByTestId("enterprise-integration-zendesk")).toBeVisible();
   });
 
   test("hides Jira configure in client mode", async ({ page }) => {

@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
+import { shouldFallbackToInvestigate } from "@/lib/support/chat/stream-fallback";
 import { productConfig } from "@/lib/product-config";
 import { useWorkspace } from "./WorkspaceProvider";
 import { SLASH_COMMANDS } from "./types";
@@ -25,9 +26,12 @@ export function AIChatPanel() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
 
   const sendStream = useCallback(
     async (text: string) => {
+      if (sendingRef.current) return;
+      sendingRef.current = true;
       const userId = addChatMessage({ role: "user", content: text });
       const assistantId = addChatMessage({ role: "assistant", content: "", toolCards: [] });
       setStreaming(true);
@@ -36,6 +40,7 @@ export function AIChatPanel() {
       abortRef.current = controller;
       const toolCards: ToolCallCardState[] = [];
       let content = "";
+      let streamHadProgress = false;
 
       try {
         const res = await fetch("/api/support/agent/chat/stream", {
@@ -69,14 +74,17 @@ export function AIChatPanel() {
             if (!line.startsWith("data:")) continue;
             const event = JSON.parse(line.slice(5).trim()) as ChatStreamEvent;
             if (event.type === "intent_classified") {
+              streamHadProgress = true;
               content = `${event.summary}\n\n`;
               updateChatMessage(assistantId, { content });
             }
             if (event.type === "token") {
+              streamHadProgress = true;
               content += event.text;
               updateChatMessage(assistantId, { content });
             }
             if (event.type === "session_created") {
+              streamHadProgress = true;
               setInvestigationSession(event.sessionId);
               if (event.investigationId) {
                 setActiveInvestigation(event.investigationId);
@@ -89,6 +97,7 @@ export function AIChatPanel() {
               }
             }
             if (event.type === "build_app_handoff") {
+              streamHadProgress = true;
               setActivity("build-app");
               const tabId = event.projectId ? `build-app-${event.projectId}` : `build-app-new-${Date.now()}`;
               openTab({
@@ -150,6 +159,16 @@ export function AIChatPanel() {
           updateChatMessage(assistantId, { content: `${content}\n[Stopped]` });
           return;
         }
+        if (!shouldFallbackToInvestigate(streamHadProgress, content)) {
+          updateChatMessage(assistantId, {
+            content: content.trim()
+              ? `${content}\n\n_(Stream interrupted — showing partial response.)_`
+              : e instanceof Error
+                ? e.message
+                : "Request failed",
+          });
+          return;
+        }
         try {
           const res = await fetch("/api/support/investigate", {
             method: "POST",
@@ -177,6 +196,7 @@ export function AIChatPanel() {
         }
       } finally {
         setStreaming(false);
+        sendingRef.current = false;
         abortRef.current = null;
         void userId;
       }
@@ -197,7 +217,7 @@ export function AIChatPanel() {
 
   async function send() {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || sendingRef.current) return;
 
     const parsed = parseSlashCommand(text);
     if (parsed?.rest) {

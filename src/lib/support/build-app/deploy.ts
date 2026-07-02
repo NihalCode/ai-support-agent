@@ -3,7 +3,7 @@ import "server-only";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { isTestMode } from "@/lib/test-mode";
-import { getProject, saveProject } from "./project-store";
+import { getProject, saveProject, tryAcquireBuildLock, releaseBuildLock } from "./project-store";
 import type { BuildAppDeployment, DeploymentPlan, DeploymentTarget } from "./types";
 import { checkVercelReadiness } from "./vercel-readiness";
 import { runBuildPreflight, formatPreflightReport } from "./preflight";
@@ -84,6 +84,24 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
     };
   }
 
+  if (!tryAcquireBuildLock(projectId)) {
+    return {
+      ok: false,
+      buildOk: p.buildOk ?? false,
+      preflightOk: false,
+      output: "A build is already running for this app. Please wait for it to finish.",
+      commands: [],
+    };
+  }
+
+  try {
+    return await runProjectBuildInner(projectId, p);
+  } finally {
+    releaseBuildLock(projectId);
+  }
+}
+
+async function runProjectBuildInner(projectId: string, p: NonNullable<ReturnType<typeof getProject>>): Promise<ProjectBuildResult> {
   const mockMode = shouldMockProjectCommands();
   const mockFail = process.env.MOCK_BUILD_FAIL === "true";
   const preflight = runBuildPreflight(p.rootDir);
@@ -95,6 +113,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
   if (!preflight.ok) {
     const output = formatPreflightReport(preflight);
     p.buildOk = false;
+    p.buildMock = mockMode || commands.some((c) => c.mock);
     p.buildOutput = output;
     p.status = "failed";
     saveProject(p);
@@ -112,6 +131,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
   if (!sourceCheck.ok) {
     const output = formatSourceValidationReport(sourceCheck);
     p.buildOk = false;
+    p.buildMock = mockMode || commands.some((c) => c.mock);
     p.buildOutput = output;
     p.status = "failed";
     saveProject(p);
@@ -151,6 +171,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
     const output = `${preface}\n\n${formatCommandLog(commands)}`;
     const classification = classifyBuildError(install.stderr || install.stdout || output);
     p.buildOk = false;
+    p.buildMock = mockMode || commands.some((c) => c.mock);
     p.buildOutput = output;
     p.status = "failed";
     saveProject(p);
@@ -171,6 +192,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
     const output = `${preface}\n\n${formatCommandLog(commands)}`;
     const classification = classifyBuildError(build.stderr || build.stdout || output);
     p.buildOk = false;
+    p.buildMock = mockMode || commands.some((c) => c.mock);
     p.buildOutput = output;
     p.status = "failed";
     saveProject(p);
@@ -209,6 +231,7 @@ export async function runProjectBuild(projectId: string): Promise<ProjectBuildRe
 
   const output = `${preface}\n\n${formatCommandLog(commands)}`;
   p.buildOk = true;
+  p.buildMock = mockMode || commands.some((c) => c.mock);
   p.testOk = testOk ?? true;
   p.buildOutput = output;
   p.testOutput = testOk ? output : p.testOutput;

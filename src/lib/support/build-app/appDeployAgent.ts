@@ -3,6 +3,7 @@ import "server-only";
 import { resolveBuildAppCredentials, hasGitHubPushCredentials, type BuildAppCredentials } from "./credentials";
 import { createDeploymentPlan, deployProject, runProjectBuild } from "./deploy";
 import { checkVercelReadiness } from "./vercel-readiness";
+import { verifyBuildAppState } from "./verified-state";
 import { getProject } from "./project-store";
 import type { DeploymentTarget } from "./types";
 
@@ -38,9 +39,18 @@ export async function runAppDeployAgent(
       : await runProjectBuild(projectId);
 
   const resolved = resolveBuildAppCredentials(credentials);
+  const verified = verifyBuildAppState(project, { commands: build.commands });
+  const buildLine = build.ok
+    ? verified.claims.canSayBuildPassed
+      ? "Build passed."
+      : verified.buildMock
+        ? "Build check passed (simulated — not a real npm compile on this host)."
+        : "Build check passed."
+    : "Build failed — fix errors before deploying.";
+
   const explanation = [
     `Deployment plan for **${project.name}** (${target}).`,
-    build.ok ? "Build passed." : "Build failed — fix errors before deploying.",
+    buildLine,
     plan.mock
       ? "**Mock deploy mode** — paste a Vercel token below (or set VERCEL_TOKEN on the server) for a real preview link."
       : "Vercel token detected — deploy uses the Vercel REST API (no local npm/CLI).",

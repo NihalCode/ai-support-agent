@@ -1,12 +1,12 @@
 import { searchIndicators } from "@/lib/cyware-client";
 
 export default async function Home() {
-  let status = "Configure CYWARE_* env vars in .env.local";
+  let status = "Demo mode — configure CYWARE_* in .env.local for live data";
   try {
     const r = await searchIndicators({ q: "", limit: 1 });
-    status = r.ok ? "Connected (server-side)" : `API error: ${r.error}`;
+    status = r.ok ? "Live API connected" : `API unavailable: ${r.error ?? "check credentials"}`;
   } catch {
-    /* credentials missing */
+    /* credentials missing — stay in demo mode */
   }
 
   return (

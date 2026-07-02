@@ -17,11 +17,12 @@ import {
 } from "@/lib/support/build-app/project-store";
 import { listTemplates } from "@/lib/support/build-app/templates";
 import { runProjectBuild } from "@/lib/support/build-app/deploy";
-import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
+import { getApproval, setApprovalStatus, claimApprovalForExecution } from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
 import { redact } from "@/lib/support/redact";
 import { getConfig } from "@/lib/support/config";
 import { audit } from "@/lib/support/enterprise/audit-log";
+import { verifyBuildAppState } from "@/lib/support/build-app/verified-state";
 import type { BuildAppCredentials } from "@/lib/support/build-app/credentials";
 import type { BuildAppProject } from "@/lib/support/build-app/types";
 
@@ -128,6 +129,9 @@ export async function POST(req: Request) {
           const pendingToApply =
             snapshot?.pendingChanges?.length ? snapshot.pendingChanges : project.pendingChanges;
           if (!pendingToApply?.length) {
+            if (["scaffolded", "ready", "failed", "deployed", "building"].includes(project.status)) {
+              return NextResponse.json({ ok: true, project: getProject(body.projectId), alreadyApplied: true });
+            }
             return NextResponse.json({ error: "Nothing to apply" }, { status: 400 });
           }
           if (snapshot?.pendingChanges?.length && snapshot.pendingChanges !== project.pendingChanges) {
@@ -168,6 +172,7 @@ export async function POST(req: Request) {
         if (!restored) return NextResponse.json({ error: "Project not found — please re-scaffold." }, { status: 404 });
 
         const build = await runProjectBuild(body.projectId);
+        const project = getProject(body.projectId);
         return NextResponse.json({
           ok: build.ok,
           buildOk: build.buildOk,
@@ -175,7 +180,8 @@ export async function POST(req: Request) {
           preflightOk: build.preflightOk,
           output: build.output,
           classification: build.classification,
-          project: getProject(body.projectId),
+          project,
+          verified: verifyBuildAppState(project, { commands: build.commands }),
         });
       }
 
@@ -232,12 +238,24 @@ export async function POST(req: Request) {
       }
 
       case "approve-and-run": {
-        const approval = await getApproval(body.approvalId);
-        if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
-        await setApprovalStatus(body.approvalId, "approved");
-        const exec = await executeAction(approval.action, { approved: true, approvalId: body.approvalId });
-        await setApprovalStatus(body.approvalId, "executed", exec.detail);
-        return NextResponse.json(exec);
+        const claimed = await claimApprovalForExecution(body.approvalId, auth.user.id);
+        if (!claimed) {
+          const existing = await getApproval(body.approvalId);
+          if (!existing) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+          if (existing.status === "executed") {
+            return NextResponse.json({ ok: true, detail: existing.result ?? "Already executed", alreadyExecuted: true });
+          }
+          return NextResponse.json({ error: `Already ${existing.status}` }, { status: 409 });
+        }
+        try {
+          const exec = await executeAction(claimed.action, { approved: true, approvalId: body.approvalId });
+          await setApprovalStatus(body.approvalId, exec.ok ? "executed" : "failed", exec.detail, auth.user.id);
+          return NextResponse.json(exec);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Execution failed";
+          await setApprovalStatus(body.approvalId, "failed", message, auth.user.id);
+          return NextResponse.json({ error: message }, { status: 500 });
+        }
       }
 
       case "commit": {

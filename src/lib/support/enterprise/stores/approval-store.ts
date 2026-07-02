@@ -4,7 +4,6 @@ import type { ApprovalAction, ApprovalRequest, ApprovalStatus, SafetyVerdict } f
 import { redact } from "../../redact";
 import { pgQuery, isPostgresConfigured } from "@/lib/db/postgres";
 import {
-  DEFAULT_WORKSPACE_ID,
   type ApprovalActionType,
   type ApprovalTargetSystem,
   type EnterpriseApprovalRequest,
@@ -18,6 +17,18 @@ import {
 } from "../file-store";
 
 const MAX_ENTRIES = 500;
+
+/** Serialize file-backed approval mutations (tests + local dev). */
+let approvalFileChain: Promise<void> = Promise.resolve();
+
+async function withApprovalFileLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const run = approvalFileChain.then(fn, fn);
+  approvalFileChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
 
 function approvalsFile(): string {
   return `${enterpriseDataDir("approvals")}/requests.json`;
@@ -145,7 +156,7 @@ export async function saveApproval(
         target_id, risk_level, summary, payload_preview, status, action_json, safety_json,
         preview, result, created_at, updated_at, resolved_at
       ) VALUES (
-        ${req.id}, ${DEFAULT_WORKSPACE_ID}, ${req.requestedByUserId}, ${req.approvedByUserId ?? null},
+        ${req.id}, ${defaultOrgId()}, ${req.requestedByUserId}, ${req.approvedByUserId ?? null},
         ${req.actionType}, ${req.targetSystem}, ${req.targetId ?? null}, ${req.riskLevel},
         ${req.summary}, ${JSON.stringify(req.payloadPreview)}, ${req.status},
         ${JSON.stringify(req.action)}, ${JSON.stringify(req.safety)}, ${req.preview},
@@ -161,12 +172,14 @@ export async function saveApproval(
     return req;
   }
 
-  const all = readJsonArrayFile<EnterpriseApprovalRequest>(approvalsFile());
-  const idx = all.findIndex((a) => a.id === req.id);
-  if (idx >= 0) all[idx] = req;
-  else all.unshift(req);
-  writeJsonArrayFile(approvalsFile(), all.slice(0, MAX_ENTRIES));
-  return req;
+  return withApprovalFileLock(() => {
+    const all = readJsonArrayFile<EnterpriseApprovalRequest>(approvalsFile());
+    const idx = all.findIndex((a) => a.id === req.id);
+    if (idx >= 0) all[idx] = req;
+    else all.unshift(req);
+    writeJsonArrayFile(approvalsFile(), all.slice(0, MAX_ENTRIES));
+    return req;
+  });
 }
 
 export async function fetchApproval(id: string): Promise<EnterpriseApprovalRequest | null> {
@@ -177,6 +190,77 @@ export async function fetchApproval(id: string): Promise<EnterpriseApprovalReque
     return rows[0] ? rowToApproval(rows[0]) : null;
   }
   return readJsonArrayFile<EnterpriseApprovalRequest>(approvalsFile()).find((a) => a.id === id) ?? null;
+}
+
+/** Atomically transition pending → approved (execution claim). Returns null if not pending. */
+export async function claimPendingApproval(
+  id: string,
+  approvedByUserId?: string
+): Promise<EnterpriseApprovalRequest | null> {
+  const now = new Date().toISOString();
+  if (isPostgresConfigured()) {
+    const rows = await pgQuery`
+      UPDATE approval_requests
+      SET status = 'approved',
+          approved_by_user_id = ${approvedByUserId ?? null},
+          updated_at = ${now}
+      WHERE id = ${id} AND org_id = ${defaultOrgId()} AND status = 'pending'
+      RETURNING *
+    `;
+    return rows[0] ? rowToApproval(rows[0]) : null;
+  }
+
+  return withApprovalFileLock(() => {
+    const all = readJsonArrayFile<EnterpriseApprovalRequest>(approvalsFile());
+    const idx = all.findIndex((a) => a.id === id);
+    if (idx < 0 || all[idx].status !== "pending") return null;
+    all[idx] = {
+      ...all[idx],
+      status: "approved",
+      approvedByUserId: approvedByUserId ?? all[idx].approvedByUserId,
+      updatedAt: now,
+    };
+    writeJsonArrayFile(approvalsFile(), all);
+    return all[idx];
+  });
+}
+
+/** Atomically transition pending → rejected. Returns null if not pending. */
+export async function claimPendingRejection(
+  id: string,
+  approvedByUserId?: string,
+  result?: string
+): Promise<EnterpriseApprovalRequest | null> {
+  const now = new Date().toISOString();
+  if (isPostgresConfigured()) {
+    const rows = await pgQuery`
+      UPDATE approval_requests
+      SET status = 'rejected',
+          approved_by_user_id = ${approvedByUserId ?? null},
+          result = ${result ?? null},
+          updated_at = ${now},
+          resolved_at = ${now}
+      WHERE id = ${id} AND org_id = ${defaultOrgId()} AND status = 'pending'
+      RETURNING *
+    `;
+    return rows[0] ? rowToApproval(rows[0]) : null;
+  }
+
+  return withApprovalFileLock(() => {
+    const all = readJsonArrayFile<EnterpriseApprovalRequest>(approvalsFile());
+    const idx = all.findIndex((a) => a.id === id);
+    if (idx < 0 || all[idx].status !== "pending") return null;
+    all[idx] = {
+      ...all[idx],
+      status: "rejected",
+      approvedByUserId: approvedByUserId ?? all[idx].approvedByUserId,
+      result: result ? redact(result) : all[idx].result,
+      updatedAt: now,
+      resolvedAt: now,
+    };
+    writeJsonArrayFile(approvalsFile(), all);
+    return all[idx];
+  });
 }
 
 export async function fetchApprovals(

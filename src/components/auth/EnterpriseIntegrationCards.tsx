@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
@@ -292,16 +292,28 @@ export function EnterpriseIntegrationCards({
     return canWrite;
   }
   const [busyId, setBusyId] = useState<string | null>(null);
+  const actionInFlightRef = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const enterpriseRows = integrations.filter((r) =>
-    (ENTERPRISE_IDS as readonly string[]).includes(r.id)
+    (ENTERPRISE_IDS as readonly string[]).includes(r.id) && (r.id !== "jira" || developerMode)
   );
 
-  async function runTest(id: EnterpriseId) {
-    setBusyId(id);
-    setMessage(null);
+  async function runGuarded<T>(id: EnterpriseId | null, fn: () => Promise<T>): Promise<T | undefined> {
+    if (actionInFlightRef.current) return undefined;
+    actionInFlightRef.current = true;
+    if (id) setBusyId(id);
     try {
+      return await fn();
+    } finally {
+      actionInFlightRef.current = false;
+      setBusyId(null);
+    }
+  }
+
+  async function runTest(id: EnterpriseId) {
+    await runGuarded(id, async () => {
+      setMessage(null);
       const res = await fetch(`/api/integrations/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,15 +326,12 @@ export function EnterpriseIntegrationCards({
       }
       setMessage(`${id}: ${data.health?.detail ?? "done"}`);
       await onRefresh();
-    } finally {
-      setBusyId(null);
-    }
+    });
   }
 
   async function save(id: EnterpriseId, credentials: Record<string, string>, metadata?: Record<string, string>) {
-    setBusyId(id);
-    setMessage(null);
-    try {
+    await runGuarded(id, async () => {
+      setMessage(null);
       const res = await fetch(`/api/integrations/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -335,14 +344,11 @@ export function EnterpriseIntegrationCards({
       }
       setMessage(`${id}: saved securely.`);
       await onRefresh();
-    } finally {
-      setBusyId(null);
-    }
+    });
   }
 
   async function disconnect(id: EnterpriseId) {
-    setBusyId(id);
-    try {
+    await runGuarded(id, async () => {
       const res = await fetch(`/api/integrations/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -352,14 +358,11 @@ export function EnterpriseIntegrationCards({
       if (!res.ok) setMessage(data.error ?? "Disconnect failed");
       else setMessage(`${id}: disconnected.`);
       await onRefresh();
-    } finally {
-      setBusyId(null);
-    }
+    });
   }
 
   async function testSlack(channel: string) {
-    setBusyId("slack");
-    try {
+    await runGuarded("slack", async () => {
       const res = await fetch("/api/integrations/slack/test-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -367,21 +370,26 @@ export function EnterpriseIntegrationCards({
       });
       const data = (await res.json()) as { detail?: string; error?: string };
       setMessage(data.detail ?? data.error ?? "Sent");
-    } finally {
-      setBusyId(null);
-    }
+    });
   }
 
   async function syncConfluence() {
-    setBusyId("confluence");
-    try {
-      const res = await fetch("/api/integrations/confluence/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const data = (await res.json()) as { error?: string; result?: { upserted?: number } };
+    await runGuarded("confluence", async () => {
+      const res = await fetch("/api/integrations/confluence/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        skipped?: boolean;
+        reason?: string;
+        result?: { upserted?: number };
+      };
       if (!res.ok) setMessage(data.error ?? "Sync failed");
+      else if (data.skipped) setMessage(data.reason ?? "Sync already in progress.");
       else setMessage(`Confluence sync complete (${data.result?.upserted ?? 0} chunks).`);
-    } finally {
-      setBusyId(null);
-    }
+    });
   }
 
   return (

@@ -19,6 +19,7 @@ import {
   loadAppBuilderSession,
   touchSessionRequest,
 } from "./session-store";
+import { detectIntegrationsInText, integrationHonestyNotes } from "./verified-state";
 import {
   mergeChangesIntoPending,
   readFileFromProjectSources,
@@ -34,7 +35,7 @@ const ACTIVE_APP_STATUSES = new Set<BuildAppProject["status"]>([
 ]);
 
 const DESCRIBE_FALLBACK =
-  "Describe the app you want to build. I'll pick the right template, connect the right APIs, generate files, test it, and prepare a preview.";
+  "Tell me what app you want — for example an indicator search dashboard, ticket triage view, or runbook browser. I'll propose a plan and file diffs for your approval before creating anything.";
 
 export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
   const { isEdit } = classifyBuildAppRequest(req);
@@ -53,6 +54,9 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
 
   const { project, changes } = createProjectFromPlan(req, plan);
 
+  const integrations = detectIntegrationsInText(req.message);
+  const integrationNotes = integrationHonestyNotes(integrations);
+
   const explanation = [
     `I'll build **${plan.title}** using the **${plan.templateId}** template.`,
     plan.templateReason,
@@ -63,7 +67,8 @@ export function runAppBuilderAgent(req: BuildAppRequest): BuildAppAgentResult {
     plan.clarifyingQuestions.length
       ? `\nOptional clarifications:\n${plan.clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
       : "",
-    "\nReview the file diffs below and approve to scaffold the app.",
+    integrationNotes,
+    "\nReview the file diffs below and approve to scaffold the app. Files are created only after you approve.",
   ]
     .filter(Boolean)
     .join("\n");

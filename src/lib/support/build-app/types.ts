@@ -73,6 +73,8 @@ export interface BuildAppProject {
   appliedChanges: BuildAppFileChange[];
   buildOutput?: string;
   buildOk?: boolean;
+  /** True when install/build commands were simulated (Vercel serverless / test mode). */
+  buildMock?: boolean;
   testOutput?: string;
   testOk?: boolean;
   previewUrl?: string;

@@ -25,14 +25,20 @@ export function BuildAppChat({
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (!loading) submittingRef.current = false;
+  }, [loading]);
+
   function submit() {
     const val = input.trim();
-    if (!val || disabled || loading) return;
+    if (!val || disabled || loading || submittingRef.current) return;
+    submittingRef.current = true;
     onSend(val);
     setInput("");
   }

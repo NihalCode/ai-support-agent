@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { audit } from "@/lib/support/enterprise/audit-log";
-import { getApproval, setApprovalStatus } from "@/lib/support/approvals";
+import {
+  claimApprovalForExecution,
+  claimApprovalRejection,
+  getApproval,
+  setApprovalStatus,
+} from "@/lib/support/approvals";
 import { executeAction } from "@/lib/support/executor";
 import { postSlackMessage } from "@/lib/support/slack/client";
 import { slackSigningSecret } from "@/lib/support/slack/credentials";
+import { claimSlackInteraction } from "@/lib/support/slack/event-dedup";
 import { verifySlackSignature } from "@/lib/support/slack/signature";
 import { isTestMode } from "@/lib/test-mode";
 
@@ -39,6 +45,11 @@ export async function POST(req: Request) {
   const failed = await verify(req, rawBody);
   if (failed) return failed;
 
+  const retryNum = req.headers.get("x-slack-retry-num");
+  if (retryNum && Number(retryNum) > 0) {
+    return NextResponse.json({ ok: true });
+  }
+
   const params = new URLSearchParams(rawBody);
   const payloadRaw = params.get("payload");
   if (!payloadRaw) return NextResponse.json({ error: "Missing payload" }, { status: 400 });
@@ -57,18 +68,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
   }
 
-  const approval = await getApproval(approvalId);
-  if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
-  if (approval.status !== "pending") {
-    return NextResponse.json({ text: `Approval already ${approval.status}` });
+  const actionTs = payload.actions?.[0]?.action_id ?? payload.message?.ts ?? "unknown";
+  if (
+    !(await claimSlackInteraction({
+      teamId: (payload as { team?: { id?: string } }).team?.id,
+      userId: payload.user?.id,
+      actionTs,
+      approvalId,
+      decision,
+    }))
+  ) {
+    return NextResponse.json({ text: "Already processed." });
   }
 
   if (decision === "reject") {
-    const updated = await setApprovalStatus(
+    const claimed = await claimApprovalRejection(
       approvalId,
-      "rejected",
+      payload.user?.id,
       `Rejected from Slack by ${payload.user?.id ?? "unknown"}`
     );
+    if (!claimed) {
+      const existing = await getApproval(approvalId);
+      return NextResponse.json({ text: `Approval already ${existing?.status ?? "handled"}.` });
+    }
     await audit({
       action: "slack:approval:reject",
       target: approvalId,
@@ -77,17 +99,26 @@ export async function POST(req: Request) {
       details: payload.user?.id,
     });
     await maybeReply(payload, `Rejected approval ${approvalId}.`);
-    return NextResponse.json({ text: `Rejected ${updated?.action.type ?? "approval"}.` });
+    return NextResponse.json({ text: `Rejected ${claimed.action.type ?? "approval"}.` });
   }
 
-  if (approval.safety.blocked) {
-    await setApprovalStatus(approvalId, "rejected", approval.safety.reason);
-    await maybeReply(payload, `Blocked approval ${approvalId}: ${approval.safety.reason}`);
-    return NextResponse.json({ text: approval.safety.reason });
+  const claimed = await claimApprovalForExecution(approvalId, payload.user?.id);
+  if (!claimed) {
+    const existing = await getApproval(approvalId);
+    if (existing?.status === "executed") {
+      return NextResponse.json({ text: `Already executed: ${existing.result ?? "done"}.` });
+    }
+    return NextResponse.json({ text: `Approval already ${existing?.status ?? "handled"}.` });
+  }
+
+  if (claimed.safety.blocked) {
+    await setApprovalStatus(approvalId, "rejected", claimed.safety.reason);
+    await maybeReply(payload, `Blocked approval ${approvalId}: ${claimed.safety.reason}`);
+    return NextResponse.json({ text: claimed.safety.reason });
   }
 
   try {
-    const result = await executeAction(approval.action, { approved: true, approvalId });
+    const result = await executeAction(claimed.action, { approved: true, approvalId });
     const updated = await setApprovalStatus(approvalId, result.ok ? "executed" : "failed", result.detail);
     await audit({
       action: "slack:approval:approve",

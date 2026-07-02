@@ -12,6 +12,8 @@ import { redact } from "./redact";
 import type { EnterpriseApprovalRequest } from "./enterprise/types";
 import {
   buildPayloadPreview,
+  claimPendingApproval,
+  claimPendingRejection,
   classifyApprovalMeta,
   fetchApproval,
   fetchApprovals,
@@ -78,6 +80,25 @@ export async function listApprovals(status?: ApprovalStatus): Promise<ApprovalRe
   return all.map(toLegacyApproval);
 }
 
+export async function claimApprovalForExecution(
+  id: string,
+  approvedByUserId?: string
+): Promise<ApprovalRequest | null> {
+  const req = await claimPendingApproval(id, approvedByUserId);
+  if (req) mem().set(req.id, req);
+  return req ? toLegacyApproval(req) : null;
+}
+
+export async function claimApprovalRejection(
+  id: string,
+  approvedByUserId?: string,
+  result?: string
+): Promise<ApprovalRequest | null> {
+  const req = await claimPendingRejection(id, approvedByUserId, result);
+  if (req) mem().set(req.id, req);
+  return req ? toLegacyApproval(req) : null;
+}
+
 export async function setApprovalStatus(
   id: string,
   status: ApprovalStatus,
@@ -106,7 +127,7 @@ export async function assertApprovedForExecution(
   }
   const req = await hydrateMem(approvalId);
   if (!req) throw new Error(`Approval request ${approvalId} not found.`);
-  if (req.status !== "pending" && req.status !== "approved") {
+  if (req.status !== "approved") {
     throw new Error(`Approval ${approvalId} is ${req.status} and cannot be executed.`);
   }
   if (req.safety.blocked) throw new Error(req.safety.reason);

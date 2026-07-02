@@ -113,3 +113,15 @@ export async function claimSlackThreadReplySlot(input: {
   }
   return false;
 }
+
+/** One Slack interactive action (approve/reject) per user + action + approval. */
+export async function claimSlackInteraction(input: {
+  teamId?: string;
+  userId?: string;
+  actionTs?: string;
+  approvalId: string;
+  decision: string;
+}): Promise<boolean> {
+  const key = `slack:ix:${input.teamId ?? "team"}:${input.userId ?? "user"}:${input.actionTs ?? "ts"}:${input.decision}:${input.approvalId}`;
+  return claimKey(key);
+}

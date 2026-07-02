@@ -4,6 +4,8 @@ import {
   enqueueApproval,
   getApproval,
   listApprovals,
+  claimApprovalForExecution,
+  claimApprovalRejection,
   setApprovalStatus,
 } from "@/lib/support/approvals";
 import { classifyAction } from "@/lib/support/safety";
@@ -83,8 +85,12 @@ export async function POST(req: Request) {
   }
 
   if (body.intent === "reject") {
-    const updated = await setApprovalStatus(body.id, "rejected", undefined, auth.user.id);
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const claimed = await claimApprovalRejection(body.id, auth.user.id);
+    if (!claimed) {
+      const existing = await getApproval(body.id);
+      if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: `Already ${existing.status}` }, { status: 409 });
+    }
     await audit({
       action: "approval:reject",
       target: body.id,
@@ -92,25 +98,30 @@ export async function POST(req: Request) {
       actorId: auth.user.id,
       actorEmail: auth.user.email,
     });
-    return NextResponse.json({ approval: updated });
+    return NextResponse.json({ approval: claimed });
   }
 
   if (body.intent === "approve") {
-    const req0 = await getApproval(body.id);
-    if (!req0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (req0.status !== "pending") {
-      return NextResponse.json({ error: `Already ${req0.status}` }, { status: 409 });
+    const claimed = await claimApprovalForExecution(body.id, auth.user.id);
+    if (!claimed) {
+      const existing = await getApproval(body.id);
+      if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (existing.status === "executed") {
+        return NextResponse.json({ approval: existing, result: { ok: true, detail: existing.result ?? "Already executed" } });
+      }
+      return NextResponse.json({ error: `Already ${existing.status}` }, { status: 409 });
     }
     const cfg = getConfig();
-    if (req0.safety.blocked) {
-      await setApprovalStatus(body.id, "rejected", req0.safety.reason, auth.user.id);
-      return NextResponse.json({ error: req0.safety.reason }, { status: 403 });
+    if (claimed.safety.blocked) {
+      await setApprovalStatus(body.id, "rejected", claimed.safety.reason, auth.user.id);
+      return NextResponse.json({ error: claimed.safety.reason }, { status: 403 });
     }
     if (cfg.readOnly) {
+      await setApprovalStatus(body.id, "failed", "Read-only mode blocked execution", auth.user.id);
       return NextResponse.json({ error: "Read-only mode enabled." }, { status: 403 });
     }
     try {
-      const result = await executeAction(req0.action, { approved: true, approvalId: body.id });
+      const result = await executeAction(claimed.action, { approved: true, approvalId: body.id });
       const updated = await setApprovalStatus(
         body.id,
         result.ok ? "executed" : "failed",

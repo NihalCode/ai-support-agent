@@ -13,6 +13,7 @@ import {
 import type { ApprovalAction } from "@/lib/support/types";
 import { isTestMode } from "@/lib/test-mode";
 import { searchConfluencePages, getConfluencePage } from "@/integrations/confluence/ConfluenceConnector";
+import { isConfluenceSyncInProgress, tryAcquireConfluenceSyncLock, releaseConfluenceSyncLock } from "@/integrations/confluence/sync-lock";
 import { searchJiraIssues, getJiraIssue } from "@/integrations/jira/JiraConnector";
 import { sendSlackTestMessage } from "@/integrations/slack/SlackConnector";
 import { searchZendeskTickets, getZendeskTicket } from "@/integrations/zendesk/ZendeskConnector";
@@ -35,36 +36,44 @@ export async function handleConfluenceRead(pageId: string) {
 }
 
 export async function handleConfluenceSync(userId: string, spaceKey?: string) {
-  const name = `Confluence ${spaceKey ?? "default"}`;
-  const source = await upsertKnowledgeSource({
-    type: "confluence",
-    name,
-    externalId: spaceKey,
-    status: "syncing",
-    createdByUserId: userId,
-  });
+  if (!tryAcquireConfluenceSyncLock()) {
+    return { skipped: true, reason: "A Confluence sync is already running." };
+  }
 
   try {
-    const result = await ingestEnterpriseKnowledge();
-    const updated = await upsertKnowledgeSource({
-      id: source.id,
+    const name = `Confluence ${spaceKey ?? "default"}`;
+    const source = await upsertKnowledgeSource({
       type: "confluence",
       name,
-      status: result.upserted > 0 ? "indexed" : "failed",
-      lastSyncedAt: new Date().toISOString(),
+      externalId: spaceKey,
+      status: "syncing",
+      createdByUserId: userId,
     });
-    await audit({
-      action: "knowledge:sync",
-      target: source.id,
-      approved: true,
-      provider: "confluence",
-      actorId: userId,
-      details: `upserted ${result.upserted} chunks`,
-    });
-    return { source: updated, result };
-  } catch (err) {
-    await upsertKnowledgeSource({ id: source.id, type: "confluence", name, status: "failed" });
-    throw err;
+
+    try {
+      const result = await ingestEnterpriseKnowledge();
+      const updated = await upsertKnowledgeSource({
+        id: source.id,
+        type: "confluence",
+        name,
+        status: result.upserted > 0 ? "indexed" : "failed",
+        lastSyncedAt: new Date().toISOString(),
+      });
+      await audit({
+        action: "knowledge:sync",
+        target: source.id,
+        approved: true,
+        provider: "confluence",
+        actorId: userId,
+        details: `upserted ${result.upserted} chunks`,
+      });
+      return { source: updated, result };
+    } catch (err) {
+      await upsertKnowledgeSource({ id: source.id, type: "confluence", name, status: "failed" });
+      throw err;
+    }
+  } finally {
+    releaseConfluenceSyncLock();
   }
 }
 
