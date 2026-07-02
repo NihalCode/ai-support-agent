@@ -12,7 +12,7 @@ import {
   mergeResolvedTicketLinks,
   resolveTicketsFromContext,
 } from "../investigation/ticket-context";
-import { formatEvidenceLinksSlack } from "../investigation/evidence-links";
+import { formatSlackInvestigationReply } from "./investigation-reply";
 import type { SupportQuery } from "../investigation/types";
 import { getSlackThread, setSlackThreadInvestigation } from "./thread-store";
 import { upsertInvestigationLinks } from "../enterprise/stores/investigation-links-store";
@@ -34,18 +34,6 @@ async function threadQueryText(channelId: string, threadTs: string, latest: stri
 function buildSupportQuery(text: string): SupportQuery {
   const details = extractNaturalLanguageDetails(text);
   return enrichSupportQuery(buildSupportQueryFromDetails(details, text));
-}
-
-function formatInvestigationReply(
-  summary: string,
-  sessionId: string,
-  appBase?: string | null,
-  ticketNote?: string,
-  evidenceLinks?: string
-): string {
-  const base = appBase?.replace(/\/$/, "") ?? "";
-  const link = base ? `\nOpen in AI Support Studio: ${base}/?investigation=${sessionId}` : "";
-  return `${summary.slice(0, 2200)}${evidenceLinks ?? ""}${ticketNote ?? ""}${link}`.trim();
 }
 
 function formatChatReply(reply: string): string {
@@ -129,17 +117,18 @@ export async function enrichSlackThread(input: {
     customerSummary: combined.slice(0, 500),
   }).catch(() => undefined);
 
-  const appBase2 = appBase;
-  const summary =
-    result.chatReply ??
-    result.report?.plainEnglishSummary ??
-    result.markdownReport?.slice(0, 1200) ??
-    "Investigation started.";
   const ticketNote = formatAutoLinkedTicketsNote(links);
-  const evidenceLinks = result.context ? formatEvidenceLinksSlack(result.context) : "";
+  const text =
+    result.chatReply ??
+    formatSlackInvestigationReply({
+      userMessage: combined,
+      result,
+      ticketNote,
+      appBase,
+    });
 
   return {
-    text: formatInvestigationReply(summary, result.sessionId, appBase2, ticketNote, evidenceLinks),
+    text,
     sessionId: result.sessionId,
     mode: "investigation",
   };

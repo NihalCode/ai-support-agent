@@ -177,6 +177,12 @@ export const INTENT_RULES: IntentRule[] = [
   {
     intent: "generate_customer_response",
     weight: 12,
+    re: /\bwhat should support tell\b/i,
+    label: "support customer guidance",
+  },
+  {
+    intent: "generate_customer_response",
+    weight: 12,
     re: /\b(explain the fix to the customer|fix to the customer|customer in plain english)\b/i,
     label: "customer fix explanation",
   },
