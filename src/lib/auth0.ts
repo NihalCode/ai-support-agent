@@ -36,6 +36,7 @@ function createAuth0Client(): Auth0Client {
     clientSecret: env.clientSecret!,
     secret: env.secret!,
     appBaseUrl: env.appBaseUrl!,
+    enableParallelTransactions: false,
     transactionCookie: {
       maxAge: 60 * 60 * 2,
       sameSite: "lax",

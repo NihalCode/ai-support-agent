@@ -28,10 +28,6 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/auth")) {
-    return auth0!.middleware(request);
-  }
-
   const authResponse = await auth0!.middleware(request);
   const authUser = await getMiddlewareAuthUser(request);
 
@@ -60,6 +56,6 @@ export const config = {
      * Skip static assets (public/ and built-ins) so Auth0 and browsers can fetch
      * branding files like /cyware_logo.png without a session.
      */
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:png|svg|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|auth(?:/|$)|.*\\.(?:png|svg|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
