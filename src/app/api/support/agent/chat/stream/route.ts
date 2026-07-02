@@ -68,7 +68,7 @@ export async function POST(req: Request) {
         let fullText = "";
         let sessionId = body.sessionId;
         let investigationId = body.investigationId;
-        let buildProjectId = body.buildProjectId;
+        const buildProjectId = body.buildProjectId;
 
         const intentCtx: WorkspaceIntentContext = {
           sessionId,

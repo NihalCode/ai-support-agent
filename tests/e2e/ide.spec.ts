@@ -391,6 +391,19 @@ test.describe("Natural-language agent routing", () => {
     await expect(page.getByText(/Run investigation first/i)).toHaveCount(0);
   });
 
+  test("E2E NL CQL query routes to CQL help not incident", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto("/");
+    const msg =
+      "Write a CQL query for malicious IP indicators in the last 24 hours with confidence >= 90. Link the relevant CQL grammar docs.";
+    await page.getByTestId("ai-chat-input").fill(msg);
+    await page.getByTestId("ai-chat-input").press("Enter");
+    await expect(page.getByTestId("chat-assistant-message")).toContainText(/CQL query help|Suggested CQL/i, {
+      timeout: 30000,
+    });
+    await expect(page.getByTestId("chat-assistant-message")).not.toContainText(/\{\{base_url\}\}/);
+  });
+
   test("E2E NL edit in build app workspace", async ({ page }) => {
     test.setTimeout(120000);
     await page.goto("/");
@@ -597,14 +610,10 @@ test.describe("Settings and integrations", () => {
     await expect(page.getByTestId("settings-editor")).toBeVisible();
     await expect(page.getByTestId("integration-health-panel")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("integration-settings-panel")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByTestId("integration-row-jira")).toBeVisible();
-    await page.getByTestId("integration-configure-jira").click();
-    await expect(page.getByTestId("integration-form-jira")).toBeVisible();
-    await expect(page.getByTestId("integration-field-jira-baseUrl")).toBeVisible();
-    await page.getByTestId("integration-health-jira").click();
-    await expect(page.getByTestId("integration-settings-message")).toContainText(/jira/i, {
-      timeout: 10000,
-    });
+    await expect(page.getByTestId("enterprise-integration-jira")).toBeVisible();
+    await page.getByTestId("enterprise-configure-jira").click();
+    await expect(page.getByTestId("enterprise-form-jira")).toBeVisible();
+    await expect(page.getByTestId("enterprise-field-jira-baseUrl")).toBeVisible();
   });
 
   test("shows enterprise admin sections in developer mode", async ({ page }) => {

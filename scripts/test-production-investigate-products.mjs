@@ -62,11 +62,21 @@ try {
       const body = await res.json();
       if (!res.ok()) throw new Error(body.error ?? `HTTP ${res.status()}`);
       const md = body.markdownReport ?? "";
+      const isCql = s.name === "CQL malicious IP";
+      if (isCql) {
+        if (!/CQL Query Help|CQL query help|Suggested CQL/i.test(md)) {
+          throw new Error("CQL report missing query help sections");
+        }
+        if (/\{\{base_url\}\}/.test(md)) throw new Error("CQL report contains placeholder base_url");
+        if (/When did this start/i.test(md)) throw new Error("CQL report asks incident timing questions");
+      }
       const hasDocLinks =
         /Relevant documentation/i.test(md) ||
-        (body.context?.docs?.docs ?? []).some((d) => d.url?.startsWith("http"));
+        /CQL grammar docs/i.test(md) ||
+        (body.context?.docs?.docs ?? []).some((d) => d.url?.startsWith("http")) ||
+        (body.context?.cql?.docsSnippets ?? []).some((d) => d.url?.startsWith("http"));
       if (!body.sessionId) throw new Error("no sessionId");
-      if (!hasDocLinks && s.name !== "CQL malicious IP") {
+      if (!hasDocLinks && !isCql) {
         throw new Error("missing doc links in report");
       }
       results.push({ name: s.name, ok: true, detail: body.sessionId });
