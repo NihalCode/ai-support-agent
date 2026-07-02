@@ -22,6 +22,8 @@
     "test:ide-api": "node scripts/test-ide-api.mjs",
     "test:production:providers": "node scripts/test-external-integrations.mjs",
     "seed:integration-test": "node scripts/seed-integration-test-content.mjs",
+    "cleanup:integration-test": "node scripts/cleanup-integration-test-content.mjs",
+    "test:slack-workflow": "node scripts/test-slack-full-workflow.mjs",
     "build:app": "npm run build",
     "deploy:preview": "vercel",
     "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",
