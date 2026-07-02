@@ -55,6 +55,8 @@ export interface ChunkMetadata {
   github_issue_id?: string;
   postman_request_name?: string;
   cyware_doc_section?: string;
+  cyware_doc_page?: string;
+  doc_url?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -367,6 +369,8 @@ export interface NormalizedEndpoint {
   effect: EndpointEffect;
   /** Provenance (Postman folder/request name, OpenAPI tag, etc.). */
   group?: string;
+  /** Deep link to the exact docs page for this endpoint (Theneo .md or browse URL). */
+  docUrl?: string;
   examples?: { name: string; request?: string; response?: string }[];
 }
 

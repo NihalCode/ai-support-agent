@@ -7,6 +7,7 @@ import { getVectorStore } from "../vector-store";
 import { safeFetch } from "../../ssrf";
 import { withRetry } from "../retry";
 import { cywareDocHeaders } from "../api-specs/cyware-fetch";
+import { slugifyDocTitle } from "../cyware-doc-url";
 
 /**
  * Ingest Cyware Query Language (CQL) documentation into the vector store.
@@ -137,24 +138,30 @@ export async function ingestCqlDocs(
 
   const sections = splitSections(combinedText);
   const now = new Date().toISOString();
-  const chunks: SupportChunk[] = sections.map((s, i) => ({
-    id: `${cqlNamespace()}:${i}`,
-    text: s.text,
-    metadata: {
-      repo: "cyware-cql",
-      branch: "docs",
-      filePath: `cql#${i}`,
-      language: "text",
-      sourceType: "cql-doc",
-      title: s.heading,
-      url: pageUrls[0] ?? url,
-      source_name: "Cyware Query Language (CQL)",
-      source_url: url,
-      cyware_doc_section: s.heading,
-      created_at: now,
-      updated_at: now,
-    },
-  }));
+  const chunks: SupportChunk[] = sections.map((s, i) => {
+    const page = s.pageUrl ?? pageUrls[0] ?? url;
+    const anchor = slugifyDocTitle(s.heading);
+    const deepUrl = anchor ? `${page}#${anchor}` : page;
+    return {
+      id: `${cqlNamespace()}:${i}`,
+      text: s.text,
+      metadata: {
+        repo: "cyware-cql",
+        branch: "docs",
+        filePath: `cql#${i}`,
+        language: "text",
+        sourceType: "cql-doc",
+        title: s.heading,
+        url: deepUrl,
+        source_name: "Cyware Query Language (CQL)",
+        source_url: url,
+        cyware_doc_section: s.heading,
+        cyware_doc_page: page,
+        created_at: now,
+        updated_at: now,
+      },
+    };
+  });
 
   if (chunks.length === 0) {
     const store = getVectorStore();
@@ -221,20 +228,25 @@ function decodeEntities(input: string): string {
 }
 
 /** Chunk text into ~1200-char sections on blank lines or markdown headings. */
-function splitSections(text: string): { heading: string; text: string }[] {
+function splitSections(text: string): { heading: string; text: string; pageUrl?: string }[] {
   const blocks = text.split(/\n(?=## )|\n---\n|\n{2,}/).map((p) => p.trim()).filter(Boolean);
-  const out: { heading: string; text: string }[] = [];
+  const out: { heading: string; text: string; pageUrl?: string }[] = [];
   let buf: string[] = [];
   let size = 0;
+  let currentPageUrl: string | undefined;
   const flush = () => {
     if (!buf.length) return;
     const joined = buf.join("\n\n");
     const headingLine = joined.match(/^## (.+)/m)?.[1] ?? buf[0].slice(0, 80);
-    out.push({ heading: headingLine.slice(0, 120), text: joined });
+    const sourceMatch = joined.match(/^Source:\s+(https?:\/\/[^\s]+)/m);
+    const pageUrl = sourceMatch?.[1] ?? currentPageUrl;
+    out.push({ heading: headingLine.slice(0, 120), text: joined, pageUrl });
     buf = [];
     size = 0;
   };
   for (const block of blocks) {
+    const sourceMatch = block.match(/^Source:\s+(https?:\/\/[^\s]+)/m);
+    if (sourceMatch?.[1]) currentPageUrl = sourceMatch[1];
     if (size + block.length > 1200 && buf.length) flush();
     buf.push(block);
     size += block.length;

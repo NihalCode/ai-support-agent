@@ -11,6 +11,7 @@ import {
   mergeResolvedTicketLinks,
   resolveTicketsFromContext,
 } from "../investigation/ticket-context";
+import { formatEvidenceLinksSlack } from "../investigation/evidence-links";
 import type { SupportQuery } from "../investigation/types";
 import { getSlackThread, setSlackThreadInvestigation } from "./thread-store";
 import { upsertInvestigationLinks } from "../enterprise/stores/investigation-links-store";
@@ -37,11 +38,12 @@ function formatInvestigationReply(
   summary: string,
   sessionId: string,
   appBase?: string | null,
-  ticketNote?: string
+  ticketNote?: string,
+  evidenceLinks?: string
 ): string {
   const base = appBase?.replace(/\/$/, "") ?? "";
   const link = base ? `\nOpen in AI Support Studio: ${base}/?investigation=${sessionId}` : "";
-  return `${summary.slice(0, 2400)}${ticketNote ?? ""}${link}`.trim();
+  return `${summary.slice(0, 2200)}${evidenceLinks ?? ""}${ticketNote ?? ""}${link}`.trim();
 }
 
 function formatChatReply(reply: string): string {
@@ -121,13 +123,14 @@ export async function enrichSlackThread(input: {
   const appBase = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_BASE_URL;
   const summary =
     result.chatReply ??
-    result.markdownReport?.slice(0, 500) ??
     result.report?.plainEnglishSummary ??
+    result.markdownReport?.slice(0, 1200) ??
     "Investigation started.";
   const ticketNote = formatAutoLinkedTicketsNote(links);
+  const evidenceLinks = result.context ? formatEvidenceLinksSlack(result.context) : "";
 
   return {
-    text: formatInvestigationReply(summary, result.sessionId, appBase, ticketNote),
+    text: formatInvestigationReply(summary, result.sessionId, appBase, ticketNote, evidenceLinks),
     sessionId: result.sessionId,
     mode: "investigation",
   };

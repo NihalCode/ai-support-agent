@@ -3,6 +3,7 @@ import "server-only";
 import type { AgentResult, DocsFinding, SupportQuery } from "../investigation/types";
 import { retrieveApiEndpointContext } from "../api-context";
 import { buildSearchTerms } from "../investigation/extract-query";
+import { resolveApiDocUrl } from "../cyware-doc-url";
 
 export async function runDocsAgent(q: SupportQuery): Promise<AgentResult<DocsFinding>> {
   const start = Date.now();
@@ -14,7 +15,16 @@ export async function runDocsAgent(q: SupportQuery): Promise<AgentResult<DocsFin
     sourceType: "docs" as const,
     title: c.metadata.title ?? c.metadata.filePath,
     summary: c.text.slice(0, 400),
-    url: c.metadata.url,
+    url:
+      c.metadata.url ??
+      resolveApiDocUrl({
+        title: c.metadata.title,
+        method: String(c.metadata.http_method ?? ""),
+        path: String(c.metadata.endpoint_path ?? ""),
+        docUrl: typeof c.metadata.doc_url === "string" ? c.metadata.doc_url : undefined,
+        sourceName: c.metadata.source_name,
+        sourceUrl: c.metadata.source_url,
+      }),
     metadata: {
       method: c.metadata.http_method,
       path: c.metadata.endpoint_path,

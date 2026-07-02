@@ -8,6 +8,7 @@ import type {
 } from "../investigation/types";
 import { missingInfoQuestions } from "../investigation/extract-query";
 import { getConfig, hasJira, hasGitHub, hasOpenAI, hasPinecone, hasVercel } from "../config";
+import { formatEvidenceLinksMarkdown } from "../investigation/evidence-links";
 
 export type SpecialistAgent =
   | "jira"
@@ -162,6 +163,7 @@ export function formatInvestigationMarkdown(ctx: Partial<InvestigationContext>):
     "",
     "## Developer Handoff",
     report?.developerNotes ?? "—",
+    formatEvidenceLinksMarkdown(ctx),
   ];
   return lines.join("\n");
 }

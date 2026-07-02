@@ -3,10 +3,11 @@ import "server-only";
 import type { AgentResult, SupportQuery } from "../investigation/types";
 import { retrieveCqlDocs, generateCql } from "../cql/generate";
 import { validateCqlStructure } from "../cql/validate";
+import { cqlDocUrl } from "../cyware-doc-url";
 
 export interface CqlFinding {
   queries: { id: string; cql: string; valid: boolean; explanation: string }[];
-  docsSnippets: { title: string; summary: string }[];
+  docsSnippets: { title: string; summary: string; url?: string; pageUrl?: string }[];
   summary: string;
   mock: boolean;
 }
@@ -22,6 +23,13 @@ export async function runCqlAgent(q: SupportQuery): Promise<AgentResult<CqlFindi
   const docsSnippets = chunks.map((c) => ({
     title: c.metadata.title ?? c.metadata.filePath ?? "CQL doc",
     summary: c.text.slice(0, 300),
+    url: cqlDocUrl({
+      url: c.metadata.url,
+      pageUrl: typeof c.metadata.cyware_doc_page === "string" ? c.metadata.cyware_doc_page : undefined,
+      heading: c.metadata.cyware_doc_section ?? c.metadata.title,
+    }),
+    pageUrl:
+      typeof c.metadata.cyware_doc_page === "string" ? c.metadata.cyware_doc_page : undefined,
   }));
 
   const queries: CqlFinding["queries"] = [];

@@ -10,6 +10,7 @@ import { parseCurl, looksLikeCurl } from "./curl";
 import { parseMarkdownApi } from "./markdown";
 import { describeEndpoint } from "./normalize";
 import { classifyHttp } from "../safety";
+import { resolveApiDocUrl } from "../cyware-doc-url";
 
 export { describeEndpoint } from "./normalize";
 
@@ -83,9 +84,10 @@ export function chunkApiSpec(spec: NormalizedApiSpec): SupportChunk[] {
         language: "n/a",
         sourceType,
         title: ep.name,
-        url: spec.sourceUrl,
+        url: resolveApiDocUrl({ spec, endpoint: ep, sourceName: spec.name, sourceUrl: spec.sourceUrl }),
         source_name: spec.name,
         source_url: spec.sourceUrl,
+        doc_url: ep.docUrl,
         endpoint_path: ep.path,
         http_method: ep.method,
         postman_request_name: spec.sourceKind === "postman" ? ep.name : undefined,

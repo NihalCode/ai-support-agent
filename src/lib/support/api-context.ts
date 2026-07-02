@@ -5,6 +5,7 @@ import { CYWARE_PRODUCT_PRESETS } from "./cyware-products";
 import { loadBundledCywareSpec } from "./api-specs/bundled-specs";
 import { getSpec, registerSpec } from "./api-specs/registry";
 import { rankEndpoints, describeEndpoint, apiSpecNamespace } from "./api-specs";
+import { resolveApiDocUrl } from "./cyware-doc-url";
 import type { NormalizedApiSpec, NormalizedEndpoint, RetrievedChunk } from "./types";
 
 const PRODUCT_PATTERNS: { id: CywareProductId; patterns: RegExp[] }[] = [
@@ -105,9 +106,10 @@ function endpointChunk(spec: NormalizedApiSpec, ep: NormalizedEndpoint, score: n
       language: "n/a",
       sourceType,
       title: ep.name,
-      url: spec.sourceUrl,
+      url: resolveApiDocUrl({ spec, endpoint: ep, sourceName: spec.name, sourceUrl: spec.sourceUrl }),
       source_name: spec.name,
       source_url: spec.sourceUrl,
+      doc_url: ep.docUrl,
       endpoint_path: ep.path,
       http_method: ep.method,
     },

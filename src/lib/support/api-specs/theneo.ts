@@ -169,6 +169,9 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
     for (const page of pages) {
       if (!page?.text) continue;
       markdownParts.push(page.text);
+      const pageDocUrl = page.entry.url.startsWith("http")
+        ? page.entry.url
+        : `${origin}/${opts.project}/${page.entry.url.replace(/^\//, "")}`;
 
       const parsed = parseCywareEndpointPre(page.text);
       if (parsed) {
@@ -191,6 +194,7 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
           optionalFields: [],
           responses: [],
           effect: effectForEndpoint(parsed.method, parsed.description),
+          docUrl: pageDocUrl,
         });
         continue;
       }
@@ -199,7 +203,7 @@ export async function ingestTheneoDocs(opts: TheneoIngestOptions): Promise<Thene
         const key = `${ep.method} ${ep.path}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        endpoints.push({ ...ep, name: page.entry.title || ep.name });
+        endpoints.push({ ...ep, name: page.entry.title || ep.name, docUrl: pageDocUrl });
       }
     }
   }
