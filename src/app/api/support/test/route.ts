@@ -4,7 +4,7 @@ import { runAllTestCases, runTestCase } from "@/lib/support/eval/run";
 import { TEST_CASES } from "@/lib/support/eval/test-cases";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /** List the available test cases. */
 export async function GET(req: Request) {

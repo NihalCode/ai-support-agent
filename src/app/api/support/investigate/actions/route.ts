@@ -11,7 +11,7 @@ import { redactDeep } from "@/lib/support/redact";
 import type { JiraTicketDraft } from "@/lib/support/investigation/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 type Action = "create-jira" | "generate-patch" | "pr-description";
 

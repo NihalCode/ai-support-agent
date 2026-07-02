@@ -115,10 +115,15 @@ if (!runAuthenticated) {
 
   let sessionId;
 
+  /** Match Vercel route maxDuration for long-running support APIs. */
+  const SLOW_API_TIMEOUT_MS = 300_000;
+
   async function authJson(request, path, opts = {}) {
+    const { timeoutMs = 30_000, allowError, ...fetchOpts } = opts;
     const res = await request.fetch(`${BASE}${path}`, {
-      ...opts,
-      headers: { "Content-Type": "application/json", ...(opts.headers ?? {}) },
+      ...fetchOpts,
+      timeout: timeoutMs,
+      headers: { "Content-Type": "application/json", ...(fetchOpts.headers ?? {}) },
     });
     const text = await res.text();
     let body;
@@ -127,7 +132,7 @@ if (!runAuthenticated) {
     } catch {
       body = { raw: text.slice(0, 200) };
     }
-    if (!res.ok() && !opts.allowError) {
+    if (!res.ok() && !allowError) {
       throw new Error(`HTTP ${res.status()}: ${body.error ?? text.slice(0, 120)}`);
     }
     return { res, body };
@@ -171,6 +176,7 @@ if (!runAuthenticated) {
     await check("POST /api/support/investigate (vague)", async () => {
       const { body } = await authJson(req, "/api/support/investigate", {
         method: "POST",
+        timeoutMs: SLOW_API_TIMEOUT_MS,
         data: JSON.stringify({ query: { text: "API not working" } }),
       });
       if (!body.needsMoreInfo) throw new Error("expected needsMoreInfo");
@@ -180,6 +186,7 @@ if (!runAuthenticated) {
     await check("POST /api/support/investigate (full)", async () => {
       const { body } = await authJson(req, "/api/support/investigate", {
         method: "POST",
+        timeoutMs: SLOW_API_TIMEOUT_MS,
         data: JSON.stringify({
           query: {
             text: "POST /v3/indicators/search/ returns 500 since 10:30 AM",
@@ -206,6 +213,7 @@ if (!runAuthenticated) {
       if (!sessionId) throw new Error("no session");
       const { body } = await authJson(req, "/api/support/investigate", {
         method: "POST",
+        timeoutMs: SLOW_API_TIMEOUT_MS,
         data: JSON.stringify({ sessionId, message: "Is this a known Jira issue?" }),
       });
       if (!body.chatReply?.length) throw new Error("empty chat reply");
@@ -225,6 +233,7 @@ if (!runAuthenticated) {
     await check("POST /api/support/test (8 cases)", async () => {
       const { body } = await authJson(req, "/api/support/test", {
         method: "POST",
+        timeoutMs: SLOW_API_TIMEOUT_MS,
         data: "{}",
       });
       if (body.passed < 8) {

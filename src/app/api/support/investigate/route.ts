@@ -7,7 +7,7 @@ import { audit } from "@/lib/support/audit";
 import { redactDeep } from "@/lib/support/redact";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 export async function GET(req: Request) {
   const auth = await requireSupportApi(SupportApiPermission.read, req);
