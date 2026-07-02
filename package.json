@@ -26,7 +26,7 @@
     "test:slack-workflow": "node scripts/test-slack-full-workflow.mjs",
     "build:app": "npm run build",
     "deploy:preview": "vercel",
-    "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",
+    "deploy:prod": "vercel deploy --prod --yes --archive=tgz && node scripts/ensure-public-deploy.mjs",
     "deploy:public": "node scripts/ensure-public-deploy.mjs",
     "db:migrate": "node scripts/db-migrate.mjs"
   },
