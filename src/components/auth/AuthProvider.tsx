@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import type { Permission, UserRole } from "@/lib/auth/roles";
 import { canUseDeveloperMode } from "@/lib/auth/roles";
@@ -23,11 +24,21 @@ export interface AuthUser {
   picture?: string | null;
 }
 
+export type AccessDeniedReason =
+  | "invite_required"
+  | "disabled"
+  | "expired_invite"
+  | "revoked_invite"
+  | "wrong_invite_email"
+  | "not_invited";
+
 export interface AuthState {
   loading: boolean;
   authenticated: boolean;
   authConfigured: boolean;
   authProvider: "auth0" | "test" | "disabled" | "none";
+  auth0Authenticated: boolean;
+  accessDenied: { reason: AccessDeniedReason; invitedEmail?: string } | null;
   user: AuthUser | null;
   permissions: Permission[];
 }
@@ -47,12 +58,22 @@ const defaultState: AuthState = {
   authenticated: false,
   authConfigured: false,
   authProvider: "none",
+  auth0Authenticated: false,
+  accessDenied: null,
   user: null,
   permissions: [],
 };
 
+const PUBLIC_PATHS = ["/login", "/access-denied", "/invite", "/auth"];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(defaultState);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const refresh = useCallback(async () => {
     try {
@@ -63,17 +84,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           authenticated: false,
           authConfigured: res.status === 401,
           authProvider: "none",
+          auth0Authenticated: false,
+          accessDenied: null,
           user: null,
           permissions: [],
         });
         return;
       }
-      const data = (await res.json()) as AuthState & { user: AuthUser | null };
+      const data = (await res.json()) as AuthState & {
+        user: AuthUser | null;
+        accessDenied?: { reason: AccessDeniedReason; invitedEmail?: string } | null;
+        auth0Authenticated?: boolean;
+      };
       setState({
         loading: false,
         authenticated: Boolean(data.user),
         authConfigured: Boolean(data.authConfigured),
         authProvider: data.authProvider ?? "none",
+        auth0Authenticated: Boolean(data.auth0Authenticated),
+        accessDenied: data.accessDenied ?? null,
         user: data.user,
         permissions: data.permissions ?? [],
       });
@@ -87,6 +116,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void refresh();
     });
   }, [refresh]);
+
+  useEffect(() => {
+    if (state.loading) return;
+    if (!state.auth0Authenticated || !state.accessDenied) return;
+    if (pathname.startsWith("/access-denied")) return;
+
+    const params = new URLSearchParams({ reason: state.accessDenied.reason });
+    if (state.accessDenied.invitedEmail) {
+      params.set("email", state.accessDenied.invitedEmail);
+    }
+    router.replace(`/access-denied?${params.toString()}`);
+  }, [state.loading, state.auth0Authenticated, state.accessDenied, pathname, router]);
+
+  useEffect(() => {
+    if (state.loading) return;
+    if (state.authenticated || !state.authConfigured) return;
+    if (isPublicPath(pathname)) return;
+    router.replace("/login");
+  }, [state.loading, state.authenticated, state.authConfigured, pathname, router]);
 
   const hasPermission = useCallback(
     (permission: Permission) => state.permissions.includes(permission),

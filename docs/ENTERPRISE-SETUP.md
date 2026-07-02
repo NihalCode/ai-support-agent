@@ -59,16 +59,41 @@ Optional:
 AUTH_DISABLED=false   # force auth off even when Auth0 is configured
 ```
 
-### 4. First login and roles
+### 4. Invite-only access (required for production)
 
-- First user to log in is upserted with role **`owner`** (unless pre-provisioned).
-- Admins change roles in **Settings → User Management** (`/api/auth/users`, requires `users:write`).
+This app is **strictly invite-only**. Auth0 proves identity (Google or company email); the app decides access.
+
+| Rule | Enforcement |
+|------|-------------|
+| Email must be invited or an active user | Auth0 Post-Login Action + `/api/auth/invite-check` + session gate |
+| No public signup | Disable sign-ups on Auth0 database connections; no auto-provision in app |
+| Role from invite | Assigned on first login — users cannot self-select roles |
+
+**Environment variables:**
+
+```bash
+AUTH0_ACTION_SHARED_SECRET=   # 32+ char random — Auth0 Action → POST /api/auth/invite-check
+BOOTSTRAP_OWNER_EMAIL=        # Optional one-time first owner when user table is empty
+AUTH0_GOOGLE_CONNECTION=      # Optional — Auth0 Google connection name for login button
+AUTH0_EMAIL_CONNECTION=       # Optional — company email/passwordless/SSO connection name
+INVITE_DEFAULT_EXPIRY_DAYS=7
+```
+
+**Auth0 Post-Login Action:** copy `docs/auth0-post-login-invite-action.js` into Auth0 Dashboard → Actions → Login → Post-Login. Add secrets `APP_BASE_URL` and `AUTH0_ACTION_SHARED_SECRET`.
+
+**Admin workflow:** Settings → Users → invite by email, assign role, copy invite link. Pending invites can be resent or revoked.
+
+**First production owner:** either set `BOOTSTRAP_OWNER_EMAIL` before first login, or seed an owner invite via API/database.
+
+### 5. Roles (after invite acceptance)
+
+- Admins change roles in **Settings → Users** (`/api/auth/users`, requires `users:write`).
 - Roles: `owner`, `admin`, `developer`, `support_agent`, `viewer`.
-- With **`DATABASE_URL`** set, roles persist across Vercel deploys. Without it, local `.data/users.json` is used (dev only).
+- With **`DATABASE_URL`** set, users and invites persist across Vercel deploys. Without it, local `.data/` files are used (dev only).
 
-### 5. Google social login (optional)
+### 6. Google social login (optional)
 
-Use this when you want **Continue with Google** on the login page (instead of email/password only).
+Use this when you want **Continue with Google** on the login page. **Google login still requires an invite** — it only proves identity.
 
 #### Step 1 — Google Cloud Console
 

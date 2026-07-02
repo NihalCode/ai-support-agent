@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { defaultOrgId, isAuthEnabled } from "@/lib/auth/config";
+import { normalizeEmail } from "@/lib/auth/email-utils";
 import type { UserRole } from "@/lib/auth/roles";
 import { isUserRole } from "@/lib/auth/roles";
 import { isPostgresConfigured, pgQuery } from "@/lib/db/postgres";
@@ -15,6 +16,9 @@ export interface StoredUser {
   role: UserRole;
   orgId: string;
   status: "active" | "disabled";
+  invitedByUserId?: string | null;
+  acceptedInviteAt?: string | null;
+  picture?: string | null;
   createdAt: string;
   updatedAt: string;
   lastActiveAt: string | null;
@@ -39,6 +43,15 @@ function rowToStoredUser(row: Record<string, unknown>): StoredUser {
     role: row.role as UserRole,
     orgId: String(row.org_id ?? row.orgId),
     status: row.status as "active" | "disabled",
+    invitedByUserId:
+      row.invited_by_user_id != null || row.invitedByUserId != null
+        ? String(row.invited_by_user_id ?? row.invitedByUserId)
+        : null,
+    acceptedInviteAt:
+      row.accepted_invite_at != null || row.acceptedInviteAt != null
+        ? new Date(String(row.accepted_invite_at ?? row.acceptedInviteAt)).toISOString()
+        : null,
+    picture: row.picture != null ? String(row.picture) : null,
     createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString(),
     updatedAt: new Date(String(row.updated_at ?? row.updatedAt)).toISOString(),
     lastActiveAt:
@@ -47,8 +60,6 @@ function rowToStoredUser(row: Record<string, unknown>): StoredUser {
         : null,
   };
 }
-
-// --- File backend (local dev / tests) ---
 
 async function readFileStore(): Promise<UserStoreFile> {
   try {
@@ -80,46 +91,49 @@ async function getUserByEmailFile(
   email: string,
   orgId: string
 ): Promise<StoredUser | null> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   const store = await readFileStore();
   return (
     store.users.find(
-      (u) => u.orgId === orgId && u.email.trim().toLowerCase() === normalized
+      (u) => u.orgId === orgId && normalizeEmail(u.email) === normalized
     ) ?? null
   );
 }
 
-async function upsertUserFromLoginFile(input: UpsertUserInput): Promise<StoredUser> {
-  const orgId = input.orgId ?? defaultOrgId();
+async function upsertUserFromLoginFile(input: UpsertUserInput): Promise<StoredUser | null> {
   const now = new Date().toISOString();
   const store = await readFileStore();
   const idx = store.users.findIndex((u) => u.id === input.id);
-  const orgUsers = store.users.filter((u) => u.orgId === orgId);
+  if (idx < 0) return null;
 
-  if (idx >= 0) {
-    const existing = store.users[idx]!;
-    const updated: StoredUser = {
-      ...existing,
-      email: input.email,
-      name: input.name ?? existing.name,
-      lastActiveAt: now,
-      updatedAt: now,
-    };
-    store.users[idx] = updated;
-    await writeFileStore(store);
-    return updated;
-  }
+  const existing = store.users[idx]!;
+  const updated: StoredUser = {
+    ...existing,
+    email: normalizeEmail(input.email),
+    name: input.name ?? existing.name,
+    picture: input.picture ?? existing.picture ?? null,
+    lastActiveAt: now,
+    updatedAt: now,
+  };
+  store.users[idx] = updated;
+  await writeFileStore(store);
+  return updated;
+}
 
-  const role: UserRole =
-    input.role ?? (orgUsers.length === 0 ? "owner" : "viewer");
-
+async function createUserFromInviteFile(input: CreateUserFromInviteInput): Promise<StoredUser> {
+  const orgId = input.orgId ?? defaultOrgId();
+  const now = new Date().toISOString();
+  const store = await readFileStore();
   const created: StoredUser = {
     id: input.id,
-    email: input.email,
+    email: normalizeEmail(input.email),
     name: input.name ?? null,
-    role,
+    role: input.role,
     orgId,
-    status: input.status ?? "active",
+    status: "active",
+    invitedByUserId: input.invitedByUserId ?? null,
+    acceptedInviteAt: now,
+    picture: input.picture ?? null,
     createdAt: now,
     updatedAt: now,
     lastActiveAt: now,
@@ -181,11 +195,10 @@ async function setUserStatusFile(
   return updated;
 }
 
-// --- Postgres backend (production) ---
-
 async function listUsersPostgres(orgId: string): Promise<StoredUser[]> {
   const rows = await pgQuery`
-    SELECT id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    SELECT id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+           picture, created_at, updated_at, last_active_at
     FROM app_users
     WHERE org_id = ${orgId}
     ORDER BY created_at ASC
@@ -195,7 +208,8 @@ async function listUsersPostgres(orgId: string): Promise<StoredUser[]> {
 
 async function getUserByIdPostgres(id: string): Promise<StoredUser | null> {
   const rows = await pgQuery`
-    SELECT id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    SELECT id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+           picture, created_at, updated_at, last_active_at
     FROM app_users
     WHERE id = ${id}
     LIMIT 1
@@ -207,21 +221,15 @@ async function getUserByEmailPostgres(
   email: string,
   orgId: string
 ): Promise<StoredUser | null> {
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   const rows = await pgQuery`
-    SELECT id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    SELECT id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+           picture, created_at, updated_at, last_active_at
     FROM app_users
     WHERE org_id = ${orgId} AND LOWER(TRIM(email)) = ${normalized}
     LIMIT 1
   `;
   return rows[0] ? rowToStoredUser(rows[0]) : null;
-}
-
-async function countOrgUsersPostgres(orgId: string): Promise<number> {
-  const rows = await pgQuery`
-    SELECT COUNT(*)::int AS count FROM app_users WHERE org_id = ${orgId}
-  `;
-  return Number(rows[0]?.count ?? 0);
 }
 
 async function countActiveOwnersPostgres(orgId: string): Promise<number> {
@@ -233,39 +241,46 @@ async function countActiveOwnersPostgres(orgId: string): Promise<number> {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function upsertUserFromLoginPostgres(input: UpsertUserInput): Promise<StoredUser> {
-  const orgId = input.orgId ?? defaultOrgId();
+async function upsertUserFromLoginPostgres(input: UpsertUserInput): Promise<StoredUser | null> {
   const existing = await getUserByIdPostgres(input.id);
-
-  if (existing) {
-    const rows = await pgQuery`
-      UPDATE app_users
-      SET email = ${input.email},
-          name = ${input.name ?? existing.name},
-          last_active_at = NOW(),
-          updated_at = NOW()
-      WHERE id = ${input.id}
-      RETURNING id, email, name, role, org_id, status, created_at, updated_at, last_active_at
-    `;
-    return rowToStoredUser(rows[0]!);
-  }
-
-  const orgCount = await countOrgUsersPostgres(orgId);
-  const role: UserRole =
-    input.role ?? (orgCount === 0 ? "owner" : "viewer");
+  if (!existing) return null;
 
   const rows = await pgQuery`
-    INSERT INTO app_users (id, email, name, role, org_id, status, last_active_at)
-    VALUES (
+    UPDATE app_users
+    SET email = ${normalizeEmail(input.email)},
+        name = ${input.name ?? existing.name},
+        picture = ${input.picture ?? existing.picture ?? null},
+        last_active_at = NOW(),
+        updated_at = NOW()
+    WHERE id = ${input.id}
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
+  `;
+  return rows[0] ? rowToStoredUser(rows[0]) : null;
+}
+
+async function createUserFromInvitePostgres(
+  input: CreateUserFromInviteInput
+): Promise<StoredUser> {
+  const orgId = input.orgId ?? defaultOrgId();
+  const rows = await pgQuery`
+    INSERT INTO app_users (
+      id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+      picture, last_active_at
+    ) VALUES (
       ${input.id},
-      ${input.email},
+      ${normalizeEmail(input.email)},
       ${input.name ?? null},
-      ${role},
+      ${input.role},
       ${orgId},
-      ${input.status ?? "active"},
+      'active',
+      ${input.invitedByUserId ?? null},
+      NOW(),
+      ${input.picture ?? null},
       NOW()
     )
-    RETURNING id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
   `;
   return rowToStoredUser(rows[0]!);
 }
@@ -289,7 +304,8 @@ async function updateUserRolePostgres(
     UPDATE app_users
     SET role = ${role}, updated_at = NOW()
     WHERE id = ${id} AND org_id = ${orgId}
-    RETURNING id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
   `;
   return rows[0] ? rowToStoredUser(rows[0]) : null;
 }
@@ -313,20 +329,28 @@ async function setUserStatusPostgres(
     UPDATE app_users
     SET status = ${status}, updated_at = NOW()
     WHERE id = ${id} AND org_id = ${orgId}
-    RETURNING id, email, name, role, org_id, status, created_at, updated_at, last_active_at
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
   `;
   return rows[0] ? rowToStoredUser(rows[0]) : null;
 }
-
-// --- Public API ---
 
 export interface UpsertUserInput {
   id: string;
   email: string;
   name?: string | null;
-  role?: UserRole;
+  picture?: string | null;
   orgId?: string;
-  status?: "active" | "disabled";
+}
+
+export interface CreateUserFromInviteInput {
+  id: string;
+  email: string;
+  name?: string | null;
+  picture?: string | null;
+  role: UserRole;
+  invitedByUserId?: string | null;
+  orgId?: string;
 }
 
 export async function listUsers(orgId = defaultOrgId()): Promise<StoredUser[]> {
@@ -350,11 +374,20 @@ export async function getUserByEmail(
     : getUserByEmailFile(email, orgId);
 }
 
-/** First user in an org becomes owner; subsequent users default to viewer until promoted. */
-export async function upsertUserFromLogin(input: UpsertUserInput): Promise<StoredUser> {
+/** Update profile fields for an existing user on login. Does not create users. */
+export async function upsertUserFromLogin(input: UpsertUserInput): Promise<StoredUser | null> {
   return isPostgresConfigured()
     ? upsertUserFromLoginPostgres(input)
     : upsertUserFromLoginFile(input);
+}
+
+/** Create a new app user from an accepted invite (role assigned by invite). */
+export async function createUserFromInvite(
+  input: CreateUserFromInviteInput
+): Promise<StoredUser> {
+  return isPostgresConfigured()
+    ? createUserFromInvitePostgres(input)
+    : createUserFromInviteFile(input);
 }
 
 export async function updateUserRole(

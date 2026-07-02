@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { logAuthEvent } from "@/lib/auth/auth-audit";
 import { requirePermission } from "@/lib/auth/session";
 import {
   listUsers,
@@ -47,6 +48,13 @@ export async function PATCH(request: Request) {
       if (!updated) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
       }
+      await logAuthEvent({
+        action: "auth.user_role_changed",
+        actorUserId: sessionOrResponse.user.id,
+        actorEmail: sessionOrResponse.user.email,
+        targetId: userId,
+        metadata: { role },
+      });
       return NextResponse.json({ user: updated });
     }
 
@@ -58,6 +66,13 @@ export async function PATCH(request: Request) {
       if (!updated) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
       }
+      await logAuthEvent({
+        action: body.status === "disabled" ? "auth.user_disabled" : "auth.user_enabled",
+        actorUserId: sessionOrResponse.user.id,
+        actorEmail: sessionOrResponse.user.email,
+        targetId: userId,
+        metadata: { status: body.status },
+      });
       return NextResponse.json({ user: updated });
     }
 

@@ -53,6 +53,38 @@ await sql`
 `;
 await sql`CREATE INDEX IF NOT EXISTS idx_app_users_org ON app_users (org_id)`;
 
+await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS invited_by_user_id TEXT`;
+await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS accepted_invite_at TIMESTAMPTZ`;
+await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS picture TEXT`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS user_invites (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    email TEXT NOT NULL,
+    role TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    invited_by_user_id TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_user_invites_org_status
+  ON user_invites (org_id, status, created_at DESC)
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_user_invites_email
+  ON user_invites (org_id, email)
+`;
+await sql`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_user_invites_token_hash
+  ON user_invites (token_hash)
+`;
+
 await sql`
   CREATE TABLE IF NOT EXISTS integration_credentials (
     integration_id TEXT NOT NULL,

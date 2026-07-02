@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getMiddlewareAuthUser, isMiddlewareAuthEnabled } from "@/lib/auth/middleware-auth";
 import { auth0 } from "@/lib/auth0";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_PATHS = ["/login", "/access-denied", "/invite", "/auth"];
 
 /** Webhooks verified by provider signature — not Auth0 session. */
 const PUBLIC_API_PREFIXES = [
@@ -13,7 +13,11 @@ const PUBLIC_API_PREFIXES = [
 ];
 
 /** Session-optional API routes (handler returns authenticated: false when logged out). */
-const PUBLIC_API_EXACT = ["/api/auth/me"];
+const PUBLIC_API_EXACT = [
+  "/api/auth/me",
+  "/api/auth/invite-check",
+  "/api/auth/invites/validate",
+];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

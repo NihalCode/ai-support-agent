@@ -6,7 +6,11 @@ function isPublicApiPath(pathname: string): boolean {
     "/api/slack/",
     "/api/integrations/slack/events",
   ];
-  const PUBLIC_API_EXACT = ["/api/auth/me"];
+  const PUBLIC_API_EXACT = [
+    "/api/auth/me",
+    "/api/auth/invite-check",
+    "/api/auth/invites/validate",
+  ];
   if (PUBLIC_API_EXACT.includes(pathname)) return true;
   return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
 }
@@ -20,6 +24,11 @@ describe("middleware public API paths", () => {
     expect(isPublicApiPath("/api/slack/events")).toBe(true);
     expect(isPublicApiPath("/api/slack/interactions")).toBe(true);
     expect(isPublicApiPath("/api/integrations/slack/events")).toBe(true);
+  });
+
+  it("allows invite-check and validate without session", () => {
+    expect(isPublicApiPath("/api/auth/invite-check")).toBe(true);
+    expect(isPublicApiPath("/api/auth/invites/validate")).toBe(true);
   });
 
   it("protects support and integration APIs", () => {
