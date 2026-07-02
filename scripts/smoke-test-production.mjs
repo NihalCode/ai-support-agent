@@ -179,8 +179,13 @@ if (!runAuthenticated) {
         timeoutMs: SLOW_API_TIMEOUT_MS,
         data: JSON.stringify({ query: { text: "API not working" } }),
       });
-      if (!body.needsMoreInfo) throw new Error("expected needsMoreInfo");
-      return `${body.missingQuestions?.length} questions`;
+      if (body.needsMoreInfo) {
+        return `${body.missingQuestions?.length} follow-up questions`;
+      }
+      if (body.sessionId && body.report) {
+        return `auto-investigation status=${body.report.currentStatus}`;
+      }
+      throw new Error("expected needsMoreInfo or completed investigation");
     });
 
     await check("POST /api/support/investigate (full)", async () => {
