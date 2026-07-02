@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 /** Mirrors middleware public API rules — keep in sync with src/middleware.ts */
 function isPublicApiPath(pathname: string): boolean {
-  const PUBLIC_API_PREFIXES = ["/api/slack/"];
+  const PUBLIC_API_PREFIXES = [
+    "/api/slack/",
+    "/api/integrations/slack/events",
+  ];
   const PUBLIC_API_EXACT = ["/api/auth/me"];
   if (PUBLIC_API_EXACT.includes(pathname)) return true;
   return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
@@ -16,6 +19,7 @@ describe("middleware public API paths", () => {
   it("allows Slack webhooks without session", () => {
     expect(isPublicApiPath("/api/slack/events")).toBe(true);
     expect(isPublicApiPath("/api/slack/interactions")).toBe(true);
+    expect(isPublicApiPath("/api/integrations/slack/events")).toBe(true);
   });
 
   it("protects support and integration APIs", () => {

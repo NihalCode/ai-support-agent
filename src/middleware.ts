@@ -7,7 +7,10 @@ import { auth0 } from "@/lib/auth0";
 const PUBLIC_PATHS = ["/login", "/auth"];
 
 /** Webhooks verified by provider signature — not Auth0 session. */
-const PUBLIC_API_PREFIXES = ["/api/slack/"];
+const PUBLIC_API_PREFIXES = [
+  "/api/slack/",
+  "/api/integrations/slack/events",
+];
 
 /** Session-optional API routes (handler returns authenticated: false when logged out). */
 const PUBLIC_API_EXACT = ["/api/auth/me"];

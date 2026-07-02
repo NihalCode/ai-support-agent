@@ -41,9 +41,9 @@ export class ConfluenceConnector implements KnowledgeConnector {
   }
 
   async searchDocuments(query: string, limit = 10): Promise<KnowledgeDocument[]> {
-    const clean = query.replace(/["\\]/g, " ").trim() || "support";
-    const spaceClause = this.spaceKey ? ` space="${this.spaceKey}" AND` : "";
-    const cql = encodeURIComponent(`${spaceClause} type=page AND text ~ "${clean}" ORDER BY lastmodified DESC`);
+    const clean = query.replace(/["\\]/g, " ").trim() || "page";
+    const spaceClause = this.spaceKey ? `space=${this.spaceKey} AND ` : "";
+    const cql = encodeURIComponent(`${spaceClause}type=page AND text ~ "${clean}" ORDER BY lastmodified DESC`);
     const res = await withRetry(() =>
       safeFetch(
         `${this.baseUrl}/wiki/rest/api/content/search?cql=${cql}&limit=${Math.min(limit, 25)}&expand=body.storage,version,space`,

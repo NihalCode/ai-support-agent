@@ -20,6 +20,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:ide-api": "node scripts/test-ide-api.mjs",
+    "test:production": "node scripts/test-production-integrations.mjs",
+    "test:production:providers": "node scripts/test-external-integrations.mjs",
     "build:app": "npm run build",
     "deploy:preview": "vercel",
     "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",
