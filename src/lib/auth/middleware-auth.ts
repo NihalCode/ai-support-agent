@@ -1,22 +1,20 @@
+import "server-only";
+
 import type { NextRequest } from "next/server";
+
+import { isAuthEnvComplete } from "@/lib/auth/env";
+import { isTestMode } from "@/lib/test-mode";
 
 import { auth0 } from "@/lib/auth0";
 
 function authEnabled(): boolean {
   if (
-    process.env.TEST_MODE === "true" ||
-    process.env.NEXT_PUBLIC_TEST_MODE === "true" ||
+    isTestMode() ||
     process.env.AUTH_DISABLED === "true"
   ) {
     return false;
   }
-  const clean = (v: string | undefined) => (v?.trim() ? v.trim() : "");
-  return Boolean(
-    clean(process.env.AUTH0_DOMAIN) &&
-      clean(process.env.AUTH0_CLIENT_ID) &&
-      clean(process.env.AUTH0_CLIENT_SECRET) &&
-      clean(process.env.AUTH0_SECRET)
-  );
+  return isAuthEnvComplete();
 }
 
 /** Edge-safe Auth0 session probe — no filesystem or user store. */

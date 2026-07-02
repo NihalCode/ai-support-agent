@@ -129,6 +129,18 @@ Use this when you want **Continue with Google** on the login page (instead of em
 - Do **not** set `TEST_MODE`, `AUTH_DISABLED`, or `NEXT_PUBLIC_TEST_MODE`
 - Rotate `AUTH0_SECRET` / `INTEGRATION_SECRET_KEY` if they were ever committed or shared
 
+**"The state parameter is invalid" on `/auth/callback`:** The OAuth transaction cookie (`__txn_*`) was missing, expired, or could not be decrypted. Common causes and fixes:
+
+| Cause | Fix |
+|-------|-----|
+| Clicked **Continue with SSO** via client-side navigation | Use a normal link to `/auth/login` (full page load). The `/login` page is fixed to do this. |
+| `APP_BASE_URL` missing or wrong on Vercel | Set exactly `https://ai-support-agent-ecru.vercel.app` (no trailing slash). Must match Auth0 Allowed Callback URLs. |
+| `AUTH0_SECRET` changed mid-login or too short | Use a stable 32+ character secret. Do not rotate while users are logging in. |
+| Login took longer than ~2 hours | Start sign-in again from `/login`. |
+| Auth0 callback URL mismatch | Auth0 → Application → Allowed Callback URLs must include `{APP_BASE_URL}/auth/callback` exactly. |
+
+After a failed callback, the app redirects to `/login` with a friendly message instead of a blank error page.
+
 ---
 
 ## Persistent database (production)
