@@ -1,5 +1,10 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
-import { InvalidStateError, MissingStateError } from "@auth0/nextjs-auth0/errors";
+import {
+  AuthorizationCodeGrantError,
+  AuthorizationError,
+  InvalidStateError,
+  MissingStateError,
+} from "@auth0/nextjs-auth0/errors";
 import { NextResponse } from "next/server";
 
 import {
@@ -48,7 +53,21 @@ function createAuth0Client(): Auth0Client {
           return loginErrorRedirect(
             appBaseUrl,
             "invalid_state",
-            "Your sign-in session expired or was interrupted. Clear cookies for this site, then try again in the same browser tab."
+            "Sign-in could not be verified. Click Continue with SSO to start again in this tab."
+          );
+        }
+        if (error instanceof AuthorizationCodeGrantError) {
+          return loginErrorRedirect(
+            appBaseUrl,
+            "auth_failed",
+            "Auth0 rejected the login code. Start again — do not reuse an old sign-in link or browser Back."
+          );
+        }
+        if (error instanceof AuthorizationError) {
+          return loginErrorRedirect(
+            appBaseUrl,
+            "auth_denied",
+            error.message || "Sign-in was cancelled or denied."
           );
         }
         return loginErrorRedirect(appBaseUrl, "auth_failed", error.message);

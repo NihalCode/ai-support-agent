@@ -220,4 +220,17 @@ await sql`
   )
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS oauth_transactions (
+    state TEXT PRIMARY KEY,
+    cookie_name TEXT NOT NULL,
+    cookie_value TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_oauth_transactions_expires
+  ON oauth_transactions (expires_at)
+`;
+
 console.log("Schema applied successfully.");

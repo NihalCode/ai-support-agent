@@ -1,7 +1,9 @@
 const ERROR_COPY: Record<string, string> = {
   invalid_state:
-    "Your sign-in session expired or was interrupted. Clear cookies for this site, then click Continue with SSO again and finish login in the same browser tab within a few minutes.",
-  auth_failed: "Sign-in could not be completed. Please try again.",
+    "Sign-in could not be verified. Click Continue with SSO below and complete login in this same tab — do not use Back or an old link.",
+  auth_failed:
+    "Sign-in could not be completed. Click Continue with SSO to try again in this tab.",
+  auth_denied: "Sign-in was cancelled or denied. Click Continue with SSO when you are ready to try again.",
 };
 
 export default async function LoginPage({
