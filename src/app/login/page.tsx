@@ -1,6 +1,6 @@
 const ERROR_COPY: Record<string, string> = {
   invalid_state:
-    "Your sign-in session expired or was interrupted. Use the button below to start again — stay in the same browser tab and complete login within a few minutes.",
+    "Your sign-in session expired or was interrupted. Clear cookies for this site, then click Continue with SSO again and finish login in the same browser tab within a few minutes.",
   auth_failed: "Sign-in could not be completed. Please try again.",
 };
 

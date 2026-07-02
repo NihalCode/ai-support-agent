@@ -48,7 +48,7 @@ function createAuth0Client(): Auth0Client {
           return loginErrorRedirect(
             appBaseUrl,
             "invalid_state",
-            "Your sign-in session expired or was interrupted. Please try again in the same browser tab."
+            "Your sign-in session expired or was interrupted. Clear cookies for this site, then try again in the same browser tab."
           );
         }
         return loginErrorRedirect(appBaseUrl, "auth_failed", error.message);
