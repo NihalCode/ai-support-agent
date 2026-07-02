@@ -21,6 +21,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:ide-api": "node scripts/test-ide-api.mjs",
     "test:production:providers": "node scripts/test-external-integrations.mjs",
+    "seed:integration-test": "node scripts/seed-integration-test-content.mjs",
     "build:app": "npm run build",
     "deploy:preview": "vercel",
     "deploy:prod": "vercel --prod && node scripts/ensure-public-deploy.mjs",

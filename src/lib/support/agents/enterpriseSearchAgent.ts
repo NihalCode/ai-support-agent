@@ -4,12 +4,28 @@ import type { AgentResult, DocsFinding, EvidenceItem, SupportQuery } from "../in
 import { getConfluenceDocs, getZendeskTickets } from "../connectors";
 import { buildSearchTerms } from "../investigation/extract-query";
 
+/** Shorter query for Zendesk/Confluence APIs (full buildSearchTerms breaks CQL / Zendesk search). */
+function enterpriseSearchQuery(q: SupportQuery): string {
+  if (q.issueRef && /^ZD-/i.test(q.issueRef)) return q.issueRef;
+  const text = q.text ?? "";
+  const keywords = [
+    q.statusCode ? String(q.statusCode) : "",
+    /\bctix\b/i.test(text) ? "CTIX" : "",
+    /\b401|unauthorized\b/i.test(text) ? "401 unauthorized" : "",
+    q.issueRef && !/^ZD-/i.test(q.issueRef) ? q.issueRef : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (keywords.trim()) return keywords.trim();
+  return buildSearchTerms(q).slice(0, 120);
+}
+
 export async function runEnterpriseSearchAgent(
   q: SupportQuery
 ): Promise<AgentResult<DocsFinding>> {
   const start = Date.now();
   const warnings: string[] = [];
-  const terms = buildSearchTerms(q);
+  const terms = enterpriseSearchQuery(q);
   const docs: EvidenceItem[] = [];
   let mock = false;
 
