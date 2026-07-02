@@ -56,6 +56,10 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
+    /*
+     * Skip static assets (public/ and built-ins) so Auth0 and browsers can fetch
+     * branding files like /cyware_logo.png without a session.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:png|svg|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
