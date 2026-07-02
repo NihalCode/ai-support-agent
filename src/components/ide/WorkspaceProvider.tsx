@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import {
   activityToDefaultTab,
+  defaultSidebarNavIdForActivity,
   initialWorkspaceState,
   parseSlashCommand,
   openTabOnLayout,
@@ -47,7 +48,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 const STORAGE_KEY = "ai-support-ide-layout-v2";
 
 type Action =
-  | { type: "SET_ACTIVITY"; activity: ActivityId }
+  | { type: "SET_ACTIVITY"; activity: ActivityId; sidebarNavId?: string; skipDefaultTab?: boolean }
   | { type: "TOGGLE_SIDEBAR" }
   | { type: "TOGGLE_CHAT" }
   | { type: "TOGGLE_BOTTOM" }
@@ -75,11 +76,19 @@ type Action =
 function reducer(state: WorkspaceState, action: Action): WorkspaceState {
   switch (action.type) {
     case "SET_ACTIVITY": {
+      const sidebarNavId =
+        action.sidebarNavId ??
+        defaultSidebarNavIdForActivity(action.activity) ??
+        state.sidebarNavId;
+      if (action.skipDefaultTab) {
+        return { ...state, activity: action.activity, sidebarNavId };
+      }
       const tab = activityToDefaultTab(action.activity);
-      if (!tab) return { ...state, activity: action.activity };
+      if (!tab) return { ...state, activity: action.activity, sidebarNavId };
       return {
         ...state,
         activity: action.activity,
+        sidebarNavId,
         editorLayout: openTabOnLayout(state.editorLayout, tab),
       };
     }
@@ -164,7 +173,10 @@ function reducer(state: WorkspaceState, action: Action): WorkspaceState {
 
 export interface WorkspaceContextValue {
   state: WorkspaceState;
-  setActivity: (a: ActivityId) => void;
+  setActivity: (
+    activity: ActivityId,
+    opts?: { sidebarNavId?: string; skipDefaultTab?: boolean }
+  ) => void;
   openTab: (tab: EditorTab, opts?: { side?: boolean; groupId?: string }) => void;
   openTabFromTarget: (target: { kind: string; tabId: string; title: string; payload?: Record<string, unknown> }, side?: boolean) => void;
   closeTab: (id: string, groupId?: string) => void;
@@ -422,7 +434,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const value = useMemo<WorkspaceContextValue>(
     () => ({
       state,
-      setActivity: (activity) => dispatch({ type: "SET_ACTIVITY", activity }),
+      setActivity: (activity, opts) =>
+        dispatch({
+          type: "SET_ACTIVITY",
+          activity,
+          sidebarNavId: opts?.sidebarNavId,
+          skipDefaultTab: opts?.skipDefaultTab,
+        }),
       openTab: (tab, opts) =>
         dispatch({ type: "OPEN_TAB", tab, side: opts?.side, groupId: opts?.groupId }),
       openTabFromTarget: (target, side) =>

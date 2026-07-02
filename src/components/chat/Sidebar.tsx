@@ -25,19 +25,20 @@ type NavItem = {
   icon: typeof MessageSquare;
   activity: ActivityId;
   testId: string;
-  settingsSection?: string;
+  settingsSection?: "integrations" | "health" | "credentials";
+  integrationsTab?: "approvals";
 };
 
 const NAV_ITEMS: NavItem[] = [
   { label: "AI Chat", icon: MessageSquare, activity: "home", testId: "activity-home" },
   { label: "Investigations", icon: SearchCheck, activity: "investigations", testId: "activity-investigations" },
   { label: "Build App", icon: Blocks, activity: "build-app", testId: "activity-build-app" },
-  { label: "Integrations", icon: Plug, activity: "settings", testId: "activity-integrations" },
+  { label: "Integrations", icon: Plug, activity: "settings", testId: "activity-integrations", settingsSection: "integrations" },
   { label: "Knowledge", icon: BookOpen, activity: "search", testId: "activity-search" },
-  { label: "Approvals", icon: ShieldCheck, activity: "build-app", testId: "activity-approvals" },
+  { label: "Approvals", icon: ShieldCheck, activity: "settings", testId: "activity-approvals", integrationsTab: "approvals" },
   { label: "Audit Logs", icon: ScrollText, activity: "logs", testId: "activity-logs" },
-  { label: "System Health", icon: Activity, activity: "settings", testId: "activity-health" },
-  { label: "Settings", icon: Settings, activity: "settings", testId: "activity-settings" },
+  { label: "System Health", icon: Activity, activity: "settings", testId: "activity-health", settingsSection: "health" },
+  { label: "Settings", icon: Settings, activity: "settings", testId: "activity-settings", settingsSection: "credentials" },
 ];
 
 const DEV_EXTRA_ITEMS: NavItem[] = [
@@ -67,11 +68,35 @@ export function Sidebar({
   open?: boolean;
   onClose?: () => void;
 }) {
-  const { state, setActivity, setBottomTab, toggleBottom, isClientMode } = useWorkspace();
+  const { state, setActivity, openTab, setBottomTab, toggleBottom, isClientMode } = useWorkspace();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   function navigate(item: NavItem) {
-    setActivity(item.activity);
+    if (item.integrationsTab) {
+      setActivity(item.activity, { sidebarNavId: item.testId, skipDefaultTab: true });
+      openTab({
+        id: "integrations",
+        kind: "integrations",
+        title: "Integrations",
+        payload: { tab: item.integrationsTab },
+      });
+      onClose?.();
+      return;
+    }
+
+    if (item.settingsSection) {
+      setActivity(item.activity, { sidebarNavId: item.testId, skipDefaultTab: true });
+      openTab({
+        id: "settings",
+        kind: "settings",
+        title: "Settings",
+        payload: { section: item.settingsSection },
+      });
+      onClose?.();
+      return;
+    }
+
+    setActivity(item.activity, { sidebarNavId: item.testId });
     onClose?.();
   }
 
@@ -92,7 +117,7 @@ export function Sidebar({
       <nav className="flex flex-col gap-1 overflow-y-auto min-h-0 flex-1">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active = state.activity === item.activity;
+          const active = state.sidebarNavId === item.testId;
           return (
             <button
               key={item.testId}
@@ -116,7 +141,7 @@ export function Sidebar({
           <>
             {DEV_EXTRA_ITEMS.map((item) => {
               const Icon = item.icon;
-              const active = state.activity === item.activity;
+              const active = state.sidebarNavId === item.testId;
               return (
                 <button
                   key={item.testId}

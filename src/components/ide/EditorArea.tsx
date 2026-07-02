@@ -79,7 +79,12 @@ export function EditorArea({
         </div>
       )}
       {tab.kind === "diagnose" && <DiagnoseEditor />}
-      {tab.kind === "integrations" && <IntegrationsPanel />}
+      {tab.kind === "integrations" && (
+        <IntegrationsPanel
+          key={String(tab.payload?.tab ?? "health")}
+          initialTab={tab.payload?.tab as "approvals" | "health" | undefined}
+        />
+      )}
       {tab.kind === "api-registry" && <ApiRegistryEditor specId={tab.payload?.specId as string | undefined} />}
       {tab.kind === "endpoint" && (
         <EndpointEditor
@@ -91,7 +96,24 @@ export function EditorArea({
       {tab.kind === "api-runner" && <ApiRunnerPanel developerMode={devMode} />}
       {tab.kind === "cql" && <CqlWorkspaceEditor />}
       {tab.kind === "credentials" && <CredentialSetup />}
-      {tab.kind === "settings" && <SettingsEditor />}
+      {tab.kind === "settings" && (
+        <SettingsEditor
+          key={String(tab.payload?.section ?? "integrations")}
+          initialSection={
+            tab.payload?.section as
+              | "integrations"
+              | "health"
+              | "credentials"
+              | "audit"
+              | "setup"
+              | "knowledge"
+              | "notifications"
+              | "retention"
+              | "users"
+              | undefined
+          }
+        />
+      )}
       {tab.kind === "audit-logs" && (
         <div style={{ padding: 16 }}>
           <h2 style={{ marginTop: 0 }}>Audit logs</h2>

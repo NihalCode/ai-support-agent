@@ -94,8 +94,7 @@ export function useChatStream() {
             }
             if (event.type === "build_app_handoff") {
               streamHadProgress = true;
-              setActivity("build-app");
-              const tabId = event.projectId ? `build-app-${event.projectId}` : `build-app-new-${Date.now()}`;
+              const tabId = event.projectId ? `build-app-${event.projectId}` : "build-app-new";
               openTab({
                 id: tabId,
                 kind: "build-app",
@@ -109,16 +108,17 @@ export function useChatStream() {
                   mode: event.mode,
                 },
               });
+              setActivity("build-app", { sidebarNavId: "activity-build-app", skipDefaultTab: true });
             }
             if (event.type === "build_app_created") {
               setActiveBuildProject(event.projectId);
-              setActivity("build-app");
               openTab({
                 id: `build-app-${event.projectId}`,
                 kind: "build-app",
                 title: event.title,
                 payload: { projectId: event.projectId },
               });
+              setActivity("build-app", { sidebarNavId: "activity-build-app", skipDefaultTab: true });
             }
             if (event.type === "build_app_updated" && event.projectId) {
               setActiveBuildProject(event.projectId);

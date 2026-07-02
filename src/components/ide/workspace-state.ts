@@ -59,9 +59,41 @@ export function parseSlashCommand(input: string): { command: string; rest: strin
   return { command: m[1].toLowerCase(), rest: (m[2] ?? "").trim() };
 }
 
+export function defaultSidebarNavIdForActivity(activity: ActivityId): string | undefined {
+  switch (activity) {
+    case "home":
+      return "activity-home";
+    case "investigations":
+      return "activity-investigations";
+    case "search":
+      return "activity-search";
+    case "logs":
+      return "activity-logs";
+    case "build-app":
+      return "activity-build-app";
+    case "settings":
+      return "activity-settings";
+    case "explorer":
+      return "activity-explorer";
+    case "api-registry":
+      return "activity-api-registry";
+    case "cql":
+      return "activity-cql";
+    case "deployments":
+      return "activity-deployments";
+    case "jira":
+      return "activity-jira";
+    case "mcp":
+      return "activity-mcp";
+    default:
+      return undefined;
+  }
+}
+
 export function initialWorkspaceState(): WorkspaceState {
   return {
     activity: "home",
+    sidebarNavId: "activity-home",
     layout: { ...DEFAULT_LAYOUT },
     editorLayout: createSingleEditorLayout(),
     bottomTab: "problems",

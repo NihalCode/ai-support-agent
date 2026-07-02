@@ -108,6 +108,8 @@ export interface LayoutState {
 
 export interface WorkspaceState {
   activity: ActivityId;
+  /** Unique sidebar nav test id — avoids highlighting multiple items that share the same activity. */
+  sidebarNavId: string;
   layout: LayoutState;
   editorLayout: EditorLayout;
   /** @deprecated use editorLayout — kept for hydration migration */

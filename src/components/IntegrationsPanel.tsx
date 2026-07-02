@@ -23,8 +23,8 @@ const SUBTABS = [
 
 type SubTab = (typeof SUBTABS)[number][0];
 
-export function IntegrationsPanel() {
-  const [tab, setTab] = useState<SubTab>("health");
+export function IntegrationsPanel({ initialTab = "health" }: { initialTab?: SubTab }) {
+  const [tab, setTab] = useState<SubTab>(initialTab);
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

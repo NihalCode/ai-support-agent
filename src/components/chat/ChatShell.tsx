@@ -112,7 +112,7 @@ export function ChatShell() {
                 panel={chatPanel}
                 open={chatDockOpen}
                 onClose={() => setLayoutSize({ chatVisible: false })}
-                onExpand={() => setActivity("home")}
+                onExpand={() => setActivity("home", { sidebarNavId: "activity-home" })}
               />
             </div>
           )}

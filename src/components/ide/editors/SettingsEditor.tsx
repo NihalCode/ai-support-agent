@@ -18,10 +18,10 @@ import {
   SystemHealthPanel,
 } from "./EnterprisePanels";
 
-export function SettingsEditor() {
+export function SettingsEditor({ initialSection = "integrations" }: { initialSection?: SettingsSection }) {
   const { isClientMode } = useWorkspace();
   const { hasPermission } = useAuth();
-  const [section, setSection] = useState<SettingsSection>("integrations");
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const canManageUsers = hasPermission("users:read");
   const canAudit = hasPermission("audit:read");
   const developerMode = !isClientMode;
