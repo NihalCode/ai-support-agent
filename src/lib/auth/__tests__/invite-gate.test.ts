@@ -11,6 +11,7 @@ describe("invite-gate", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "invite-gate-"));
     vi.spyOn(process, "cwd").mockReturnValue(tmpDir);
     delete process.env.BOOTSTRAP_OWNER_EMAIL;
+    delete process.env.INITIAL_OWNER_EMAIL;
   });
 
   afterEach(async () => {
@@ -84,11 +85,21 @@ describe("invite-gate", () => {
   });
 
   it("allows bootstrap owner when org is empty", async () => {
-    process.env.BOOTSTRAP_OWNER_EMAIL = "bootstrap@company.com";
+    process.env.INITIAL_OWNER_EMAIL = "bootstrap@company.com";
     vi.resetModules();
     const { checkEmailAccess } = await import("@/lib/auth/invite-gate");
     const result = await checkEmailAccess("bootstrap@company.com");
     expect(result.allowed).toBe(true);
+    expect(result.reason).toBe("bootstrap_owner");
     expect(result.role).toBe("owner");
+  });
+
+  it("accepts BOOTSTRAP_OWNER_EMAIL alias", async () => {
+    process.env.BOOTSTRAP_OWNER_EMAIL = "legacy@company.com";
+    vi.resetModules();
+    const { checkEmailAccess } = await import("@/lib/auth/invite-gate");
+    const result = await checkEmailAccess("legacy@company.com");
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe("bootstrap_owner");
   });
 });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cleanEnvValue } from "@/lib/auth/env";
+import { initialOwnerEmail, isInitialOwnerEmail } from "@/lib/auth/auth-config-public";
 import { normalizeEmail } from "@/lib/auth/email-utils";
 import {
   getPendingInviteByEmail,
@@ -19,9 +19,11 @@ export interface InviteCheckResult {
 }
 
 function bootstrapOwnerEmail(): string | null {
-  const raw = cleanEnvValue(process.env.BOOTSTRAP_OWNER_EMAIL);
+  const raw = initialOwnerEmail();
   return raw ? normalizeEmail(raw) : null;
 }
+
+export { isInitialOwnerEmail };
 
 /** Check whether an email may access the app (active user or valid pending invite). */
 export async function checkEmailAccess(
@@ -59,7 +61,7 @@ export async function checkEmailAccess(
   if (bootstrap && normalized === bootstrap) {
     const users = await listUsers(orgId);
     if (users.length === 0) {
-      return { allowed: true, reason: "valid_invite", role: "owner" };
+      return { allowed: true, reason: "bootstrap_owner", role: "owner" };
     }
   }
 

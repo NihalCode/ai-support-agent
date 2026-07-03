@@ -17,6 +17,8 @@
     "ingest": "tsx --conditions=react-server scripts/ingest-cli.ts",
     "vendor:cyware-specs": "tsx --conditions=react-server scripts/vendor-cyware-specs.ts",
     "typecheck": "tsc --noEmit",
+    "auth:diagnose": "tsx scripts/diagnose-auth.ts",
+    "auth:test-invite-check": "tsx scripts/test-invite-check.ts",
     "mcp:check": "node scripts/check-mcp.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

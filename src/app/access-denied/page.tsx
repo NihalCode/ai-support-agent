@@ -32,6 +32,11 @@ const REASON_COPY: Record<
     body: "Your account is disabled. Contact your workspace administrator.",
     testId: "access-denied-disabled",
   },
+  auth_configuration_error: {
+    title: "Sign-in configuration error",
+    body: "Sign-in could not verify workspace access. Ask an administrator to confirm AUTH0_ACTION_SHARED_SECRET and APP_BASE_URL match in Vercel and the Auth0 Post-Login Action.",
+    testId: "access-denied-auth-config",
+  },
 };
 
 export default async function AccessDeniedPage({

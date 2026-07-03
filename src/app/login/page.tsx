@@ -4,8 +4,24 @@ const ERROR_COPY: Record<string, string> = {
   auth_failed:
     "Sign-in could not be completed. Choose a sign-in option below to try again in this tab.",
   auth_denied: "Sign-in was cancelled or denied. Choose a sign-in option when you are ready to try again.",
+  auth_config:
+    "Sign-in is misconfigured on the server. Ask an administrator to verify Auth0 settings, DATABASE_URL, and AUTH0_ACTION_SHARED_SECRET for this site.",
+  auth_configuration_error:
+    "Sign-in could not verify workspace access. Ask an administrator to confirm AUTH0_ACTION_SHARED_SECRET and APP_BASE_URL match in Vercel and the Auth0 Post-Login Action secrets.",
   invite_required:
     "This workspace is invite-only. Ask an administrator to invite your email before signing in.",
+  not_invited:
+    "This workspace is invite-only. Ask an administrator to invite your email before signing in.",
+  expired_invite:
+    "Your invite has expired. Ask an administrator to send a new invite before signing in.",
+  invite_expired:
+    "Your invite has expired. Ask an administrator to send a new invite before signing in.",
+  access_disabled:
+    "Your account has been disabled. Contact your workspace administrator for access.",
+  disabled:
+    "Your account has been disabled. Contact your workspace administrator for access.",
+  wrong_invite_email:
+    "You signed in with a different email than the one that was invited. Use the invited email address.",
 };
 
 function connectionUrl(connection?: string): string {

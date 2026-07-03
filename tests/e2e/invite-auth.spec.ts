@@ -11,6 +11,19 @@ test.describe("Invite-only auth UI", () => {
     await expect(page.getByText(/sign up/i)).toHaveCount(0);
   });
 
+  test("login page maps auth_configuration_error to specific copy", async ({ page }) => {
+    await page.goto("/login?error=auth_configuration_error");
+    await expect(page.getByTestId("login-error")).toContainText("AUTH0_ACTION_SHARED_SECRET");
+    await expect(page.getByTestId("login-error")).not.toContainText(
+      "An error occurred during the authorization flow"
+    );
+  });
+
+  test("login page maps invite_expired to specific copy", async ({ page }) => {
+    await page.goto("/login?error=invite_expired");
+    await expect(page.getByTestId("login-error")).toContainText("expired");
+  });
+
   test("access denied page renders invite required", async ({ page }) => {
     await page.goto("/access-denied?reason=invite_required");
     await expect(page.getByTestId("access-denied-invite-required")).toBeVisible();

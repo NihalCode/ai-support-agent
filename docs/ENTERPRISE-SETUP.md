@@ -72,18 +72,71 @@ This app is **strictly invite-only**. Auth0 proves identity (Google or company e
 **Environment variables:**
 
 ```bash
-AUTH0_ACTION_SHARED_SECRET=   # 32+ char random — Auth0 Action → POST /api/auth/invite-check
-BOOTSTRAP_OWNER_EMAIL=        # Optional one-time first owner when user table is empty
+AUTH0_ACTION_SHARED_SECRET=   # 32+ char random — must match Auth0 Action secret exactly
+INITIAL_OWNER_EMAIL=          # Canonical cold-start owner (alias: BOOTSTRAP_OWNER_EMAIL)
 AUTH0_GOOGLE_CONNECTION=      # Optional — Auth0 Google connection name for login button
 AUTH0_EMAIL_CONNECTION=       # Optional — company email/passwordless/SSO connection name
 INVITE_DEFAULT_EXPIRY_DAYS=7
+DATABASE_URL=                 # Required on Vercel — Postgres for durable users/invites
 ```
 
-**Auth0 Post-Login Action:** copy `docs/auth0-post-login-invite-action.js` into Auth0 Dashboard → Actions → Login → Post-Login. Add secrets `APP_BASE_URL` and `AUTH0_ACTION_SHARED_SECRET`.
+**Auth0 Post-Login Action:** copy the **Support** block from `docs/auth0-post-login-invite-action.js` into Auth0 Dashboard → Actions → Login → Post-Login.
+
+**Action secrets (set in Auth0 Dashboard per Action — use the same names as Vercel):**
+
+| Auth0 Action secret | Value |
+|---------------------|--------|
+| `APP_BASE_URL` | Same as Vercel `APP_BASE_URL` (e.g. `https://ai-support-agent-ecru.vercel.app`, no trailing slash) |
+| `AUTH0_ACTION_SHARED_SECRET` | Same as Vercel `AUTH0_ACTION_SHARED_SECRET` |
+| `AUTH0_CLIENT_ID` | Optional — that Auth0 Application's Client ID; skips Action for other apps in the same tenant |
+
+**Multi-app tenant:** create one Action per application (e.g. SUPPORT INVITE CHECK, DOCS INVITE CHECK). Each Action uses the **same secret names** with values for that app. Attach both to the Login flow; each skips when `AUTH0_CLIENT_ID` does not match.
+
+**Docs product (separate deployment):** duplicate the Action with docs `APP_BASE_URL` and docs `AUTH0_CLIENT_ID` in that Action's secrets.
 
 **Admin workflow:** Settings → Users → invite by email, assign role, copy invite link. Pending invites can be resent or revoked.
 
-**First production owner:** either set `BOOTSTRAP_OWNER_EMAIL` before first login, or seed an owner invite via API/database.
+**First production owner:** set `INITIAL_OWNER_EMAIL` (or `BOOTSTRAP_OWNER_EMAIL`) before first login when the user table is empty, or seed an owner invite via API/database.
+
+**Diagnostics:**
+
+```bash
+npm run auth:diagnose              # local env check (no secrets printed)
+npm run auth:test-invite-check     # POST invite-check against APP_BASE_URL
+```
+
+Signed-in admin: `GET /api/admin/auth-diagnostics` — live DB reachability and config status (no secrets).
+
+### Auth0 mapping checklist
+
+Use this when sign-in shows a generic **"An error occurred during the authorization flow"** or **auth_configuration_error**:
+
+| # | Check | Where | Expected |
+|---|--------|--------|----------|
+| 1 | `APP_BASE_URL` | Vercel env | Exact production origin, no trailing slash |
+| 2 | Allowed Callback URLs | Auth0 Application | `{APP_BASE_URL}/auth/callback` |
+| 3 | Allowed Logout URLs | Auth0 Application | `{APP_BASE_URL}` |
+| 4 | Allowed Web Origins | Auth0 Application | `{APP_BASE_URL}` |
+| 5 | `AUTH0_ACTION_SHARED_SECRET` | Vercel env | 32+ chars, stable |
+| 6 | `AUTH0_ACTION_SHARED_SECRET` | Auth0 Action secrets | **Identical** to Vercel |
+| 7 | `APP_BASE_URL` | Auth0 Action secrets | **Identical** to Vercel `APP_BASE_URL` for that app |
+| 8 | `AUTH0_CLIENT_ID` | Auth0 Action secrets | Matches that app's Client ID (if set — multi-app skip) |
+| 9 | Post-Login Action attached | Auth0 → Login flow | Support Action runs after authentication |
+| 10 | `DATABASE_URL` | Vercel env | Postgres connection string |
+| 11 | `INITIAL_OWNER_EMAIL` | Vercel env | Set for cold start when no users exist |
+| 12 | invite-check returns JSON | `npm run auth:test-invite-check` | HTTP 200/401 JSON — never HTML |
+
+**Common root cause:** Action calls invite-check with wrong `APP_BASE_URL`, missing/mismatched `AUTH0_ACTION_SHARED_SECRET`, or invite-check hits DB error → Action denies with generic OAuth error. Fixed Action uses `auth_configuration_error` with specific login page copy.
+
+**Login error codes mapped on `/login`:**
+
+| Code | User message |
+|------|----------------|
+| `invite_required` / `not_invited` | Invite-only workspace |
+| `access_disabled` / `disabled` | Account disabled |
+| `invite_expired` / `expired_invite` | Expired invite |
+| `auth_configuration_error` / `auth_config` | Server misconfiguration (secret/URL/DB) |
+| `invalid_state` | Stale OAuth tab — retry sign-in |
 
 ### 5. Roles (after invite acceptance)
 

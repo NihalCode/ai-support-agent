@@ -1,12 +1,7 @@
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
-import {
-  AuthorizationCodeGrantError,
-  AuthorizationError,
-  InvalidStateError,
-  MissingStateError,
-} from "@auth0/nextjs-auth0/errors";
 import { NextResponse } from "next/server";
 
+import { mapAuthCallbackError } from "@/lib/auth/auth-callback-errors";
 import {
   authEnvValidationError,
   getAuthEnv,
@@ -49,28 +44,8 @@ function createAuth0Client(): Auth0Client {
     onCallback: async (error, ctx) => {
       const appBaseUrl = ctx.appBaseUrl ?? getAuthEnv().appBaseUrl ?? "http://localhost:3000";
       if (error) {
-        if (error instanceof InvalidStateError || error instanceof MissingStateError) {
-          return loginErrorRedirect(
-            appBaseUrl,
-            "invalid_state",
-            "Sign-in could not be verified. Click Continue with SSO to start again in this tab."
-          );
-        }
-        if (error instanceof AuthorizationCodeGrantError) {
-          return loginErrorRedirect(
-            appBaseUrl,
-            "auth_failed",
-            "Auth0 rejected the login code. Start again — do not reuse an old sign-in link or browser Back."
-          );
-        }
-        if (error instanceof AuthorizationError) {
-          return loginErrorRedirect(
-            appBaseUrl,
-            "auth_denied",
-            error.message || "Sign-in was cancelled or denied."
-          );
-        }
-        return loginErrorRedirect(appBaseUrl, "auth_failed", error.message);
+        const mapped = mapAuthCallbackError(error);
+        return loginErrorRedirect(appBaseUrl, mapped.code, mapped.message);
       }
       const destination = new URL(ctx.returnTo || "/", appBaseUrl);
       return NextResponse.redirect(destination);

@@ -4,7 +4,8 @@ export type AccessDeniedReason =
   | "expired_invite"
   | "revoked_invite"
   | "wrong_invite_email"
-  | "not_invited";
+  | "not_invited"
+  | "auth_configuration_error";
 
 export class AccessDeniedError extends Error {
   readonly reason: AccessDeniedReason;
@@ -21,9 +22,17 @@ export class AccessDeniedError extends Error {
 export type InviteCheckReason =
   | "active_user"
   | "valid_invite"
+  | "bootstrap_owner"
   | "not_invited"
   | "disabled"
-  | "expired_invite";
+  | "expired_invite"
+  | "auth_configuration_error";
+
+export interface InviteCheckResponse {
+  allowed: boolean;
+  reason?: InviteCheckReason;
+  role?: string;
+}
 
 export function accessDeniedToCheckReason(
   reason: AccessDeniedReason
