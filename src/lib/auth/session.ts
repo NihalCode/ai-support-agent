@@ -8,15 +8,17 @@ import { logAuthEvent } from "@/lib/auth/auth-audit";
 import { isAuthEnabled, defaultOrgId } from "@/lib/auth/config";
 import { normalizeEmail, emailDomain } from "@/lib/auth/email-utils";
 import { checkEmailAccess } from "@/lib/auth/invite-gate";
-import { acceptInvite } from "@/lib/auth/invite-store";
+import { acceptInvite, getPendingInviteByEmail, isValidPendingInvite } from "@/lib/auth/invite-store";
 import type { Permission, UserRole } from "@/lib/auth/roles";
 import { roleHasPermission } from "@/lib/auth/roles";
 import {
+  applyInviteToExistingUser,
   createUserFromInvite,
   getUserByEmail,
   getUserById,
   relinkUserAuthSubject,
   upsertUserFromLogin,
+  type StoredUser,
 } from "@/lib/auth/user-store";
 import { auth0 } from "@/lib/auth0";
 import { isTestMode } from "@/lib/test-mode";
@@ -112,6 +114,37 @@ function toAppSession(stored: {
   };
 }
 
+async function applyPendingInviteIfAny(
+  user: StoredUser,
+  email: string,
+  orgId: string
+): Promise<StoredUser> {
+  const pendingInvite = await getPendingInviteByEmail(email, orgId);
+  if (!pendingInvite || !isValidPendingInvite(pendingInvite)) {
+    return user;
+  }
+
+  const upgraded = await applyInviteToExistingUser({
+    id: user.id,
+    role: pendingInvite.role,
+    invitedByUserId: pendingInvite.invitedByUserId,
+    orgId,
+  });
+  if (!upgraded) {
+    return user;
+  }
+
+  await acceptInvite(pendingInvite.id, orgId);
+  await logAuthEvent({
+    action: "auth.invite_accepted",
+    actorUserId: upgraded.id,
+    actorEmail: upgraded.email,
+    targetId: pendingInvite.id,
+    metadata: { role: upgraded.role, reinvite: true },
+  });
+  return upgraded;
+}
+
 /** Resolve app session with invite-only enforcement. */
 export async function getAppSessionResult(
   request?: NextRequest
@@ -134,37 +167,51 @@ export async function getAppSessionResult(
   const existingByEmail = await getUserByEmail(authUser.email, orgId);
 
   if (existingById) {
-    if (existingById.status === "disabled") {
+    const pendingInvite = await getPendingInviteByEmail(authUser.email, orgId);
+
+    if (
+      existingById.status === "disabled" &&
+      (!pendingInvite || !isValidPendingInvite(pendingInvite))
+    ) {
       return {
         session: null,
         auth0Authenticated: true,
         accessDenied: { reason: "disabled" },
       };
     }
+
+    let sessionUser = await applyPendingInviteIfAny(existingById, authUser.email, orgId);
+
     const updated = await upsertUserFromLogin({
       id: authUser.sub,
       email: authUser.email,
       name: authUser.name,
       picture: authUser.picture,
     });
-    if (!updated) {
+    sessionUser = updated ?? sessionUser;
+
+    if (sessionUser.status === "disabled") {
       return {
         session: null,
         auth0Authenticated: true,
-        accessDenied: { reason: "invite_required" },
+        accessDenied: { reason: "disabled" },
       };
     }
+
     await logAuthEvent({
       action: "auth.login_success",
-      actorUserId: updated.id,
-      actorEmail: updated.email,
+      actorUserId: sessionUser.id,
+      actorEmail: sessionUser.email,
       metadata: { connection: "auth0" },
     });
-    return { session: toAppSession(updated), auth0Authenticated: true };
+    return { session: toAppSession(sessionUser), auth0Authenticated: true };
   }
 
   if (existingByEmail && existingByEmail.id !== authUser.sub) {
-    if (existingByEmail.status === "disabled") {
+    const pendingInvite = await getPendingInviteByEmail(authUser.email, orgId);
+    const hasValidReinvite = Boolean(pendingInvite && isValidPendingInvite(pendingInvite));
+
+    if (existingByEmail.status === "disabled" && !hasValidReinvite) {
       return {
         session: null,
         auth0Authenticated: true,
@@ -189,19 +236,21 @@ export async function getAppSessionResult(
       };
     }
 
+    let sessionUser = await applyPendingInviteIfAny(relinked, authUser.email, orgId);
+
     await logAuthEvent({
       action: "auth.auth_subject_relinked",
-      actorUserId: relinked.id,
-      actorEmail: relinked.email,
+      actorUserId: sessionUser.id,
+      actorEmail: sessionUser.email,
       metadata: { previousAuthSubject: existingByEmail.id },
     });
     await logAuthEvent({
       action: "auth.login_success",
-      actorUserId: relinked.id,
-      actorEmail: relinked.email,
+      actorUserId: sessionUser.id,
+      actorEmail: sessionUser.email,
       metadata: { connection: "auth0", relinked: true },
     });
-    return { session: toAppSession(relinked), auth0Authenticated: true };
+    return { session: toAppSession(sessionUser), auth0Authenticated: true };
   }
 
   const access = await checkEmailAccess(authUser.email, orgId);

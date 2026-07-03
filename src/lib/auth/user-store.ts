@@ -203,6 +203,30 @@ async function updateUserRoleFile(
   return updated;
 }
 
+async function applyInviteToExistingUserFile(input: {
+  id: string;
+  role: UserRole;
+  invitedByUserId?: string | null;
+  orgId: string;
+}): Promise<StoredUser | null> {
+  const store = await readFileStore();
+  const idx = store.users.findIndex((u) => u.id === input.id && u.orgId === input.orgId);
+  if (idx < 0) return null;
+
+  const now = new Date().toISOString();
+  const updated: StoredUser = {
+    ...store.users[idx]!,
+    role: input.role,
+    status: "active",
+    invitedByUserId: input.invitedByUserId ?? store.users[idx]!.invitedByUserId ?? null,
+    acceptedInviteAt: now,
+    updatedAt: now,
+  };
+  store.users[idx] = updated;
+  await writeFileStore(store);
+  return updated;
+}
+
 async function setUserStatusFile(
   id: string,
   status: "active" | "disabled",
@@ -288,6 +312,26 @@ async function upsertUserFromLoginPostgres(input: UpsertUserInput): Promise<Stor
         last_active_at = NOW(),
         updated_at = NOW()
     WHERE id = ${input.id}
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
+  `;
+  return rows[0] ? rowToStoredUser(rows[0]) : null;
+}
+
+async function applyInviteToExistingUserPostgres(input: {
+  id: string;
+  role: UserRole;
+  invitedByUserId?: string | null;
+  orgId: string;
+}): Promise<StoredUser | null> {
+  const rows = await pgQuery`
+    UPDATE app_users
+    SET role = ${input.role},
+        status = 'active',
+        invited_by_user_id = ${input.invitedByUserId ?? null},
+        accepted_invite_at = NOW(),
+        updated_at = NOW()
+    WHERE id = ${input.id} AND org_id = ${input.orgId}
     RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
               picture, created_at, updated_at, last_active_at
   `;
@@ -473,6 +517,19 @@ export async function getUserByEmail(
   return isPostgresConfigured()
     ? getUserByEmailPostgres(email, orgId)
     : getUserByEmailFile(email, orgId);
+}
+
+/** Re-activate an existing user and apply a fresh invite (role change / re-invite after revoke). */
+export async function applyInviteToExistingUser(input: {
+  id: string;
+  role: UserRole;
+  invitedByUserId?: string | null;
+  orgId?: string;
+}): Promise<StoredUser | null> {
+  const orgId = input.orgId ?? defaultOrgId();
+  return isPostgresConfigured()
+    ? applyInviteToExistingUserPostgres({ ...input, orgId })
+    : applyInviteToExistingUserFile({ ...input, orgId });
 }
 
 /** Update profile fields for an existing user on login. Does not create users. */

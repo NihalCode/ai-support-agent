@@ -32,6 +32,25 @@ export async function checkEmailAccess(
 ): Promise<InviteCheckResult> {
   const normalized = normalizeEmail(email);
   const existing = await getUserByEmail(normalized, orgId);
+  const pendingInvite = await getPendingInviteByEmail(normalized, orgId);
+
+  const bootstrap = bootstrapOwnerEmail();
+  if (bootstrap && normalized === bootstrap) {
+    const users = await listUsers(orgId);
+    if (users.length === 0) {
+      return { allowed: true, reason: "bootstrap_owner", role: "owner" };
+    }
+  }
+
+  // Valid pending invite wins over disabled/active history — supports revoke + re-invite.
+  if (pendingInvite && isValidPendingInvite(pendingInvite)) {
+    return {
+      allowed: true,
+      reason: "valid_invite",
+      role: pendingInvite.role,
+      invite: pendingInvite,
+    };
+  }
 
   if (existing) {
     if (existing.status === "disabled") {
@@ -42,27 +61,8 @@ export async function checkEmailAccess(
     }
   }
 
-  const invite = await getPendingInviteByEmail(normalized, orgId);
-  if (invite) {
-    if (invite.status === "pending" && isValidPendingInvite(invite)) {
-      return {
-        allowed: true,
-        reason: "valid_invite",
-        role: invite.role,
-        invite,
-      };
-    }
-    if (invite.status === "pending") {
-      return { allowed: false, reason: "expired_invite" };
-    }
-  }
-
-  const bootstrap = bootstrapOwnerEmail();
-  if (bootstrap && normalized === bootstrap) {
-    const users = await listUsers(orgId);
-    if (users.length === 0) {
-      return { allowed: true, reason: "bootstrap_owner", role: "owner" };
-    }
+  if (pendingInvite?.status === "pending") {
+    return { allowed: false, reason: "expired_invite" };
   }
 
   return { allowed: false, reason: "not_invited" };

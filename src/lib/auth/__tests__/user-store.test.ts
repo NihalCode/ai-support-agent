@@ -79,4 +79,31 @@ describe("user-store invite-only", () => {
     expect(await getUserById("google-oauth2|abc")).toBeNull();
     expect(await getUserById("auth0|xyz")).not.toBeNull();
   });
+
+  it("applyInviteToExistingUser reactivates disabled user and updates role", async () => {
+    const {
+      createUserFromInvite,
+      setUserStatus,
+      applyInviteToExistingUser,
+      getUserById,
+    } = await import("@/lib/auth/user-store");
+    await createUserFromInvite({
+      id: "auth0|reinvite-user",
+      email: "reinvite-user@example.com",
+      role: "viewer",
+    });
+    await setUserStatus("auth0|reinvite-user", "disabled");
+
+    const upgraded = await applyInviteToExistingUser({
+      id: "auth0|reinvite-user",
+      role: "admin",
+      invitedByUserId: "owner-1",
+    });
+
+    expect(upgraded?.status).toBe("active");
+    expect(upgraded?.role).toBe("admin");
+    const loaded = await getUserById("auth0|reinvite-user");
+    expect(loaded?.status).toBe("active");
+    expect(loaded?.role).toBe("admin");
+  });
 });

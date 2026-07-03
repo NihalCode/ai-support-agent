@@ -47,6 +47,47 @@ describe("invite-gate", () => {
     expect(result.reason).toBe("disabled");
   });
 
+  it("allows disabled user when a valid pending re-invite exists", async () => {
+    const { createUserFromInvite, setUserStatus } = await import("@/lib/auth/user-store");
+    const { createInvite } = await import("@/lib/auth/invite-store");
+    const { checkEmailAccess } = await import("@/lib/auth/invite-gate");
+    const user = await createUserFromInvite({
+      id: "auth0|reinvite",
+      email: "reinvite@example.com",
+      role: "viewer",
+    });
+    await setUserStatus(user.id, "disabled");
+    await createInvite({
+      email: "reinvite@example.com",
+      role: "admin",
+      invitedByUserId: "owner-1",
+    });
+    const result = await checkEmailAccess("reinvite@example.com");
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe("valid_invite");
+    expect(result.role).toBe("admin");
+  });
+
+  it("prefers pending invite role over active user record", async () => {
+    const { createUserFromInvite } = await import("@/lib/auth/user-store");
+    const { createInvite } = await import("@/lib/auth/invite-store");
+    const { checkEmailAccess } = await import("@/lib/auth/invite-gate");
+    await createUserFromInvite({
+      id: "auth0|role-change",
+      email: "rolechange@example.com",
+      role: "viewer",
+    });
+    await createInvite({
+      email: "rolechange@example.com",
+      role: "developer",
+      invitedByUserId: "owner-1",
+    });
+    const result = await checkEmailAccess("rolechange@example.com");
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toBe("valid_invite");
+    expect(result.role).toBe("developer");
+  });
+
   it("allows valid pending invite", async () => {
     const { createInvite } = await import("@/lib/auth/invite-store");
     const { checkEmailAccess } = await import("@/lib/auth/invite-gate");
