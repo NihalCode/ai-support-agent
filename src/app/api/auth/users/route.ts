@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { logAuthEvent } from "@/lib/auth/auth-audit";
 import { requirePermission } from "@/lib/auth/session";
@@ -12,16 +12,16 @@ import { USER_ROLES } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const sessionOrResponse = await requirePermission("users:read");
+export async function GET(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("users:read", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const users = await listUsers(sessionOrResponse.user.orgId);
   return NextResponse.json({ users, roles: USER_ROLES });
 }
 
-export async function PATCH(request: Request) {
-  const sessionOrResponse = await requirePermission("users:write");
+export async function PATCH(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("users:write", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: { userId?: string; role?: string; status?: "active" | "disabled" };

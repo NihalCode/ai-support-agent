@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import {
   assertConfigureIntegration,
@@ -18,8 +18,8 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ type: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
-  const sessionOrResponse = await requireIntegrationRead();
+export async function GET(request: NextRequest, { params }: Params) {
+  const sessionOrResponse = await requireIntegrationRead(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const { type } = await params;
@@ -31,8 +31,8 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json(status);
 }
 
-export async function POST(req: Request, { params }: Params) {
-  const sessionOrResponse = await requireIntegrationRead();
+export async function POST(request: NextRequest, { params }: Params) {
+  const sessionOrResponse = await requireIntegrationRead(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const { type } = await params;
@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: Params) {
     metadata?: Record<string, string | string[]>;
   };
   try {
-    body = (await req.json()) as typeof body;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { requireIntegrationRead } from "@/integrations/core/integration-api-auth";
 import {
@@ -9,11 +9,11 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
-  const sessionOrResponse = await requireIntegrationRead();
+export async function GET(request: NextRequest) {
+  const sessionOrResponse = await requireIntegrationRead(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
-  const url = new URL(req.url);
+  const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
   const limit = Number(url.searchParams.get("limit") ?? "10");
   if (!query) {
@@ -27,13 +27,13 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
-  const sessionOrResponse = await requireIntegrationRead();
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requireIntegrationRead(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: { ticketId?: string };
   try {
-    body = (await req.json()) as typeof body;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }

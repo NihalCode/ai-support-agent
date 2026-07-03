@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { requirePermission } from "@/lib/auth/session";
 import { canConfigureJira, canDisconnectJira } from "@/lib/auth/roles";
@@ -23,8 +23,8 @@ function parseIntegrationId(value: string): IntegrationId | null {
     : null;
 }
 
-export async function GET() {
-  const sessionOrResponse = await requirePermission("integrations:read");
+export async function GET(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("integrations:read", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const orgId = sessionOrResponse.user.orgId;
@@ -45,8 +45,8 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
-  const sessionOrResponse = await requirePermission("integrations:write");
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("integrations:write", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: {

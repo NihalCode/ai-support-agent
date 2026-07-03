@@ -132,9 +132,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.loading) return;
     if (state.authenticated || !state.authConfigured) return;
+    if (state.auth0Authenticated) return;
     if (isPublicPath(pathname)) return;
     router.replace("/login");
-  }, [state.loading, state.authenticated, state.authConfigured, pathname, router]);
+  }, [
+    state.loading,
+    state.authenticated,
+    state.authConfigured,
+    state.auth0Authenticated,
+    pathname,
+    router,
+  ]);
+
+  useEffect(() => {
+    if (state.loading || !state.authenticated) return;
+    if (pathname !== "/login") return;
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo")?.trim();
+    router.replace(returnTo && returnTo.startsWith("/") ? returnTo : "/");
+  }, [state.loading, state.authenticated, pathname, router]);
 
   const hasPermission = useCallback(
     (permission: Permission) => state.permissions.includes(permission),

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { getAppSessionResult, sessionToJson } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/roles";
@@ -7,8 +7,8 @@ import { isAuthConfigured } from "@/lib/auth/config";
 export const runtime = "nodejs";
 
 /** Current user session + RBAC permissions for the client AuthProvider. */
-export async function GET() {
-  const result = await getAppSessionResult();
+export async function GET(request: NextRequest) {
+  const result = await getAppSessionResult(request);
   if (!result.session) {
     return NextResponse.json({
       authenticated: false,

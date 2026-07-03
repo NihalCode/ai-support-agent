@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { requireInvestigateRead } from "@/integrations/core/integration-api-auth";
 import {
@@ -10,8 +10,8 @@ import {
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const sessionOrResponse = await requireInvestigateRead();
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requireInvestigateRead(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body:
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         requesterEmail?: string;
       };
   try {
-    body = (await req.json()) as typeof body;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }

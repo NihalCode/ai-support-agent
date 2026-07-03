@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { logAuthEvent } from "@/lib/auth/auth-audit";
 import { isValidEmail, normalizeEmail } from "@/lib/auth/email-utils";
@@ -14,16 +14,16 @@ import { USER_ROLES } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const sessionOrResponse = await requirePermission("users:read");
+export async function GET(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("users:read", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const invites = await listInvites(sessionOrResponse.user.orgId);
   return NextResponse.json({ invites, roles: USER_ROLES });
 }
 
-export async function POST(request: Request) {
-  const sessionOrResponse = await requirePermission("users:write");
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requirePermission("users:write", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: { email?: string; role?: string; expiryDays?: number };

@@ -1,17 +1,17 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { requireIntegrationWrite } from "@/integrations/core/integration-api-auth";
 import { handleSlackTestMessage } from "@/integrations/core/integration-actions";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const sessionOrResponse = await requireIntegrationWrite();
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requireIntegrationWrite(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: { channel?: string; text?: string };
   try {
-    body = (await req.json()) as typeof body;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }

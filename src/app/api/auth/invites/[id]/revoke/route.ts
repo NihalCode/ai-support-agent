@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { logAuthEvent } from "@/lib/auth/auth-audit";
 import { revokeInvite } from "@/lib/auth/invite-store";
@@ -7,10 +7,10 @@ import { requirePermission } from "@/lib/auth/session";
 export const runtime = "nodejs";
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const sessionOrResponse = await requirePermission("users:write");
+  const sessionOrResponse = await requirePermission("users:write", request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   const { id } = await context.params;

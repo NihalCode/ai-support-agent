@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import type { AppSession } from "@/lib/auth/session";
@@ -13,16 +14,22 @@ import {
 } from "@/lib/auth/roles";
 import type { IntegrationId } from "@/integrations/core/IntegrationTypes";
 
-export async function requireIntegrationRead(): Promise<AppSession | NextResponse> {
-  return requirePermission("integrations:read");
+export async function requireIntegrationRead(
+  request?: NextRequest
+): Promise<AppSession | NextResponse> {
+  return requirePermission("integrations:read", request);
 }
 
-export async function requireIntegrationWrite(): Promise<AppSession | NextResponse> {
-  return requirePermission("integrations:write");
+export async function requireIntegrationWrite(
+  request?: NextRequest
+): Promise<AppSession | NextResponse> {
+  return requirePermission("integrations:write", request);
 }
 
-export async function requireInvestigateRead(): Promise<AppSession | NextResponse> {
-  return requirePermission("investigate:write" as Permission);
+export async function requireInvestigateRead(
+  request?: NextRequest
+): Promise<AppSession | NextResponse> {
+  return requirePermission("investigate:write" as Permission, request);
 }
 
 export function assertConfigureIntegration(

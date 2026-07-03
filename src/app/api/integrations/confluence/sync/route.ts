@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { requireIntegrationWrite } from "@/integrations/core/integration-api-auth";
 import {
@@ -9,19 +9,19 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const sessionOrResponse = await requireIntegrationWrite();
+export async function GET(request: NextRequest) {
+  const sessionOrResponse = await requireIntegrationWrite(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
   return NextResponse.json(await handleConfluenceSources());
 }
 
-export async function POST(req: Request) {
-  const sessionOrResponse = await requireIntegrationWrite();
+export async function POST(request: NextRequest) {
+  const sessionOrResponse = await requireIntegrationWrite(request);
   if (sessionOrResponse instanceof NextResponse) return sessionOrResponse;
 
   let body: { spaceKey?: string };
   try {
-    body = (await req.json()) as typeof body;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
