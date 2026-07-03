@@ -15,6 +15,7 @@ import {
   createUserFromInvite,
   getUserByEmail,
   getUserById,
+  relinkUserAuthSubject,
   upsertUserFromLogin,
 } from "@/lib/auth/user-store";
 import { auth0 } from "@/lib/auth0";
@@ -163,11 +164,44 @@ export async function getAppSessionResult(
   }
 
   if (existingByEmail && existingByEmail.id !== authUser.sub) {
-    return {
-      session: null,
-      auth0Authenticated: true,
-      accessDenied: { reason: "wrong_invite_email", invitedEmail: existingByEmail.email },
-    };
+    if (existingByEmail.status === "disabled") {
+      return {
+        session: null,
+        auth0Authenticated: true,
+        accessDenied: { reason: "disabled" },
+      };
+    }
+
+    const relinked = await relinkUserAuthSubject({
+      previousId: existingByEmail.id,
+      auth0Sub: authUser.sub,
+      email: authUser.email,
+      name: authUser.name,
+      picture: authUser.picture,
+      orgId,
+    });
+
+    if (!relinked) {
+      return {
+        session: null,
+        auth0Authenticated: true,
+        accessDenied: { reason: "invite_required" },
+      };
+    }
+
+    await logAuthEvent({
+      action: "auth.auth_subject_relinked",
+      actorUserId: relinked.id,
+      actorEmail: relinked.email,
+      metadata: { previousAuthSubject: existingByEmail.id },
+    });
+    await logAuthEvent({
+      action: "auth.login_success",
+      actorUserId: relinked.id,
+      actorEmail: relinked.email,
+      metadata: { connection: "auth0", relinked: true },
+    });
+    return { session: toAppSession(relinked), auth0Authenticated: true };
   }
 
   const access = await checkEmailAccess(authUser.email, orgId);

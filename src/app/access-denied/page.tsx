@@ -24,7 +24,7 @@ const REASON_COPY: Record<
   },
   wrong_invite_email: {
     title: "Wrong email for this invite",
-    body: "Sign in with the invited email or request a new invite.",
+    body: "Sign in with the email address that received the invite, or ask an administrator for a new invite.",
     testId: "access-denied-wrong-email",
   },
   disabled: {
@@ -42,58 +42,54 @@ const REASON_COPY: Record<
 export default async function AccessDeniedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reason?: string; email?: string }>;
+  searchParams: Promise<{ reason?: string }>;
 }) {
   const params = await searchParams;
   const reason = params.reason?.trim() || "invite_required";
-  const invitedEmail = params.email?.trim();
   const copy = REASON_COPY[reason] ?? REASON_COPY.invite_required;
 
-  const body =
-    reason === "wrong_invite_email" && invitedEmail
-      ? `This invite was created for ${invitedEmail}. Sign in with that email or request a new invite.`
-      : copy.body;
-
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div style={{ maxWidth: 480, textAlign: "center" }} data-testid={copy.testId}>
-        <h1 style={{ fontSize: 24, marginBottom: 8 }}>{copy.title}</h1>
-        <p style={{ color: "#666", marginBottom: 24, lineHeight: 1.6 }}>{body}</p>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#07090d] px-4 py-12">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(139,92,246,0.14),transparent)]"
+      />
+
+      <div
+        className="relative w-full max-w-[480px] rounded-2xl border border-slate-700/60 bg-slate-900/90 p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+        data-testid={copy.testId}
+      >
+        <div className="mb-6 flex flex-col items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/cyware_logo.png"
+            alt="Cyware"
+            width={44}
+            height={44}
+            className="h-11 w-11 object-contain"
+          />
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-violet-400/90">
+            AI Support Studio
+          </p>
+        </div>
+
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-50">{copy.title}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-slate-400">{copy.body}</p>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
             href="/auth/logout?returnTo=/login"
             data-testid="access-denied-sign-out"
-            style={{
-              display: "inline-block",
-              padding: "10px 20px",
-              background: "#111",
-              color: "#fff",
-              borderRadius: 6,
-              textDecoration: "none",
-            }}
+            className="inline-flex items-center justify-center rounded-lg bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-900 no-underline transition hover:bg-white hover:no-underline"
           >
             Sign out
           </a>
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
             href="/login"
-            style={{
-              display: "inline-block",
-              padding: "10px 20px",
-              border: "1px solid #ccc",
-              color: "#111",
-              borderRadius: 6,
-              textDecoration: "none",
-            }}
+            data-testid="access-denied-back-login"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-500 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 no-underline transition hover:border-slate-400 hover:bg-slate-700 hover:no-underline"
           >
             Back to login
           </a>

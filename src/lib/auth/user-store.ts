@@ -120,6 +120,41 @@ async function upsertUserFromLoginFile(input: UpsertUserInput): Promise<StoredUs
   return updated;
 }
 
+async function relinkUserAuthSubjectFile(
+  input: RelinkUserAuthSubjectInput
+): Promise<StoredUser | null> {
+  const orgId = input.orgId ?? defaultOrgId();
+  const store = await readFileStore();
+  const idx = store.users.findIndex((u) => u.id === input.previousId && u.orgId === orgId);
+  if (idx < 0) return null;
+
+  const existing = store.users[idx]!;
+  if (normalizeEmail(existing.email) !== normalizeEmail(input.email)) return null;
+
+  const conflictIdx = store.users.findIndex((u) => u.id === input.auth0Sub);
+  if (conflictIdx >= 0 && conflictIdx !== idx) return null;
+
+  const now = new Date().toISOString();
+  for (const user of store.users) {
+    if (user.invitedByUserId === input.previousId) {
+      user.invitedByUserId = input.auth0Sub;
+    }
+  }
+
+  const relinked: StoredUser = {
+    ...existing,
+    id: input.auth0Sub,
+    email: normalizeEmail(input.email),
+    name: input.name ?? existing.name,
+    picture: input.picture ?? existing.picture ?? null,
+    lastActiveAt: now,
+    updatedAt: now,
+  };
+  store.users[idx] = relinked;
+  await writeFileStore(store);
+  return relinked;
+}
+
 async function createUserFromInviteFile(input: CreateUserFromInviteInput): Promise<StoredUser> {
   const orgId = input.orgId ?? defaultOrgId();
   const now = new Date().toISOString();
@@ -259,6 +294,63 @@ async function upsertUserFromLoginPostgres(input: UpsertUserInput): Promise<Stor
   return rows[0] ? rowToStoredUser(rows[0]) : null;
 }
 
+async function relinkUserAuthSubjectPostgres(
+  input: RelinkUserAuthSubjectInput
+): Promise<StoredUser | null> {
+  const orgId = input.orgId ?? defaultOrgId();
+  const existing = await getUserByIdPostgres(input.previousId);
+  if (!existing || existing.orgId !== orgId) return null;
+  if (normalizeEmail(existing.email) !== normalizeEmail(input.email)) return null;
+
+  const conflict = await getUserByIdPostgres(input.auth0Sub);
+  if (conflict && conflict.id !== input.previousId) return null;
+
+  const oldId = input.previousId;
+  const newId = input.auth0Sub;
+
+  await pgQuery`UPDATE app_users SET invited_by_user_id = ${newId} WHERE invited_by_user_id = ${oldId}`;
+  await pgQuery`UPDATE user_invites SET invited_by_user_id = ${newId} WHERE invited_by_user_id = ${oldId}`;
+  await pgQuery`UPDATE audit_logs SET actor_user_id = ${newId} WHERE actor_user_id = ${oldId}`;
+  await pgQuery`
+    UPDATE approval_requests SET requested_by_user_id = ${newId} WHERE requested_by_user_id = ${oldId}
+  `;
+  await pgQuery`
+    UPDATE approval_requests SET approved_by_user_id = ${newId} WHERE approved_by_user_id = ${oldId}
+  `;
+  await pgQuery`UPDATE slack_conversations SET app_user_id = ${newId} WHERE app_user_id = ${oldId}`;
+  await pgQuery`UPDATE app_notifications SET user_id = ${newId} WHERE user_id = ${oldId}`;
+  await pgQuery`
+    UPDATE investigation_links SET assigned_to_user_id = ${newId} WHERE assigned_to_user_id = ${oldId}
+  `;
+  await pgQuery`
+    UPDATE investigation_links SET created_by_user_id = ${newId} WHERE created_by_user_id = ${oldId}
+  `;
+  await pgQuery`
+    UPDATE knowledge_sources SET created_by_user_id = ${newId} WHERE created_by_user_id = ${oldId}
+  `;
+  await pgQuery`
+    UPDATE integrations SET created_by_user_id = ${newId} WHERE created_by_user_id = ${oldId}
+  `;
+  await pgQuery`
+    UPDATE integration_credentials SET updated_by = ${newId} WHERE updated_by = ${oldId}
+  `;
+  await pgQuery`UPDATE integration_audit_log SET actor_id = ${newId} WHERE actor_id = ${oldId}`;
+
+  const rows = await pgQuery`
+    UPDATE app_users
+    SET id = ${newId},
+        email = ${normalizeEmail(input.email)},
+        name = ${input.name ?? existing.name},
+        picture = ${input.picture ?? existing.picture ?? null},
+        last_active_at = NOW(),
+        updated_at = NOW()
+    WHERE id = ${oldId} AND org_id = ${orgId}
+    RETURNING id, email, name, role, org_id, status, invited_by_user_id, accepted_invite_at,
+              picture, created_at, updated_at, last_active_at
+  `;
+  return rows[0] ? rowToStoredUser(rows[0]) : null;
+}
+
 async function createUserFromInvitePostgres(
   input: CreateUserFromInviteInput
 ): Promise<StoredUser> {
@@ -353,6 +445,15 @@ export interface CreateUserFromInviteInput {
   orgId?: string;
 }
 
+export interface RelinkUserAuthSubjectInput {
+  previousId: string;
+  auth0Sub: string;
+  email: string;
+  name?: string | null;
+  picture?: string | null;
+  orgId?: string;
+}
+
 export async function listUsers(orgId = defaultOrgId()): Promise<StoredUser[]> {
   return isPostgresConfigured()
     ? listUsersPostgres(orgId)
@@ -388,6 +489,18 @@ export async function createUserFromInvite(
   return isPostgresConfigured()
     ? createUserFromInvitePostgres(input)
     : createUserFromInviteFile(input);
+}
+
+/**
+ * Move an existing user record to a new Auth0 subject when the same email
+ * signs in via a different connection (e.g. Google vs email/password).
+ */
+export async function relinkUserAuthSubject(
+  input: RelinkUserAuthSubjectInput
+): Promise<StoredUser | null> {
+  return isPostgresConfigured()
+    ? relinkUserAuthSubjectPostgres(input)
+    : relinkUserAuthSubjectFile(input);
 }
 
 export async function updateUserRole(

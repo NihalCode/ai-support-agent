@@ -123,9 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/access-denied")) return;
 
     const params = new URLSearchParams({ reason: state.accessDenied.reason });
-    if (state.accessDenied.invitedEmail) {
-      params.set("email", state.accessDenied.invitedEmail);
-    }
     router.replace(`/access-denied?${params.toString()}`);
   }, [state.loading, state.auth0Authenticated, state.accessDenied, pathname, router]);
 

@@ -56,4 +56,27 @@ describe("user-store invite-only", () => {
     });
     expect(updated?.name).toBe("Updated Name");
   });
+
+  it("relinks an existing user to a new Auth0 subject for the same email", async () => {
+    const { createUserFromInvite, relinkUserAuthSubject, getUserById } = await import(
+      "@/lib/auth/user-store"
+    );
+    await createUserFromInvite({
+      id: "google-oauth2|abc",
+      email: "user@example.com",
+      role: "viewer",
+    });
+
+    const relinked = await relinkUserAuthSubject({
+      previousId: "google-oauth2|abc",
+      auth0Sub: "auth0|xyz",
+      email: "user@example.com",
+      name: "User Updated",
+    });
+
+    expect(relinked?.id).toBe("auth0|xyz");
+    expect(relinked?.name).toBe("User Updated");
+    expect(await getUserById("google-oauth2|abc")).toBeNull();
+    expect(await getUserById("auth0|xyz")).not.toBeNull();
+  });
 });
