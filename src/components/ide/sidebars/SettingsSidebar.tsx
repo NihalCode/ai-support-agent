@@ -3,6 +3,7 @@
 import { productConfig } from "@/lib/product-config";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useWorkspace } from "../WorkspaceProvider";
+import { AppSelect } from "@/components/ui/AppSelect";
 
 export type SettingsSection =
   | "integrations"
@@ -15,7 +16,8 @@ export type SettingsSection =
   | "metrics"
   | "metrics-settings"
   | "credentials"
-  | "users";
+  | "users"
+  | "personal-preferences";
 
 export function SettingsSidebar({
   activeSection = "integrations",
@@ -52,22 +54,28 @@ export function SettingsSidebar({
         <h3 style={{ fontSize: 12, margin: "0 0 8px", color: "var(--muted)" }}>Experience</h3>
         <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
           Mode
-          <select
+          <AppSelect
+            testId="settings-mode-select"
             value={productMode}
-            onChange={(e) => setProductMode(e.target.value as "client" | "developer")}
-            data-testid="settings-mode-select"
-          >
-            <option value="client">Support Mode — guided workflows</option>
-            {canUseDeveloperMode && (
-              <option value="developer">Developer / Admin Mode — full IDE tools</option>
-            )}
-          </select>
+            onChange={(v) => setProductMode(v as "client" | "developer")}
+            aria-label="Support or Developer mode"
+            options={[
+              { value: "client", label: "Support Mode — guided workflows" },
+              ...(canUseDeveloperMode
+                ? [{ value: "developer" as const, label: "Developer / Admin Mode — full IDE tools" }]
+                : []),
+            ]}
+          />
         </label>
         <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
           {isClientMode
             ? "Support Mode shows investigations, customer response, linked tickets, and friendly integration status."
             : "Developer / Admin Mode shows terminal, MCP, raw logs, env details, and system health."}
         </p>
+      </section>
+      <section>
+        <h3 style={{ fontSize: 12, margin: "0 0 8px", color: "var(--muted)" }}>Personal</h3>
+        {nav("personal-preferences", "Personal Preferences", "settings-nav-personal-preferences")}
       </section>
       <section>
         <h3 style={{ fontSize: 12, margin: "0 0 8px", color: "var(--muted)" }}>Admin</h3>

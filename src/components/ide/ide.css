@@ -188,7 +188,10 @@
   background: #0d1117;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  overflow-y: hidden;
   flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .ide-tab {
@@ -225,8 +228,11 @@
 .ide-editor {
   flex: 1;
   overflow: auto;
+  overflow-x: hidden;
   padding: 12px;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ide-chat-panel {

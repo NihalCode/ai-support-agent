@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useWorkspace } from "../WorkspaceProvider";
+import { AppSelect } from "@/components/ui/AppSelect";
 
 interface EndpointRow {
   method: string;
@@ -35,19 +36,19 @@ export function ApiRegistryEditor({ specId }: { specId?: string }) {
   const spec = specs.find((s) => s.id === selected);
 
   return (
-    <div>
+    <div style={{ minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
       <h2 style={{ marginTop: 0 }}>API Registry</h2>
-      <select
+      <AppSelect
+        testId="api-registry-spec-select"
         value={selected ?? ""}
-        onChange={(e) => setSelected(e.target.value)}
-        style={{ width: "100%", marginBottom: 12, padding: 8, background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 6 }}
-      >
-        {specs.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name} ({s.endpoints} endpoints)
-          </option>
-        ))}
-      </select>
+        onChange={(v) => setSelected(v)}
+        aria-label="API product specification"
+        className="mb-3"
+        options={specs.map((s) => ({
+          value: s.id,
+          label: `${s.name} (${s.endpoints} endpoints)`,
+        }))}
+      />
       {spec && (
         <p style={{ fontSize: 12, color: "var(--muted)" }}>
           {spec.sourceKind} · auth: {spec.authType}

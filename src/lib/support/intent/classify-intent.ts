@@ -25,14 +25,20 @@ function detectTechnicalLevel(message: string): UserTechnicalLevel {
 
 function extractEntities(message: string): IntentEntities {
   const tickets = [...message.matchAll(TICKET_RE)].map((m) => m[1]);
+  const methodMatch = message.match(/\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[\w/{}\-:.]+)/i);
+  const httpMethod = methodMatch?.[1]?.toUpperCase();
   const endpoint =
-    message.match(/\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[\w/{}\-:.]+)/i)?.[2] ??
-    message.match(/\b(\/[\w/{}\-:.]{3,})/)?.[1];
-  const statusCode = message.match(/\b(4\d{2}|5\d{2})\b/)?.[1];
+    methodMatch?.[2] ??
+    message.match(/\b(\/v\d+\/[\w/{}\-:.]+|\b\/[\w/{}\-:.]{3,})/)?.[1];
+  const statusCode = message.match(/\b(400|401|403|404|409|429|500|502|503|504)\b/)?.[1];
   const requestId = message.match(/\b(request[_-]?id|req[_-]?id|trace[_-]?id)[:\s]+([A-Za-z0-9-]+)/i)?.[2];
   const timestamp = message.match(
     /\b(yesterday|today|last week|since \w+|about \d+ days? ago|\d{4}-\d{2}-\d{2})/i
   )?.[0];
+  const event = message.match(/\b(after upgrad(?:e|ing)|post-upgrade|since the upgrade)\b/i)?.[0];
+  const repo =
+    message.match(/\bRepo\s+([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)/i)?.[1] ??
+    message.match(/\b([a-z0-9-]+\/[a-z0-9._-]+)\b/i)?.[1];
   const cqlQuery = message.match(/`([^`]+)`/)?.[1] ?? (/\bcql\b/i.test(message) ? message : undefined);
   const deployTarget = /\bprod(uction)?\b/i.test(message) ? "production" : "preview";
 
@@ -52,7 +58,11 @@ function extractEntities(message: string): IntentEntities {
     supportIssue: message,
     ticketIds: tickets.length ? tickets : undefined,
     endpoint,
+    httpMethod,
     statusCode,
+    errorCode: statusCode,
+    event,
+    repo,
     requestId,
     timestamp,
     apiProduct,
@@ -71,6 +81,8 @@ function confidenceFromScore(top: number, second: number): IntentConfidence {
 
 function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): string {
   switch (intent) {
+    case "api_troubleshooting":
+      return "Diagnose API endpoint, status code, and routing — check registry, gateway, and logs.";
     case "build_app":
     case "unsupported_app_build_request":
       return "App building is not available — I can help with API endpoints, CQL, and implementation guidance.";
@@ -108,7 +120,9 @@ function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): strin
 
 function recommendedRouteFor(intent: UserIntent): string {
   const routes: Partial<Record<UserIntent, string>> = {
+    api_troubleshooting: "api:troubleshoot",
     build_app: "build_app:plan",
+    unsupported_app_build_request: "build_app:plan",
     edit_app: "build_app:edit",
     explain_app: "build_app:explain",
     preview_app: "build_app:preview",
@@ -144,14 +158,14 @@ function clarificationFor(
     if (ctx.buildProjectId) {
       return {
         needs: true,
-        question: "I can do one of these with your current app:",
-        choices: ["Polish the UI", "Prepare a preview link", "Explain how it works"],
+        question: "I can help investigate a support issue or work with APIs/CQL. What should I focus on?",
+        choices: ["Investigate a support issue", "Generate API/CQL help", "Draft a developer handoff"],
       };
     }
     return {
       needs: true,
-      question: "I can help you build an app, investigate a support issue, or work with APIs/CQL. What should I focus on?",
-      choices: ["Build an app", "Investigate a support issue", "Generate API/CQL help"],
+      question: "I can help investigate a support issue, troubleshoot an API error, or work with CQL. What should I focus on?",
+      choices: ["Investigate a support issue", "Troubleshoot an API error", "Generate CQL help"],
     };
   }
   if (top.score - (second?.score ?? 0) < 2 && second && top.score < 7) {
@@ -221,16 +235,21 @@ export function classifyUserIntent(input: ClassifyIntentInput): IntentClassifica
   // Long descriptive messages — infer only with supporting vocabulary
   if (scores.length === 0 || scores[0].score < 4) {
     const wordCount = message.split(/\s+/).filter(Boolean).length;
-    const hasFailure = /\b(fail|error|broken|hang|stop|issue|problem|workflow|automation|timeout|freeze)\b/i.test(
+    const hasFailure = /\b(fail|error|broken|hang|stop|issue|problem|workflow|automation|timeout|freeze|404|500|401|403|stops?|times out)\b/i.test(
       message
     );
-    const hasAppVocab = /\b(search|table|dashboard|indicator|analyst|team|tool|app|portal|page where)\b/i.test(
-      message
-    );
-    if (wordCount >= 8 && !ctx.buildProjectId && hasFailure) {
+    const hasApiPath = /\b\/v\d+\/|\b(GET|POST|PUT|PATCH|DELETE)\s+\//i.test(message);
+    if (wordCount >= 3 && hasApiPath && hasFailure) {
+      scores.push({ intent: "api_troubleshooting", score: 6, reason: "API path + failure" });
+    } else if (wordCount >= 8 && !ctx.buildProjectId && hasFailure) {
       scores.push({ intent: "diagnose_support_issue", score: 5, reason: "long descriptive failure message" });
-    } else if (wordCount >= 6 && hasAppVocab && !hasFailure && !ctx.buildProjectId) {
-      scores.push({ intent: "build_app", score: 5, reason: "app-like vocabulary" });
+    } else if (wordCount >= 6 && !ctx.buildProjectId && !hasFailure && !hasApiPath) {
+      const hasAppVocab = /\b(search tool|dashboard|internal tool|portal|page where|client-facing search)\b/i.test(
+        message
+      );
+      if (hasAppVocab) {
+        scores.push({ intent: "unsupported_app_build_request", score: 5, reason: "app-like vocabulary" });
+      }
     } else if (wordCount >= 8 && ctx.buildProjectId) {
       scores.push({ intent: "edit_app", score: 5, reason: "long message with active app" });
     }
@@ -324,6 +343,7 @@ export function shouldAutoInvestigateFromIntent(
   if (ctx.sessionId) return false;
   const invIntents: UserIntent[] = [
     "diagnose_support_issue",
+    "api_troubleshooting",
     "search_jira",
     "search_logs",
     "suggest_patch",

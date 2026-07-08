@@ -10,6 +10,7 @@ import type {
   InvestigationChatMessage,
 } from "../investigation/types";
 import { enrichSupportQuery } from "../investigation/extract-query";
+import { userExplicitlyAskedForCommits } from "../developer-handoff";
 import { enrichWithEndpointInference } from "../investigation/infer-api";
 import { newSessionId, saveSession, getSession } from "../investigation/session-store";
 import { runJiraAgent } from "../agents/jiraAgent";
@@ -435,6 +436,7 @@ Keep answers concise and actionable.`,
 
 function heuristicChatReply(ctx: InvestigationContext, message: string): string {
   const m = message.toLowerCase();
+  const wantsCommits = userExplicitlyAskedForCommits(message);
   if (/known|duplicate|jira/i.test(m)) {
     return `${ctx.jira.summary}${ctx.jira.duplicateOf ? ` Duplicate of ${ctx.jira.duplicateOf}.` : ""}`;
   }
@@ -446,7 +448,7 @@ function heuristicChatReply(ctx: InvestigationContext, message: string): string 
       ? `Log evidence: ${ctx.logs.entries.map((l) => l.summary).join(" | ")}`
       : ctx.logs.summary;
   }
-  if (/deploy|regression|release/i.test(m)) {
+  if (wantsCommits && /deploy|regression|release|commit/i.test(m)) {
     return ctx.deployments.summary;
   }
   if (/fix|patch|can we fix/i.test(m)) {

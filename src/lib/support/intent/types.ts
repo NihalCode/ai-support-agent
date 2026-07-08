@@ -7,6 +7,7 @@ export type UserIntent =
   | "preview_app"
   | "deploy_app"
   | "unsupported_app_build_request"
+  | "api_troubleshooting"
   | "commit_changes"
   | "diagnose_support_issue"
   | "continue_investigation"
@@ -37,7 +38,11 @@ export interface IntentEntities {
   supportIssue?: string;
   ticketIds?: string[];
   endpoint?: string;
+  httpMethod?: string;
   statusCode?: string;
+  errorCode?: string;
+  event?: string;
+  repo?: string;
   requestId?: string;
   timestamp?: string;
   apiProduct?: string;

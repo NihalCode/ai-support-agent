@@ -26,8 +26,19 @@ type SubTab = (typeof SUBTABS)[number][0];
 export function IntegrationsPanel({ initialTab = "health" }: { initialTab?: SubTab }) {
   const [tab, setTab] = useState<SubTab>(initialTab);
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <div style={{ display: "grid", gap: 16, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "nowrap",
+          overflowX: "auto",
+          overflowY: "hidden",
+          maxWidth: "100%",
+          paddingBottom: 4,
+        }}
+        data-testid="integrations-subtab-bar"
+      >
         {SUBTABS.map(([id, label]) => (
           <button
             key={id}

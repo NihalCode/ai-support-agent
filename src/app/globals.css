@@ -41,13 +41,195 @@
 
   --shadow-soft: 0 16px 50px rgba(0, 0, 0, 0.34);
   --shadow-glow: 0 0 40px rgba(139, 92, 246, 0.16);
+
+  --app-font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --app-font-scale: 1;
+  --app-line-height: 1.5;
+  --app-contrast-multiplier: 1;
 }
 
 html,
 body {
   background: var(--background);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-family);
+  font-size: calc(1rem * var(--app-font-scale));
+  line-height: var(--app-line-height);
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+html.pref-high-contrast {
+  --text: #ffffff;
+  --muted: #cbd5e1;
+  --border: rgba(203, 213, 225, 0.45);
+  --surface-2: #1a2332;
+}
+
+html.pref-reading-friendly .chat-message-body,
+html.pref-reading-friendly .pref-panel,
+html.pref-reading-friendly .ide-editor {
+  letter-spacing: 0.01em;
+  max-width: 72ch;
+}
+
+html.pref-reduced-motion *,
+html.pref-reduced-motion *::before,
+html.pref-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-reduced-motion="false"]) *,
+  html:not([data-reduced-motion="false"]) *::before,
+  html:not([data-reduced-motion="false"]) *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Accessible custom select — dark theme */
+.app-select {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-select-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.app-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: linear-gradient(180deg, rgba(30, 27, 46, 0.95), rgba(15, 23, 42, 0.98));
+  color: #f8fafc;
+  font-size: calc(11px * var(--app-font-scale));
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+}
+
+.app-select-trigger:focus-visible {
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.55);
+}
+
+.app-select-trigger--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.app-select-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: #0f172a;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.app-select-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: calc(12px * var(--app-font-scale));
+  cursor: pointer;
+}
+
+.app-select-option--highlight {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.app-select-option--selected {
+  background: rgba(139, 92, 246, 0.22);
+  color: #f5f3ff;
+}
+
+.app-select-option--disabled {
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.pref-panel {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.pref-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 20px;
+}
+
+.pref-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pref-field-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pref-section {
+  margin-bottom: 16px;
+}
+
+.pref-zoom-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pref-toggles {
+  display: grid;
+  gap: 10px;
+}
+
+.pref-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 * {

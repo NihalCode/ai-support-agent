@@ -110,6 +110,7 @@ export function EditorArea({
               | "notifications"
               | "retention"
               | "users"
+              | "personal-preferences"
               | undefined
           }
         />

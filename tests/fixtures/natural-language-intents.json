@@ -3,77 +3,77 @@
   "cases": [
     {
       "message": "I need a small internal tool where analysts can search indicators and click into details.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Can you make a dashboard for checking IPs and domains?",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Create something my team can use to look up threats.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "We need a portal for our analysts to review IOC matches.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Make an app where we can search indicators with a table.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "I want a page where analysts type a query and see results.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Help me build a threat lookup tool for the SOC.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Something for the team to search CTIX data quickly.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Design a simple dashboard for indicator review.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Could you scaffold a frontend for searching bad IPs?",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Generate an internal UI for indicator details.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Our analysts need a search tool with a details panel.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Build a small Next app for threat indicator lookup.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "Create a tool to query indicators and open records.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
       "message": "I need a client-facing search page for threat data.",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {
@@ -651,7 +651,7 @@
     },
     {
       "message": "/build-app indicator search dashboard",
-      "expectedIntent": "build_app",
+      "expectedIntent": "unsupported_app_build_request",
       "context": {}
     },
     {

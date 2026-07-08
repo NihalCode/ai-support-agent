@@ -7,6 +7,7 @@ import { IntegrationStatusChip, type IntegrationChipStatus } from "./Integration
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
+import { AppSelect } from "@/components/ui/AppSelect";
 
 export function TopBar({
   integrations,
@@ -72,21 +73,22 @@ export function TopBar({
           </button>
         )}
 
-        <select
-          data-testid="product-mode-toggle"
+        <AppSelect
+          testId="product-mode-toggle"
           value={productMode}
-          onChange={(e) => setProductMode(e.target.value as "client" | "developer")}
+          onChange={(v) => setProductMode(v as "client" | "developer")}
           aria-label="Client or Developer mode"
-          className={cn(
-            "rounded-full border px-2.5 py-1 text-xs transition-all duration-200 cursor-pointer outline-none",
+          triggerClassName={cn(
+            "!rounded-full !px-2.5 !py-1 !text-xs",
             isClientMode
-              ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
-              : "border-violet-400/25 bg-violet-500/10 text-violet-200"
+              ? "!border-emerald-400/20 !bg-emerald-500/10 !text-emerald-200"
+              : "!border-violet-400/25 !bg-violet-500/10 !text-violet-200"
           )}
-        >
-          <option value="client">Support Mode</option>
-          {canUseDeveloperMode && <option value="developer">Developer Mode</option>}
-        </select>
+          options={[
+            { value: "client", label: "Support Mode" },
+            ...(canUseDeveloperMode ? [{ value: "developer" as const, label: "Developer Mode" }] : []),
+          ]}
+        />
 
         {!isClientMode && (
           <button

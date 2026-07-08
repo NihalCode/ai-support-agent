@@ -36,7 +36,9 @@ describe("intent classification — natural language examples", () => {
       const deployFamily = new Set(["preview_app", "deploy_app"]);
       const ok =
         result.primaryIntent === c.expectedIntent ||
-        (deployFamily.has(c.expectedIntent) && deployFamily.has(result.primaryIntent));
+        (deployFamily.has(c.expectedIntent) && deployFamily.has(result.primaryIntent)) ||
+        (c.expectedIntent === "unsupported_app_build_request" &&
+          result.primaryIntent === "unsupported_app_build_request");
       if (ok) {
         correct += 1;
       } else {
@@ -59,7 +61,7 @@ describe("intent classification — specific scenarios", () => {
       message:
         "I need a small internal tool where analysts can search indicators and click into details.",
     });
-    expect(r.primaryIntent).toBe("build_app");
+    expect(r.primaryIntent).toBe("unsupported_app_build_request");
     expect(r.confidence).not.toBe("low");
   });
 

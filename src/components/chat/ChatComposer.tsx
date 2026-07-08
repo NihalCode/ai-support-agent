@@ -7,6 +7,7 @@ import type { IntegrationChipStatus } from "./IntegrationStatusChip";
 import type { ChatMode } from "@/components/ide/types";
 import type { PendingAttachment } from "@/hooks/useChatPanel";
 import { CHAT_MODE_LABELS, CHAT_MODE_DESCRIPTIONS } from "@/agent/ModeSelector";
+import { AppSelect } from "@/components/ui/AppSelect";
 
 function ContextChip({ children }: { children: React.ReactNode }) {
   return (
@@ -95,22 +96,21 @@ export function ChatComposer({
         >
           <div className="flex flex-wrap items-center gap-2 border-b border-white/8 px-4 py-2">
             {chatMode && onChatModeChange ? (
-              <select
-                data-testid="chat-mode-select"
+              <AppSelect
+                testId="chat-mode-select"
                 value={chatMode}
-                onChange={(e) => onChatModeChange(e.target.value as ChatMode)}
+                onChange={(v) => onChatModeChange(v as ChatMode)}
                 title={CHAT_MODE_DESCRIPTIONS[chatMode]}
                 aria-label="Chat mode"
-                className="rounded-full border border-violet-400/25 bg-violet-500/10 px-2.5 py-0.5 text-[11px] text-violet-100 outline-none cursor-pointer"
-              >
-                {(Object.keys(CHAT_MODE_LABELS) as ChatMode[])
+                triggerClassName="!rounded-full !border-violet-400/25 !bg-violet-500/10 !text-violet-100 !text-[11px] !py-0.5 !px-2.5"
+                options={(Object.keys(CHAT_MODE_LABELS) as ChatMode[])
                   .filter((m) => m !== "developer" || canUseDeveloperMode)
-                  .map((m) => (
-                    <option key={m} value={m}>
-                      {CHAT_MODE_LABELS[m]}
-                    </option>
-                  ))}
-              </select>
+                  .map((m) => ({
+                    value: m,
+                    label: CHAT_MODE_LABELS[m],
+                    disabled: m === "developer" && !canUseDeveloperMode,
+                  }))}
+              />
             ) : (
               <ContextChip>{modeLabel}</ContextChip>
             )}

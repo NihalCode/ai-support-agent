@@ -36,6 +36,6 @@ describe("Unified orchestrator routing", () => {
     });
     const route = routeWorkflow(classification, {}, enrichedMessage);
     expect(route.kind).toBe("unsupported_app_build");
-    expect(classification.primaryIntent).toBe("build_app");
+    expect(classification.primaryIntent).toBe("unsupported_app_build_request");
   });
 });

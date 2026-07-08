@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AuditTimelinePanel } from "@/components/enterprise/AuditTimelinePanel";
+import { AppSelect } from "@/components/ui/AppSelect";
 import type {
   IntegrationHealthCard,
   SetupChecklistItem,
@@ -45,7 +46,7 @@ export function IntegrationHealthPanel({ developerMode }: { developerMode: boole
   if (error) return <p style={{ color: "#ef4444" }}>{error}</p>;
 
   return (
-    <div data-testid="integration-health-panel">
+    <div data-testid="integration-health-panel" style={{ minWidth: 0, maxWidth: "100%" }}>
       <p style={{ color: "var(--muted)", fontSize: 13 }}>{summary}</p>
       {!developerMode && degraded.length > 0 && (
         <ul style={{ fontSize: 13, paddingLeft: 18 }}>
@@ -54,7 +55,7 @@ export function IntegrationHealthPanel({ developerMode }: { developerMode: boole
           ))}
         </ul>
       )}
-      <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+      <div style={{ display: "grid", gap: 12, marginTop: 16, minWidth: 0, maxWidth: "100%" }}>
         {cards.map((card) => (
           <div
             key={card.integration}
@@ -63,6 +64,9 @@ export function IntegrationHealthPanel({ developerMode }: { developerMode: boole
               border: "1px solid var(--border)",
               borderRadius: 8,
               padding: 12,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -514,17 +518,18 @@ function MetricsRangeSelect({
   onChange: (v: MetricsRange) => void;
 }) {
   return (
-    <select
+    <AppSelect
+      testId="metrics-range-select"
       value={value}
-      onChange={(e) => onChange(e.target.value as MetricsRange)}
-      data-testid="metrics-range-select"
-      style={{ fontSize: 13, marginBottom: 16 }}
-    >
-      <option value="today">Today</option>
-      <option value="7d">Last 7 days</option>
-      <option value="30d">Last 30 days</option>
-      <option value="qtd">Quarter to date</option>
-    </select>
+      onChange={onChange}
+      aria-label="Metrics time range"
+      options={[
+        { value: "today", label: "Today" },
+        { value: "7d", label: "Last 7 days" },
+        { value: "30d", label: "Last 30 days" },
+        { value: "qtd", label: "Quarter to date" },
+      ]}
+    />
   );
 }
 

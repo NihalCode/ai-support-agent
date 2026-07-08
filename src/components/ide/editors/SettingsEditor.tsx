@@ -19,6 +19,7 @@ import {
   SetupChecklistPanel,
   SystemHealthPanel,
 } from "./EnterprisePanels";
+import { PersonalPreferences } from "@/components/settings/PersonalPreferences";
 
 export function SettingsEditor({ initialSection = "integrations" }: { initialSection?: SettingsSection }) {
   const { isClientMode } = useWorkspace();
@@ -33,10 +34,25 @@ export function SettingsEditor({ initialSection = "integrations" }: { initialSec
   return (
     <div
       data-testid="settings-editor"
-      style={{ display: "grid", gridTemplateColumns: "minmax(220px, 280px) 1fr", gap: 24, alignItems: "start" }}
+      className="settings-editor-layout"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(200px, 280px) minmax(0, 1fr)",
+        gap: 24,
+        alignItems: "start",
+        minWidth: 0,
+        maxWidth: "100%",
+        overflowX: "hidden",
+      }}
     >
       <SettingsSidebar activeSection={section} onSectionChange={setSection} />
-      <div>
+      <div style={{ minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
+        {section === "personal-preferences" && (
+          <>
+            <h2 style={{ marginTop: 0, fontSize: 18 }}>Personal Preferences</h2>
+            <PersonalPreferences />
+          </>
+        )}
         {section === "integrations" && (
           <>
             <h2 style={{ marginTop: 0, fontSize: 18 }}>Integrations</h2>

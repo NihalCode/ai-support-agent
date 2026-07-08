@@ -7,7 +7,7 @@ describe("intent integration — unsupported app build", () => {
     const classification = classifyUserIntent({
       message: "Build indicator search dashboard",
     });
-    expect(classification.primaryIntent).toBe("build_app");
+    expect(classification.primaryIntent).toBe("unsupported_app_build_request");
     const route = chooseAgentRoute(classification, {}, classification.extractedEntities.supportIssue ?? "Build indicator search dashboard");
     expect(route.kind).toBe("unsupported_app_build");
   });

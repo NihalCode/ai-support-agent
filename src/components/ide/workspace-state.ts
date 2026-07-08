@@ -37,9 +37,8 @@ export function activityToDefaultTab(activity: ActivityId): EditorTab | null {
     case "cql":
       return { id: "cql-workspace", kind: "cql", title: "CQL" };
     case "build-app":
-      return { id: "build-app-new", kind: "build-app", title: "Build App" };
     case "deployments":
-      return { id: "deployments", kind: "deployments", title: "Deployments" };
+      return null;
     case "mcp":
       return { id: "mcp-config", kind: "mcp-config", title: "MCP" };
     case "settings":

@@ -1,4 +1,5 @@
 import type { UserIntent, IntentScore, WorkspaceIntentContext } from "./types";
+import { userExplicitlyAskedForCommits } from "../developer-handoff";
 
 export interface IntentRule {
   intent: UserIntent;
@@ -7,53 +8,101 @@ export interface IntentRule {
   label: string;
 }
 
+const HTTP_STATUS_RE = /\b(400|401|403|404|409|429|500|502|503|504)\b/;
+const API_PATH_RE = /\b\/v\d+\/[\w/{}\-:.]+|\b\/[\w/{}\-:.]{3,}/;
+
 /** Pattern rules — ordered groups; multiple can match; highest score wins after context boosts. */
 export const INTENT_RULES: IntentRule[] = [
-  // Build app — natural phrasing
+  // API troubleshooting — must beat build_app for error/status/endpoint prompts
   {
-    intent: "build_app",
+    intent: "api_troubleshooting",
+    weight: 14,
+    re: /\b(404|401|403|500|502|503)\b/i,
+    label: "HTTP status code",
+  },
+  {
+    intent: "api_troubleshooting",
+    weight: 13,
+    re: /\b(GET|POST|PUT|PATCH|DELETE)\s+\/[\w/{}\-:.]+/i,
+    label: "HTTP method + path",
+  },
+  {
+    intent: "api_troubleshooting",
+    weight: 12,
+    re: /\b(after upgrad(e|ing)|post-upgrade|since the upgrade)\b/i,
+    label: "after upgrade",
+  },
+  {
+    intent: "api_troubleshooting",
+    weight: 11,
+    re: /\b(returns?|returned|getting|got)\s+(a\s+)?(4\d{2}|5\d{2})\b/i,
+    label: "returns status code",
+  },
+  {
+    intent: "api_troubleshooting",
+    weight: 10,
+    re: /\b(endpoint|api)\b.{0,40}\b(not found|404|error|fail|timeout)\b/i,
+    label: "endpoint error",
+  },
+  {
+    intent: "api_troubleshooting",
+    weight: 10,
+    re: /\b\/v[123]\/[\w/{}\-:.]+/i,
+    label: "versioned API path",
+  },
+
+  // Build app — only explicit app-building phrasing (never primary for API errors)
+  {
+    intent: "unsupported_app_build_request",
     weight: 8,
     re: /\b(build|create|scaffold|generate|make)\b.*\b(app|application|dashboard|portal|frontend|tool|ui)\b/i,
     label: "explicit build",
   },
   {
-    intent: "build_app",
+    intent: "unsupported_app_build_request",
     weight: 7,
     re: /\b(i need|we need|can you make|want)\b.{0,40}\b(internal tool|dashboard|small app|something my team|portal|page where)\b/i,
     label: "need a tool",
   },
   {
-    intent: "build_app",
+    intent: "unsupported_app_build_request",
+    weight: 8,
+    re: /\bcreate something\b.{0,40}\b(team|analysts?)\b/i,
+    label: "create for team",
+  },
+
+  {
+    intent: "unsupported_app_build_request",
     weight: 7,
     re: /\b(analysts?|team)\b.{0,50}\b(search|look up|review|check)\b.{0,40}\b(indicator|threat|ip|domain|ioc)\b/i,
     label: "analyst tool",
   },
   {
-    intent: "build_app",
+    intent: "unsupported_app_build_request",
     weight: 6,
     re: /\b(dashboard|tool)\b.{0,30}\b(checking|search|lookup|review)\b.{0,30}\b(ip|domain|indicator|threat)\b/i,
     label: "dashboard for lookup",
   },
   {
-    intent: "build_app",
-    weight: 8,
-    re: /\bcreate something\b.{0,40}\b(team|analysts?)\b/i,
-    label: "create for team",
-  },
-  {
-    intent: "build_app",
-    weight: 8,
+    intent: "unsupported_app_build_request",
+    weight: 7,
     re: /\blook up threats\b|\bclient-facing search\b/i,
     label: "threat lookup app",
   },
   {
-    intent: "build_app",
+    intent: "unsupported_app_build_request",
     weight: 7,
     re: /\b(search tool|details panel|client-facing search|internal tool)\b/i,
     label: "app feature phrase",
   },
+  {
+    intent: "unsupported_app_build_request",
+    weight: 7,
+    re: /\b(something for the team|design a simple dashboard|search page for threat)\b/i,
+    label: "team tool phrasing",
+  },
 
-  // Edit app — natural phrasing
+  // Edit app — natural phrasing (unsupported)
   {
     intent: "edit_app",
     weight: 9,
@@ -97,7 +146,7 @@ export const INTENT_RULES: IntentRule[] = [
     label: "stakeholder ready",
   },
 
-  // Deploy / preview
+  // Deploy / preview (unsupported)
   {
     intent: "deploy_app",
     weight: 8,
@@ -249,7 +298,7 @@ export const INTENT_RULES: IntentRule[] = [
     label: "build HTTP request",
   },
 
-  // Fix / tests
+  // Fix / tests (build-app legacy — routes to unsupported when active project)
   {
     intent: "fix_error",
     weight: 10,
@@ -297,7 +346,7 @@ export const INTENT_RULES: IntentRule[] = [
     label: "update jira",
   },
 
-  // Commit
+  // Commit — only when explicitly requested (guard applied in scoreMessageRules)
   {
     intent: "commit_changes",
     weight: 7,
@@ -315,8 +364,8 @@ export const INTENT_RULES: IntentRule[] = [
 ];
 
 export const SLASH_INTENT_MAP: Record<string, UserIntent> = {
-  "/build-app": "build_app",
-  "/build": "build_app",
+  "/build-app": "unsupported_app_build_request",
+  "/build": "unsupported_app_build_request",
   "/deploy-app": "deploy_app",
   "/deploy": "deploy_app",
   "/investigate": "diagnose_support_issue",
@@ -336,6 +385,7 @@ export function scoreMessageRules(message: string): IntentScore[] {
   const scores = new Map<UserIntent, IntentScore>();
   for (const rule of INTENT_RULES) {
     if (!rule.re.test(message)) continue;
+    if (rule.intent === "commit_changes" && !userExplicitlyAskedForCommits(message)) continue;
     const existing = scores.get(rule.intent);
     if (!existing || existing.score < rule.weight) {
       scores.set(rule.intent, { intent: rule.intent, score: rule.weight, reason: rule.label });
@@ -343,6 +393,17 @@ export function scoreMessageRules(message: string): IntentScore[] {
       existing.reason += `; ${rule.label}`;
     }
   }
+
+  // Short messages that are just a status code
+  const trimmed = message.trim();
+  if (/^\d{3}$/.test(trimmed)) {
+    scores.set("api_troubleshooting", {
+      intent: "api_troubleshooting",
+      score: 15,
+      reason: "bare status code",
+    });
+  }
+
   return [...scores.values()].sort((a, b) => b.score - a.score);
 }
 
@@ -362,6 +423,27 @@ export function applyContextBoosts(
     }
   };
 
+  const hasApiSignal =
+    HTTP_STATUS_RE.test(message) ||
+    API_PATH_RE.test(message) ||
+    /\b(after upgrad|endpoint|returns? \d{3})\b/i.test(message);
+
+  if (hasApiSignal) {
+    add("api_troubleshooting", 8, "API error signal");
+    add("unsupported_app_build_request", -10, "not app build");
+    add("build_app", -10, "not app build");
+  }
+
+  if (/\b(what should support tell|tell the customer|customer reply|what should I tell)\b/i.test(message)) {
+    add("generate_customer_response", 12, "explicit customer guidance");
+    add("api_troubleshooting", -6, "customer guidance priority");
+  }
+
+  if (/\b(request body|curl|payload for this endpoint|show me the request)\b/i.test(message)) {
+    add("generate_api_request", 6, "API request help");
+    add("api_troubleshooting", -6, "not error troubleshooting");
+  }
+
   if (ctx.buildProjectId) {
     add("edit_app", 4, "active app");
     add("preview_app", 3, "active app");
@@ -369,7 +451,7 @@ export function applyContextBoosts(
     add("explain_app", 3, "active app");
     add("fix_error", 2, "active app");
     add("run_tests", 2, "active app");
-    add("build_app", -3, "active app suppresses new build");
+    add("unsupported_app_build_request", -3, "active app suppresses new build");
 
     if (/\b(share|link|online|preview|deploy|publish|url|colleagues|team can try)\b/i.test(message)) {
       add("preview_app", 7, "share/deploy phrasing");
@@ -403,37 +485,35 @@ export function applyContextBoosts(
     add("search_jira", 2, "active investigation");
     add("search_logs", 2, "active investigation");
     add("suggest_patch", 2, "active investigation");
-    add("build_app", -2, "investigation active");
+    add("unsupported_app_build_request", -2, "investigation active");
   }
 
-  // Vague fix pronouns with context
   if (/^(fix (that|it|this)|can you fix that)\b/i.test(message.trim())) {
     if (ctx.buildFailed || ctx.buildOk === false) add("fix_error", 8, "contextual fix");
     else if (ctx.buildProjectId) add("edit_app", 5, "contextual fix → edit");
     else if (ctx.sessionId) add("continue_investigation", 5, "contextual fix → investigate");
+    else if (hasApiSignal) add("api_troubleshooting", 6, "contextual fix → API");
   }
 
-  // Short vague UI with active app
   if (ctx.buildProjectId && /\b(messy|cluttered|demo|professional|cleaner|polish)\b/i.test(message)) {
     add("edit_app", 6, "vague UI + active app");
   }
 
-  // Share with active app → preview not new investigation
   if (ctx.buildProjectId && /\b(share|link|team|try it|online)\b/i.test(message)) {
     add("preview_app", 5, "share + active app");
     add("deploy_app", 4, "share + active app");
     add("diagnose_support_issue", -4, "not support issue");
   }
 
-  // Disambiguate CQL vs support when failure language present
-  const hasFailure = /\b(fail|error|broken|hang|timeout|stop|issue|problem|broken)\b/i.test(message);
+  const hasFailure = /\b(fail|error|broken|hang|timeout|stop|issue|problem|404|500|401|403)\b/i.test(message);
   if (hasFailure) {
     const diag = boosted.find((s) => s.intent === "diagnose_support_issue");
+    const api = boosted.find((s) => s.intent === "api_troubleshooting");
     const cql = boosted.find((s) => s.intent === "generate_cql");
-    if (diag && cql) diag.score += 4;
+    if (api && hasApiSignal) api.score += 6;
+    else if (diag && cql) diag.score += 4;
   }
 
-  // CQL-only prompts must not route to incident investigation
   if (/\b(write (?:a )?cql|cql query for|cql grammar)\b/i.test(message)) {
     const cql = boosted.find((s) => s.intent === "generate_cql");
     const diag = boosted.find((s) => s.intent === "diagnose_support_issue");
@@ -443,3 +523,5 @@ export function applyContextBoosts(
 
   return boosted.sort((a, b) => b.score - a.score);
 }
+
+export { HTTP_STATUS_RE, API_PATH_RE };
