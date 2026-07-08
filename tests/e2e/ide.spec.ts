@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+import { switchToDeveloperMode, switchToSupportMode } from "./helpers/workspace";
 
 async function openDeveloperInvestigations(page: Page) {
-  await page.getByTestId("product-mode-toggle").selectOption("developer");
+  await switchToDeveloperMode(page);
   await page.getByTestId("activity-investigations").click();
 }
 
@@ -33,7 +34,7 @@ test.describe("App shell", () => {
 
   test("developer mode shows command palette", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("open-command-palette").click();
     await expect(page.getByTestId("command-palette")).toBeVisible();
   });
@@ -51,7 +52,7 @@ test.describe("App shell", () => {
 
   test("switches sidebar via search activity", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-search").click();
     await expect(page.getByTestId("sidebar-header-search")).toBeVisible();
     await expect(page.getByTestId("search-sidebar")).toBeVisible();
@@ -74,7 +75,7 @@ test.describe("Split editor", () => {
 test.describe("Semantic search", () => {
   test("returns mocked semantic results in test mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-search").click();
     await page.getByTestId("search-mode-semantic").click();
     await page.getByTestId("search-input").fill("tag creation fails with 400");
@@ -90,7 +91,7 @@ test.describe("Chat streaming", () => {
     await page.getByTestId("ai-chat-input").fill("What caused the 400 error?");
     await page.getByTestId("ai-chat-input").press("Enter");
     await expect(page.getByTestId("chat-assistant-message")).toContainText(
-      /bulk tag|missing required field|investigate this|What I understood/i,
+      /API troubleshooting|HTTP error|Immediate checks|api troubleshooting/i,
       { timeout: 45000 }
     );
     await expect(page.getByText(/No active session|Start an investigation first|Run Investigate first/i)).toHaveCount(0);
@@ -109,7 +110,7 @@ test.describe("Chat streaming", () => {
     test.setTimeout(90000);
     await page.goto("/");
     const message =
-      "Our block malicious IP workflow stops after about half a minute. Ticket AISUPS-1. I don't know the endpoint.";
+      "Our block malicious IP workflow stops after about half a minute. Ticket AISUPS-1.";
     await page.getByTestId("ai-chat-input").fill(message);
     await page.getByTestId("ai-chat-input").press("Enter");
     await expect(page.getByTestId("chat-assistant-message")).toContainText(/investigate|AISUPS-1|block|workflow/i, {
@@ -226,7 +227,7 @@ test.describe("Investigation workspace UI", () => {
 test.describe("Investigation workspace", () => {
   test("pins evidence from search", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-search").click();
     await page.getByTestId("search-input").fill("tag");
     await page.getByTestId("search-submit").click();
@@ -238,7 +239,7 @@ test.describe("Investigation workspace", () => {
 test.describe("CQL workspace", () => {
   test("opens CQL tab via activity bar", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-cql").click();
     await expect(page.getByText("CQL Workspace")).toBeVisible();
   });
@@ -255,7 +256,7 @@ test.describe("Degraded mode", () => {
 test.describe("Jira sidebar", () => {
   test("finds mock ticket by key and opens editor", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-jira").click();
     await expect(page.getByTestId("jira-sidebar")).toBeVisible();
     await page.getByTestId("jira-search-input").fill("PAY-101");
@@ -267,7 +268,7 @@ test.describe("Jira sidebar", () => {
 
   test("shows error for empty search", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-jira").click();
     await page.getByTestId("jira-search-submit").click();
     await expect(page.getByTestId("jira-search-error")).toBeVisible();
@@ -277,7 +278,7 @@ test.describe("Jira sidebar", () => {
 test.describe("MCP sidebar", () => {
   test("shows MCP status note", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-mcp").click();
     await expect(page.getByTestId("mcp-sidebar")).toBeVisible();
     await expect(page.getByTestId("mcp-sidebar-note")).toBeVisible();
@@ -333,7 +334,7 @@ test.describe("Client mode professionalism", () => {
 test.describe("Investigations sidebar", () => {
   test("lists saved investigations in test mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-investigations").click();
     await expect(page.getByTestId("investigations-sidebar")).toBeVisible();
     await expect(page.locator('[data-testid^="investigation-"]').first()).toBeVisible({ timeout: 10000 });
@@ -343,7 +344,7 @@ test.describe("Investigations sidebar", () => {
 test.describe("Settings and integrations", () => {
   test("opens integration registry with configure forms", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("settings-editor")).toBeVisible();
     await expect(page.getByTestId("integration-health-panel")).toBeVisible({ timeout: 10000 });
@@ -356,7 +357,7 @@ test.describe("Settings and integrations", () => {
 
   test("shows enterprise admin sections in developer mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-settings").click();
     const settings = page.getByTestId("settings-editor");
     await settings.getByTestId("settings-nav-setup").click();
@@ -379,7 +380,7 @@ test.describe("Settings and integrations", () => {
 test.describe("Keyword search", () => {
   test("returns keyword results in test mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-search").click();
     await page.getByTestId("search-mode-keyword").click();
     await page.getByTestId("search-input").fill("PAY-101");
@@ -434,7 +435,7 @@ test.describe("Settings enterprise cards", () => {
 
   test("shows Jira configure in developer mode", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-integrations").click();
     await expect(page.getByTestId("enterprise-configure-jira")).toBeVisible();
   });

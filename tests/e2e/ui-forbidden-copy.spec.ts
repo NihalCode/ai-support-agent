@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { switchToSupportMode } from "./helpers/workspace";
 
 const FORBIDDEN_SUPPORT_COPY = [
   /GitHub \(mock\)/i,
@@ -14,7 +15,7 @@ const FORBIDDEN_SUPPORT_COPY = [
 test.describe("Support Mode forbidden copy", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("client");
+    await switchToSupportMode(page);
     await page.getByTestId("activity-home").click();
   });
 

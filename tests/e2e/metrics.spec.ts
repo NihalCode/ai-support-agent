@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
+import { switchToDeveloperMode, closeChatDockIfOpen } from "./helpers/workspace";
 
 test.describe("Metrics access", () => {
   test("admin can open metrics dashboard in settings", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
+    await closeChatDockIfOpen(page);
     await page.getByTestId("activity-settings").click();
     await page.getByTestId("settings-nav-metrics").click();
     await expect(page.getByTestId("metrics-dashboard-panel")).toBeVisible();
-    await expect(page.getByTestId("metrics-range-select")).toBeVisible();
+    await expect(page.getByTestId("metrics-range-select-trigger")).toBeVisible();
   });
 
   test("metrics summary API returns JSON in test mode", async ({ request }) => {

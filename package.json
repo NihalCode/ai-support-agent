@@ -21,6 +21,7 @@
     "auth:test-invite-check": "tsx scripts/test-invite-check.ts",
     "mcp:check": "node scripts/check-mcp.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:known-issues": "playwright test tests/e2e/known-issues.spec.ts tests/e2e/build-app-removal.spec.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:ide-api": "node scripts/test-ide-api.mjs",

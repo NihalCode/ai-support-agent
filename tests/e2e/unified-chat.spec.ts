@@ -18,8 +18,8 @@ test.describe("Unified chat", () => {
   });
 
   test("mode dropdown is visible and defaults to Balanced", async ({ page }) => {
-    await expect(page.getByTestId("chat-mode-select")).toBeVisible();
-    await expect(page.getByTestId("chat-mode-select")).toHaveValue("balanced");
+    await expect(page.getByTestId("chat-mode-select-trigger")).toBeVisible();
+    await expect(page.getByTestId("chat-mode-select-trigger")).toContainText("Balanced");
   });
 
   test("blocks executable upload", async ({ page }) => {
@@ -61,10 +61,12 @@ test.describe("Unified chat", () => {
   });
 
   test("developer chat mode gated in client product mode", async ({ page }) => {
-    await page.getByTestId("chat-mode-select").selectOption("developer");
-    const options = await page.getByTestId("chat-mode-select").locator("option").allTextContents();
-    if (!options.some((o) => /developer/i.test(o))) {
-      await expect(page.getByTestId("chat-mode-select")).not.toHaveValue("developer");
+    await page.getByTestId("chat-mode-select-trigger").click();
+    const menu = page.getByTestId("chat-mode-select-menu");
+    await expect(menu).toBeVisible();
+    const devOption = menu.getByRole("option", { name: /developer/i });
+    if ((await devOption.count()) === 0 || (await devOption.getAttribute("aria-disabled")) === "true") {
+      await expect(page.getByTestId("chat-mode-select-trigger")).not.toContainText("Developer");
     }
   });
 });

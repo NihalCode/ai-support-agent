@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { switchToDeveloperMode, switchToSupportMode } from "./helpers/workspace";
 
 const FORBIDDEN_SUPPORT = [
   /Agent Trace/i,
@@ -75,7 +76,7 @@ test.describe("Premium chat UI", () => {
   });
 
   test("Support Mode hides developer labels in chat", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("client");
+    await switchToSupportMode(page);
     const panel = page.getByTestId("chat-context-panel");
     const text = await panel.innerText();
     for (const re of FORBIDDEN_SUPPORT) {
@@ -85,13 +86,13 @@ test.describe("Premium chat UI", () => {
   });
 
   test("Developer Mode shows advanced section", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("sidebar-advanced-toggle").click();
     await expect(page.getByTestId("sidebar-advanced-section")).toBeVisible();
   });
 
   test("error card hides technical details in Support Mode", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("client");
+    await switchToSupportMode(page);
     await page.getByTestId("ai-chat-input").fill("/invalid-command-xyz");
     await page.getByTestId("ai-chat-input").press("Enter");
     const tech = page.getByTestId("chat-error-technical");
@@ -107,7 +108,7 @@ test.describe("Premium chat UI", () => {
   });
 
   test("no forbidden text in Support Mode chat area", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("client");
+    await switchToSupportMode(page);
     const chat = page.locator("main");
     const text = await chat.innerText();
     for (const re of FORBIDDEN_SUPPORT) {
@@ -116,7 +117,7 @@ test.describe("Premium chat UI", () => {
   });
 
   test("chat dock keeps main chat history when switching activity", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     const msg = "Persistence check message for chat dock";
     await page.getByTestId("ai-chat-input").fill(msg);
     await page.getByTestId("chat-send-button").click();
@@ -127,7 +128,7 @@ test.describe("Premium chat UI", () => {
   });
 
   test("topbar chat toggle opens and closes dock", async ({ page }) => {
-    await page.getByTestId("product-mode-toggle").selectOption("developer");
+    await switchToDeveloperMode(page);
     await page.getByTestId("activity-investigations").click();
     await expect(page.getByTestId("chat-dock")).toBeVisible();
     await page.getByTestId("topbar-toggle-chat").click();
