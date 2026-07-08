@@ -3,6 +3,7 @@ import "server-only";
 import type { RetrievedChunk, AnalysisCitation, RepoRef } from "./types";
 import { embedQueryText } from "./embed";
 import { getVectorStore, namespaceFor } from "./vector-store";
+import { metrics } from "@/metrics/MetricsService";
 
 /**
  * Retrieval service. Embeds the query and returns the top matching chunks from
@@ -22,6 +23,7 @@ export async function retrieve(
   topK = 12,
   extraNamespaces: string[] = []
 ): Promise<RetrievalOutcome> {
+  const timer = metrics.startTimer("rag.retrieve", "rag");
   const namespace = namespaceFor(`${ref.owner}/${ref.name}`, ref.branch ?? "main");
   const store = getVectorStore();
   const { vector, usedOpenAI } = await embedQueryText(query);
@@ -40,6 +42,15 @@ export async function retrieve(
   raw.sort((a, b) => b.score - a.score);
   const diversified = diversify(raw, topK);
 
+  timer.end({
+    contextUsage: {
+      chunksRetrieved: diversified.length,
+      tokensEstimated: diversified.reduce((s, c) => s + (c.text?.length ?? 0) / 4, 0) | 0,
+      namespaces: namespaces,
+    },
+    metadata: { topK, usedMockStore: store.isMock, usedOpenAI },
+  });
+
   return { chunks: diversified, usedMockStore: store.isMock, usedOpenAI };
 }
 
@@ -49,6 +60,9 @@ export async function retrieveAcross(
   query: string,
   topK = 12
 ): Promise<RetrievalOutcome> {
+  const timer = metrics.startTimer("rag.retrieve", "rag", {
+    metadata: { mode: "across" },
+  });
   const store = getVectorStore();
   const { vector, usedOpenAI } = await embedQueryText(query);
   const raw: RetrievedChunk[] = [];
@@ -60,7 +74,15 @@ export async function retrieveAcross(
     }
   }
   raw.sort((a, b) => b.score - a.score);
-  return { chunks: diversify(raw, topK), usedMockStore: store.isMock, usedOpenAI };
+  const chunks = diversify(raw, topK);
+  timer.end({
+    contextUsage: {
+      chunksRetrieved: chunks.length,
+      namespaces,
+    },
+    metadata: { topK, usedMockStore: store.isMock, usedOpenAI },
+  });
+  return { chunks, usedMockStore: store.isMock, usedOpenAI };
 }
 
 /** Round-robin across source types to avoid a single-file context dump. */

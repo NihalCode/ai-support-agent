@@ -503,3 +503,331 @@ export function NotificationsPanel() {
     </div>
   );
 }
+
+type MetricsRange = "today" | "7d" | "30d" | "qtd";
+
+function MetricsRangeSelect({
+  value,
+  onChange,
+}: {
+  value: MetricsRange;
+  onChange: (v: MetricsRange) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as MetricsRange)}
+      data-testid="metrics-range-select"
+      style={{ fontSize: 13, marginBottom: 16 }}
+    >
+      <option value="today">Today</option>
+      <option value="7d">Last 7 days</option>
+      <option value="30d">Last 30 days</option>
+      <option value="qtd">Quarter to date</option>
+    </select>
+  );
+}
+
+function SummaryCard({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: 12,
+        minHeight: 72,
+      }}
+    >
+      <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{value}</div>
+      {hint ? <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function SimpleBarChart({ points }: { points: Array<{ label: string; value: number }> }) {
+  const max = Math.max(1, ...points.map((p) => p.value));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {points.length === 0 ? (
+        <p style={{ color: "var(--muted)", fontSize: 13 }}>No data for this range.</p>
+      ) : (
+        points.map((p) => (
+          <div key={p.label}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
+              <span>{p.label}</span>
+              <span>{p.value}</span>
+            </div>
+            <div style={{ background: "var(--border)", borderRadius: 4, height: 8 }}>
+              <div
+                style={{
+                  width: `${Math.round((p.value / max) * 100)}%`,
+                  background: "#6366f1",
+                  height: 8,
+                  borderRadius: 4,
+                }}
+              />
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+export function MetricsDashboardPanel({ canExport }: { canExport: boolean }) {
+  const [range, setRange] = useState<MetricsRange>("7d");
+  const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+  const [timeseries, setTimeseries] = useState<Array<{ date: string; metrics: { eventCount: number } }>>([]);
+  const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
+  const [context, setContext] = useState<Record<string, unknown> | null>(null);
+  const [tickets, setTickets] = useState<Record<string, unknown> | null>(null);
+  const [integrations, setIntegrations] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    const q = `?range=${range}`;
+    setError(null);
+    Promise.all([
+      fetchJson<Record<string, unknown>>(`/api/metrics/summary${q}`),
+      fetchJson<{ points: typeof timeseries }>(`/api/metrics/timeseries${q}`),
+      fetchJson<{ events: typeof events }>(`/api/metrics/events${q}&limit=50`),
+      fetchJson<Record<string, unknown>>(`/api/metrics/context${q}`),
+      fetchJson<Record<string, unknown>>(`/api/metrics/tickets${q}`),
+      fetchJson<Record<string, unknown>>(`/api/metrics/integrations${q}`),
+    ])
+      .then(([s, ts, ev, ctx, tk, integ]) => {
+        setSummary(s);
+        setTimeseries(ts.points ?? []);
+        setEvents(ev.events ?? []);
+        setContext(ctx);
+        setTickets(tk);
+        setIntegrations(integ);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load metrics"));
+  }, [range]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const s = (summary?.summary ?? {}) as Record<string, unknown>;
+  const byCategory = (summary?.byCategory ?? {}) as Record<string, number>;
+
+  return (
+    <div data-testid="metrics-dashboard-panel">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <MetricsRangeSelect value={range} onChange={setRange} />
+        {canExport && (
+          <a
+            href={`/api/metrics/export.csv?range=${range}`}
+            className="ide-btn"
+            data-testid="metrics-export-csv"
+            style={{ textDecoration: "none", fontSize: 13 }}
+          >
+            Export CSV
+          </a>
+        )}
+      </div>
+
+      {error && <p style={{ color: "#ef4444" }}>{error}</p>}
+
+      <section style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 12 }}>Executive summary</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+          <SummaryCard label="Total events" value={String(s.totalEvents ?? 0)} />
+          <SummaryCard
+            label="Success rate"
+            value={s.successRate != null ? `${s.successRate}%` : "unavailable"}
+          />
+          <SummaryCard label="Investigations" value={String(s.investigationsCreated ?? 0)} />
+          <SummaryCard label="Chat responses" value={String(s.chatResponses ?? 0)} />
+          <SummaryCard
+            label="Time saved"
+            value={
+              typeof s.timeSavedDisplay === "string" &&
+              !s.timeSavedDisplay.includes("unavailable")
+                ? s.timeSavedDisplay
+                : "unavailable"
+            }
+            hint={
+              typeof s.timeSavedDisplay === "string" && s.timeSavedDisplay.includes("unavailable")
+                ? "Configure baselines in Metrics Settings"
+                : undefined
+            }
+          />
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 12 }}>Activity over time</h3>
+        <SimpleBarChart
+          points={timeseries.map((p) => ({ label: p.date, value: p.metrics?.eventCount ?? 0 }))}
+        />
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+        <div>
+          <h3 style={{ fontSize: 14, marginBottom: 8 }}>Context metrics</h3>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>
+            Retrievals: {String(context?.totalRetrievals ?? 0)} · Avg chunks:{" "}
+            {String(context?.avgChunksPerRetrieval ?? 0)}
+          </p>
+        </div>
+        <div>
+          <h3 style={{ fontSize: 14, marginBottom: 8 }}>Ticket metrics</h3>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>
+            Actions: {String(tickets?.totalActions ?? 0)} · Linked: {String(tickets?.linked ?? 0)}
+          </p>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Workflow funnel</h3>
+        <SimpleBarChart
+          points={[
+            { label: "Investigations created", value: Number(s.investigationsCreated ?? 0) },
+            { label: "Investigations resolved", value: Number(s.investigationsResolved ?? 0) },
+            {
+              label: "Approvals created",
+              value: Number((s.approvalFunnel as Record<string, number> | undefined)?.created ?? 0),
+            },
+            {
+              label: "Approvals approved",
+              value: Number((s.approvalFunnel as Record<string, number> | undefined)?.approved ?? 0),
+            },
+          ]}
+        />
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>By category</h3>
+        <SimpleBarChart
+          points={Object.entries(byCategory).map(([label, value]) => ({ label, value }))}
+        />
+      </section>
+
+      <section style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Integration health impact</h3>
+        <SimpleBarChart
+          points={Object.entries(
+            (integrations?.integrations as Record<string, { total: number }>) ?? {}
+          ).map(([label, v]) => ({ label, value: v.total }))}
+        />
+      </section>
+
+      <section>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Recent activity</h3>
+        {events.length === 0 ? (
+          <p style={{ color: "var(--muted)", fontSize: 13 }}>No events recorded yet.</p>
+        ) : (
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                <th style={{ padding: "6px 4px" }}>Time</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>OK</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e) => (
+                <tr key={String(e.id)} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 4px" }}>{String(e.createdAt ?? "").slice(0, 19)}</td>
+                  <td>{String(e.eventType)}</td>
+                  <td>{String(e.category)}</td>
+                  <td>{e.success ? "yes" : "no"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export function MetricsSettingsPanel() {
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetchJson<{ settings: Record<string, unknown> }>("/api/metrics/settings")
+      .then((d) => setSettings(d.settings))
+      .catch(() => setSettings(null));
+  }, []);
+
+  async function save() {
+    if (!settings) return;
+    await fetchJson("/api/metrics/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  if (!settings) return <p style={{ color: "var(--muted)" }}>Loading metrics settings…</p>;
+
+  const baselines = (settings.taskBaselines ?? {}) as Record<string, number>;
+
+  return (
+    <div data-testid="metrics-settings-panel">
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(settings.enabled)}
+          onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+        />
+        Enable metrics collection
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, marginBottom: 12 }}>
+        Retention (days)
+        <input
+          type="number"
+          min={7}
+          value={Number(settings.retentionDays ?? 90)}
+          onChange={(e) => setSettings({ ...settings, retentionDays: Number(e.target.value) })}
+        />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(settings.allowDeveloperView)}
+          onChange={(e) => setSettings({ ...settings, allowDeveloperView: e.target.checked })}
+        />
+        Allow developer role to view metrics
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 16 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(settings.allowSupportAgentView)}
+          onChange={(e) => setSettings({ ...settings, allowSupportAgentView: e.target.checked })}
+        />
+        Allow support agent role to view metrics
+      </label>
+      <h4 style={{ fontSize: 13, marginBottom: 8 }}>Task baselines (minutes)</h4>
+      {Object.entries(baselines).map(([key, val]) => (
+        <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, marginBottom: 8 }}>
+          {key.replace(/_/g, " ")}
+          <input
+            type="number"
+            min={0}
+            value={val}
+            onChange={(e) =>
+              setSettings({
+                ...settings,
+                taskBaselines: { ...baselines, [key]: Number(e.target.value) },
+              })
+            }
+          />
+        </label>
+      ))}
+      <button type="button" className="ide-btn" onClick={() => void save()}>
+        Save metrics settings
+      </button>
+      {saved && <span style={{ marginLeft: 8, fontSize: 12, color: "#22c55e" }}>Saved</span>}
+    </div>
+  );
+}

@@ -12,6 +12,7 @@ import {
 import { shouldHandleSlackEvent, type SlackIncomingEvent } from "./event-filter";
 import { enrichSlackThread } from "./enrich-thread";
 import { appendSlackThreadMessage } from "./thread-store";
+import { metrics } from "@/metrics/MetricsService";
 
 export interface SlackEventPayload {
   eventId?: string;
@@ -124,5 +125,16 @@ export async function handleSlackEventPayload(payload: SlackEventPayload): Promi
     details: sessionId
       ? `investigation ${sessionId}${isDirectMessage(event) ? " dm" : ""}`
       : "thread reply",
+  });
+  void metrics.track({
+    eventType: "integration.slack.reply",
+    category: "integration",
+    success: Boolean(sessionId),
+    metadata: {
+      integration: "slack",
+      channelId: event.channel,
+      sessionId,
+      directMessage: isDirectMessage(event),
+    },
   });
 }

@@ -7,8 +7,23 @@ import {
   handleZendeskWriteRequest,
   integrationErrorResponse,
 } from "@/integrations/core/integration-actions";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
+
+function trackZendesk(
+  user: { id: string; role: string },
+  action: string,
+  extra?: Record<string, unknown>
+) {
+  void metrics.track({
+    eventType: "integration.zendesk.action",
+    category: "integration",
+    actorUserId: user.id,
+    actorRole: user.role,
+    metadata: { integration: "zendesk", action, ...extra },
+  });
+}
 
 export async function POST(request: NextRequest) {
   const sessionOrResponse = await requireInvestigateRead(request);
@@ -47,18 +62,21 @@ export async function POST(request: NextRequest) {
       if (!body.investigationId || !body.ticketId) {
         return NextResponse.json({ error: "investigationId and ticketId required" }, { status: 400 });
       }
+      trackZendesk(sessionOrResponse.user, "link", { ticketId: body.ticketId });
       return NextResponse.json(
         await handleZendeskLink(body.investigationId, body.ticketId, sessionOrResponse.user.id)
       );
     }
 
     if (body.action === "draft_reply" || body.action === "draft_note") {
+      trackZendesk(sessionOrResponse.user, body.action, { ticketId: body.ticketId });
       return NextResponse.json({
         draft: { ticketId: body.ticketId, body: body.body, public: body.action === "draft_reply" },
       });
     }
 
     if (body.action === "create") {
+      trackZendesk(sessionOrResponse.user, "create");
       return NextResponse.json(
         await handleZendeskCreateDraft({
           subject: body.subject ?? "Support request",
@@ -82,6 +100,7 @@ export async function POST(request: NextRequest) {
         },
         body.body
       );
+      trackZendesk(sessionOrResponse.user, body.action, { ticketId: body.ticketId });
       return NextResponse.json(approval);
     }
 
@@ -96,6 +115,7 @@ export async function POST(request: NextRequest) {
         },
         body.body
       );
+      trackZendesk(sessionOrResponse.user, "request_create");
       return NextResponse.json(approval);
     }
 

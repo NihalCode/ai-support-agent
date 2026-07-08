@@ -25,6 +25,7 @@ import {
   normalizeChatMode,
 } from "@/agent/UnifiedChatOrchestrator";
 import type { ChatMode } from "@/agent/types";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
 
   const messageId = crypto.randomUUID();
   const encoder = new TextEncoder();
+  const streamStarted = Date.now();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -327,6 +329,27 @@ export async function POST(req: Request) {
         }
 
         send({ type: "message_done", messageId });
+
+        const draftEventType =
+          route.kind === "investigation_customer_response"
+            ? "draft.customer_response"
+            : route.kind === "investigation_developer_handoff"
+              ? "draft.developer_handoff"
+              : "chat.stream";
+
+        void metrics.track({
+          eventType: draftEventType,
+          category: draftEventType.startsWith("draft.") ? "draft" : "chat",
+          actorUserId: auth.user.id,
+          actorRole: auth.user.role,
+          durationMs: Date.now() - streamStarted,
+          metadata: {
+            messageId,
+            sessionId,
+            investigationId,
+            routeKind: route.kind,
+          },
+        });
       } catch (err) {
         send({
           type: "error",

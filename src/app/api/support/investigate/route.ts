@@ -5,6 +5,7 @@ import { getSession } from "@/lib/support/investigation/session-store";
 import type { InvestigateRequest } from "@/lib/support/investigation/types";
 import { audit } from "@/lib/support/audit";
 import { redactDeep } from "@/lib/support/redact";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -28,7 +29,13 @@ export async function POST(req: Request) {
     const body = (await req.json()) as InvestigateRequest;
 
     if (body.sessionId && body.message?.trim()) {
+      const timer = metrics.startTimer("investigation.chat", "investigation", {
+        actorUserId: auth.user.id,
+        actorRole: auth.user.role,
+        metadata: { sessionId: body.sessionId },
+      });
       const { reply, citations } = await runInvestigationChat(body.sessionId, body.message.trim());
+      timer.end({ metadata: { sessionId: body.sessionId, citationCount: citations?.length ?? 0 } });
       await audit({
         action: "investigate-chat",
         target: body.sessionId,
@@ -42,7 +49,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Provide query.text or query.issueRef" }, { status: 400 });
     }
 
+    const timer = metrics.startTimer("investigation.created", "investigation", {
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+    });
     const result = await runInvestigation(body.query);
+    timer.end({
+      metadata: {
+        sessionId: result.sessionId,
+        status: result.report.currentStatus,
+        confidence: result.report.confidence,
+      },
+    });
+    if (result.report.currentStatus !== "needs-more-information") {
+      void metrics.track({
+        eventType: "investigation.resolved",
+        category: "investigation",
+        actorUserId: auth.user.id,
+        actorRole: auth.user.role,
+        metadata: { sessionId: result.sessionId, status: result.report.currentStatus },
+      });
+    }
     await audit({
       action: "investigate",
       target: result.sessionId,

@@ -10,6 +10,8 @@ function isPublicApiPath(pathname: string): boolean {
     "/api/auth/me",
     "/api/auth/invite-check",
     "/api/auth/invites/validate",
+    "/api/cron/knowledge-sync",
+    "/api/cron/metrics-rollup",
   ];
   if (PUBLIC_API_EXACT.includes(pathname)) return true;
   return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));

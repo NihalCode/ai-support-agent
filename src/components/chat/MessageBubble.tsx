@@ -132,6 +132,39 @@ export function MessageBubble({
             {block}
           </div>
         ))}
+
+        {message.role === "assistant" && message.id && (
+          <div className="flex items-center gap-2 pt-1" data-testid="chat-feedback">
+            <button
+              type="button"
+              className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/5"
+              aria-label="Helpful"
+              onClick={() =>
+                void fetch("/api/metrics/feedback", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messageId: message.id, rating: "up" }),
+                })
+              }
+            >
+              👍
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/5"
+              aria-label="Not helpful"
+              onClick={() =>
+                void fetch("/api/metrics/feedback", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messageId: message.id, rating: "down" }),
+                })
+              }
+            >
+              👎
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

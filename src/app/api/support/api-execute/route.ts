@@ -5,6 +5,7 @@ import { getSpec, listSpecs } from "@/lib/support/api-specs/registry";
 import { getConfig } from "@/lib/support/config";
 import { executeAction } from "@/lib/support/executor";
 import { redact } from "@/lib/support/redact";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -93,6 +94,13 @@ export async function POST(req: Request) {
   }
 
   if (body.intent === "preview") {
+    void metrics.track({
+      eventType: "api.lookup",
+      category: "api",
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+      metadata: { specId: body.specId, method, path },
+    });
     return NextResponse.json({
       preview: {
         specId: plan.specId,
@@ -123,6 +131,13 @@ export async function POST(req: Request) {
         safetyClass: "READ_ONLY",
         details: `${plan.method} → ${res.status}`,
       });
+      void metrics.track({
+        eventType: "api.execute",
+        category: "api",
+        actorUserId: auth.user.id,
+        actorRole: auth.user.role,
+        metadata: { specId: plan.specId, method: plan.method, readOnly: true, status: res.status },
+      });
       return NextResponse.json({
         result: { ok: res.ok, status: res.status, detail: redact(res.text.slice(0, 4000)) },
       });
@@ -150,6 +165,14 @@ export async function POST(req: Request) {
       },
       { approved: true }
     );
+    void metrics.track({
+      eventType: "api.execute",
+      category: "api",
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+      success: result.ok,
+      metadata: { specId: plan.specId, method: plan.method, readOnly: false },
+    });
     return NextResponse.json({ result: { ok: result.ok, detail: result.detail } });
   } catch (err) {
     return NextResponse.json({ error: redact(err instanceof Error ? err.message : "execution failed") }, { status: 500 });

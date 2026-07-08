@@ -30,6 +30,7 @@ import type {
   KnowledgeSyncResult,
   KnowledgeSyncSourceResult,
 } from "../types";
+import { metrics } from "@/metrics/MetricsService";
 
 function specChecksum(spec: { endpoints: { method: string; path: string }[] }): string {
   const payload = spec.endpoints
@@ -360,6 +361,9 @@ export async function runKnowledgeSync(input: {
   sourceIds?: string[];
   force?: boolean;
 }): Promise<KnowledgeSyncResult> {
+  const timer = metrics.startTimer("knowledge.sync", "knowledge", {
+    metadata: { triggeredBy: input.triggeredBy },
+  });
   const enabled = listEnabledKnowledgeSources();
   const targetIds =
     input.sourceIds?.length
@@ -406,5 +410,15 @@ export async function runKnowledgeSync(input: {
       : undefined;
 
   const completed = await finishKnowledgeSyncRun(run, status, errorSummary);
+  timer.end({
+    success: status !== "failed",
+    metadata: {
+      runId: completed.id,
+      status: completed.status,
+      sourceCount: targetIds.length,
+      upsertedCount: completed.upsertedCount,
+      failedCount: completed.failedCount,
+    },
+  });
   return { run: completed, sources };
 }

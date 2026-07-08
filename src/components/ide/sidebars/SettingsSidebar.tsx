@@ -12,6 +12,8 @@ export type SettingsSection =
   | "knowledge"
   | "notifications"
   | "retention"
+  | "metrics"
+  | "metrics-settings"
   | "credentials"
   | "users";
 
@@ -26,6 +28,8 @@ export function SettingsSidebar({
   const { canUseDeveloperMode, hasPermission } = useAuth();
   const canManageUsers = hasPermission("users:read");
   const canAudit = hasPermission("audit:read");
+  const canMetrics = hasPermission("metrics:read") || hasPermission("metrics:write");
+  const canMetricsAdmin = hasPermission("metrics:write");
 
   function nav(section: SettingsSection, label: string, testId: string) {
     const active = activeSection === section;
@@ -74,6 +78,8 @@ export function SettingsSidebar({
         {nav("knowledge", "Knowledge sources", "settings-nav-knowledge")}
         {nav("notifications", "Notifications", "settings-nav-notifications")}
         {canAudit && nav("retention", "Data retention", "settings-nav-retention")}
+        {canMetrics && nav("metrics", "Metrics", "settings-nav-metrics")}
+        {canMetricsAdmin && nav("metrics-settings", "Metrics settings", "settings-nav-metrics-settings")}
       </section>
       <section style={{ marginTop: 16 }}>
         <h3 style={{ fontSize: 12, margin: "0 0 8px", color: "var(--muted)" }}>Setup</h3>

@@ -341,4 +341,71 @@ await sql`
   )
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS analytics_events (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    event_type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    actor_user_id TEXT,
+    actor_role TEXT,
+    duration_ms INT,
+    success BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_analytics_events_org_created
+  ON analytics_events (org_id, created_at DESC)
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_analytics_events_org_type
+  ON analytics_events (org_id, event_type, created_at DESC)
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_analytics_events_org_category
+  ON analytics_events (org_id, category, created_at DESC)
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS daily_metrics_rollups (
+    org_id TEXT NOT NULL DEFAULT 'default',
+    date DATE NOT NULL,
+    metrics JSONB NOT NULL DEFAULT '{}',
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (org_id, date)
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS metrics_settings (
+    org_id TEXT PRIMARY KEY DEFAULT 'default',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    retention_days INT NOT NULL DEFAULT 90,
+    task_baselines JSONB NOT NULL DEFAULT '{}',
+    allow_developer_view BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_support_agent_view BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by TEXT
+  )
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS context_usage_metrics (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    event_id TEXT,
+    investigation_id TEXT,
+    chunks_retrieved INT NOT NULL DEFAULT 0,
+    tokens_estimated INT,
+    namespaces JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_context_usage_org_created
+  ON context_usage_metrics (org_id, created_at DESC)
+`;
+
 console.log("Schema applied successfully.");

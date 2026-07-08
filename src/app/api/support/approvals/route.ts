@@ -16,6 +16,7 @@ import { postSlackMessage } from "@/lib/support/slack/client";
 import { buildApprovalBlocks } from "@/lib/support/slack/approval-cards";
 import { createNotification } from "@/lib/support/enterprise/stores/notification-store";
 import type { ApprovalAction, ApprovalStatus, PlannedAction } from "@/lib/support/types";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,13 @@ export async function POST(req: Request) {
       actorId: auth.user.id,
       actorEmail: auth.user.email,
     });
+    void metrics.track({
+      eventType: "approval.created",
+      category: "approval",
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+      metadata: { approvalId: approval.id, actionType: body.action.type },
+    });
     await createNotification({
       userId: auth.user.id,
       level: "warning",
@@ -97,6 +105,14 @@ export async function POST(req: Request) {
       approved: false,
       actorId: auth.user.id,
       actorEmail: auth.user.email,
+    });
+    void metrics.track({
+      eventType: "approval.rejected",
+      category: "approval",
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+      success: false,
+      metadata: { approvalId: body.id },
     });
     return NextResponse.json({ approval: claimed });
   }
@@ -135,6 +151,21 @@ export async function POST(req: Request) {
         actorId: auth.user.id,
         actorEmail: auth.user.email,
         details: result.detail.slice(0, 200),
+      });
+      void metrics.track({
+        eventType: "approval.approved",
+        category: "approval",
+        actorUserId: auth.user.id,
+        actorRole: auth.user.role,
+        metadata: { approvalId: body.id },
+      });
+      void metrics.track({
+        eventType: "approval.executed",
+        category: "approval",
+        actorUserId: auth.user.id,
+        actorRole: auth.user.role,
+        success: result.ok,
+        metadata: { approvalId: body.id, actionType: claimed.action.type },
       });
       return NextResponse.json({ approval: updated, result });
     } catch (err) {

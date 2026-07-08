@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/knowledge-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/metrics-rollup",
+      "schedule": "0 7 * * *"
     }
   ]
 }

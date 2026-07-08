@@ -35,7 +35,10 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "knowledge:sync": "tsx --conditions=react-server scripts/knowledge-sync.ts",
     "knowledge:diagnose": "tsx --conditions=react-server scripts/knowledge-diagnose.ts",
-    "test:knowledge": "vitest run src/knowledge/__tests__"
+    "test:knowledge": "vitest run src/knowledge/__tests__",
+    "test:metrics": "vitest run src/metrics/__tests__",
+    "metrics:diagnose": "tsx --conditions=react-server scripts/metrics-diagnose.ts",
+    "metrics:rollup": "tsx --conditions=react-server scripts/metrics-rollup.ts"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.23.0",

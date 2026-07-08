@@ -12,6 +12,8 @@ import {
   AuditLogsPanel,
   IntegrationHealthPanel,
   KnowledgeSourcesPanel,
+  MetricsDashboardPanel,
+  MetricsSettingsPanel,
   NotificationsPanel,
   RetentionPanel,
   SetupChecklistPanel,
@@ -24,6 +26,8 @@ export function SettingsEditor({ initialSection = "integrations" }: { initialSec
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const canManageUsers = hasPermission("users:read");
   const canAudit = hasPermission("audit:read");
+  const canMetrics = hasPermission("metrics:read") || hasPermission("metrics:write");
+  const canMetricsAdmin = hasPermission("metrics:write");
   const developerMode = !isClientMode;
 
   return (
@@ -79,6 +83,18 @@ export function SettingsEditor({ initialSection = "integrations" }: { initialSec
           <>
             <h2 style={{ marginTop: 0, fontSize: 18 }}>Data retention</h2>
             <RetentionPanel />
+          </>
+        )}
+        {section === "metrics" && canMetrics && (
+          <>
+            <h2 style={{ marginTop: 0, fontSize: 18 }}>Metrics & analytics</h2>
+            <MetricsDashboardPanel canExport={canMetricsAdmin} />
+          </>
+        )}
+        {section === "metrics-settings" && canMetricsAdmin && (
+          <>
+            <h2 style={{ marginTop: 0, fontSize: 18 }}>Metrics settings</h2>
+            <MetricsSettingsPanel />
           </>
         )}
         {section === "credentials" && (

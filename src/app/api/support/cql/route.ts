@@ -4,6 +4,7 @@ import { ingestCqlDocs, DEFAULT_CQL_DOC_URL } from "@/lib/support/cql/ingest-doc
 import { generateCql } from "@/lib/support/cql/generate";
 import { audit } from "@/lib/support/audit";
 import { redact } from "@/lib/support/redact";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,8 +38,13 @@ export async function POST(req: Request) {
   if (auth instanceof NextResponse) return auth;
 
   if (body.intent === "index") {
+    const timer = metrics.startTimer("cql.index", "cql", {
+      actorUserId: auth.user.id,
+      actorRole: auth.user.role,
+    });
     try {
       const result = await ingestCqlDocs(body.url || DEFAULT_CQL_DOC_URL, body.content);
+      timer.end({ metadata: { chunks: result.chunks } });
       await audit({
         action: "cql:index",
         target: result.url,
@@ -57,8 +63,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Provide a `query` to convert to CQL." }, { status: 400 });
   }
 
+  const timer = metrics.startTimer("cql.generate", "cql", {
+    actorUserId: auth.user.id,
+    actorRole: auth.user.role,
+  });
   try {
     const result = await generateCql(query);
+    timer.end({ metadata: { hasCql: Boolean(result.cql) } });
     await audit({
       action: "cql:generate",
       target: query.slice(0, 80),

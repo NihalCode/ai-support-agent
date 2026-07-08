@@ -30,5 +30,11 @@ describe("roles", () => {
   it("support_agent cannot use developer mode", () => {
     expect(canUseDeveloperMode("support_agent")).toBe(false);
     expect(permissionsForRole("support_agent")).toContain("investigate:write");
+    expect(roleHasPermission("support_agent", "metrics:read")).toBe(false);
+  });
+
+  it("developer has metrics read but not write", () => {
+    expect(roleHasPermission("developer", "metrics:read")).toBe(true);
+    expect(roleHasPermission("developer", "metrics:write")).toBe(false);
   });
 });

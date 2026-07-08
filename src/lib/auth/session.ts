@@ -22,6 +22,7 @@ import {
 } from "@/lib/auth/user-store";
 import { auth0 } from "@/lib/auth0";
 import { isTestMode } from "@/lib/test-mode";
+import { metrics } from "@/metrics/MetricsService";
 
 export interface AppSessionUser {
   id: string;
@@ -204,6 +205,12 @@ export async function getAppSessionResult(
       actorEmail: sessionUser.email,
       metadata: { connection: "auth0" },
     });
+    void metrics.track({
+      eventType: "auth.login_success",
+      category: "auth",
+      actorUserId: sessionUser.id,
+      actorRole: sessionUser.role,
+    });
     return { session: toAppSession(sessionUser), auth0Authenticated: true };
   }
 
@@ -270,6 +277,12 @@ export async function getAppSessionResult(
         emailDomain: emailDomain(authUser.email),
         reason: access.reason,
       },
+    });
+    void metrics.track({
+      eventType: "auth.login_blocked",
+      category: "auth",
+      success: false,
+      metadata: { reason: access.reason },
     });
 
     return {

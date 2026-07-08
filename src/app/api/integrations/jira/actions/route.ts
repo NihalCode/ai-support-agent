@@ -7,8 +7,23 @@ import {
   handleJiraWriteRequest,
   integrationErrorResponse,
 } from "@/integrations/core/integration-actions";
+import { metrics } from "@/metrics/MetricsService";
 
 export const runtime = "nodejs";
+
+function trackJira(
+  user: { id: string; role: string },
+  action: string,
+  extra?: Record<string, unknown>
+) {
+  void metrics.track({
+    eventType: "integration.jira.action",
+    category: "integration",
+    actorUserId: user.id,
+    actorRole: user.role,
+    metadata: { integration: "jira", action, ...extra },
+  });
+}
 
 export async function POST(request: NextRequest) {
   const sessionOrResponse = await requireInvestigateRead(request);
@@ -28,12 +43,14 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.action === "link") {
+      trackJira(sessionOrResponse.user, "link", { issueKey: body.issueKey });
       return NextResponse.json(
         await handleJiraLink(body.investigationId, body.issueKey, sessionOrResponse.user.id)
       );
     }
 
     if (body.action === "draft_create") {
+      trackJira(sessionOrResponse.user, "draft_create");
       return NextResponse.json(
         await handleJiraCreateDraft({
           summary: body.summary,
@@ -60,6 +77,7 @@ export async function POST(request: NextRequest) {
         },
         body.description
       );
+      trackJira(sessionOrResponse.user, "request_create");
       return NextResponse.json({ ...approval, draft: draft.draft });
     }
 
@@ -74,6 +92,7 @@ export async function POST(request: NextRequest) {
         },
         body.body
       );
+      trackJira(sessionOrResponse.user, "request_comment", { issueKey: body.issueKey });
       return NextResponse.json(approval);
     }
 
@@ -87,6 +106,7 @@ export async function POST(request: NextRequest) {
         },
         `${body.issueKey} → ${body.transition}`
       );
+      trackJira(sessionOrResponse.user, "request_update", { issueKey: body.issueKey });
       return NextResponse.json(approval);
     }
 
