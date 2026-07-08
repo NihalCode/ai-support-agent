@@ -17,6 +17,7 @@ const PUBLIC_API_EXACT = [
   "/api/auth/me",
   "/api/auth/invite-check",
   "/api/auth/invites/validate",
+  "/api/cron/knowledge-sync",
 ];
 
 function isPublicPath(pathname: string): boolean {

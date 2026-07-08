@@ -302,4 +302,43 @@ await sql`
   ON integration_health_checks (org_id, integration_id, checked_at DESC)
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS knowledge_sync_runs (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    status TEXT NOT NULL,
+    triggered_by TEXT NOT NULL,
+    source_ids JSONB NOT NULL DEFAULT '[]',
+    downloaded_count INT NOT NULL DEFAULT 0,
+    parsed_count INT NOT NULL DEFAULT 0,
+    chunk_count INT NOT NULL DEFAULT 0,
+    embedded_count INT NOT NULL DEFAULT 0,
+    upserted_count INT NOT NULL DEFAULT 0,
+    skipped_unchanged_count INT NOT NULL DEFAULT 0,
+    failed_count INT NOT NULL DEFAULT 0,
+    error_summary TEXT
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_knowledge_sync_runs_org_started
+  ON knowledge_sync_runs (org_id, started_at DESC)
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS knowledge_document_states (
+    source_id TEXT NOT NULL,
+    org_id TEXT NOT NULL DEFAULT 'default',
+    url TEXT NOT NULL DEFAULT '',
+    checksum TEXT NOT NULL,
+    vector_ids JSONB NOT NULL DEFAULT '[]',
+    namespace TEXT NOT NULL,
+    last_indexed_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    chunk_count INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (org_id, source_id)
+  )
+`;
+
 console.log("Schema applied successfully.");

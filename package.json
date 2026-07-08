@@ -32,7 +32,10 @@
     "deploy:preview": "vercel",
     "deploy:prod": "vercel deploy --prod --yes --archive=tgz && node scripts/ensure-public-deploy.mjs",
     "deploy:public": "node scripts/ensure-public-deploy.mjs",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "knowledge:sync": "tsx --conditions=react-server scripts/knowledge-sync.ts",
+    "knowledge:diagnose": "tsx --conditions=react-server scripts/knowledge-diagnose.ts",
+    "test:knowledge": "vitest run src/knowledge/__tests__"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.23.0",

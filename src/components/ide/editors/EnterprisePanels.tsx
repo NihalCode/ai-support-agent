@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { AuditTimelinePanel } from "@/components/enterprise/AuditTimelinePanel";
 import type {
   IntegrationHealthCard,
-  KnowledgeSource,
   SetupChecklistItem,
   SystemHealthEvent,
 } from "@/lib/support/enterprise/types";
@@ -185,50 +184,181 @@ export function SetupChecklistPanel({ onNavigate }: { onNavigate?: (section: str
 }
 
 export function KnowledgeSourcesPanel() {
-  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [sources, setSources] = useState<KnowledgeSourceView[]>([]);
+  const [recentRuns, setRecentRuns] = useState<KnowledgeSyncRunView[]>([]);
+  const [diagnostics, setDiagnostics] = useState<KnowledgeDiagnosticsView | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetchJson<{ sources: KnowledgeSource[] }>("/api/support/enterprise/knowledge")
-      .then((d) => setSources(d.sources))
-      .catch(() => setSources([]));
+    Promise.all([
+      fetchJson<{ sources: KnowledgeSourceView[]; recentRuns: KnowledgeSyncRunView[] }>(
+        "/api/admin/knowledge/sources"
+      ),
+      fetchJson<{ diagnostics: KnowledgeDiagnosticsView }>("/api/admin/knowledge/diagnostics"),
+    ])
+      .then(([sourcesData, diagData]) => {
+        setSources(sourcesData.sources);
+        setRecentRuns(sourcesData.recentRuns);
+        setDiagnostics(diagData.diagnostics);
+        setError(null);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load knowledge sources");
+        setSources([]);
+        setRecentRuns([]);
+      });
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function syncConfluence() {
+  async function syncAll(force = false) {
     setSyncing(true);
+    setError(null);
     try {
-      await fetchJson("/api/support/enterprise/knowledge", {
+      await fetchJson("/api/admin/knowledge/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "sync_confluence" }),
+        body: JSON.stringify({ force }),
       });
       load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setSyncing(false);
     }
   }
 
+  async function syncSource(sourceId: string) {
+    setSyncingSourceId(sourceId);
+    setError(null);
+    try {
+      await fetchJson("/api/admin/knowledge/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceIds: [sourceId] }),
+      });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncingSourceId(null);
+    }
+  }
+
   return (
     <div data-testid="knowledge-sources-panel">
-      <button type="button" className="ide-btn" disabled={syncing} onClick={syncConfluence}>
-        {syncing ? "Syncing…" : "Sync Confluence"}
-      </button>
-      <div style={{ marginTop: 16 }}>
+      {diagnostics && (
+        <div
+          data-testid="knowledge-diagnostics-summary"
+          style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}
+        >
+          {diagnostics.enabledSourceCount}/{diagnostics.sourceCount} sources enabled ·{" "}
+          {diagnostics.indexedChunkCount} chunks indexed · vector DB{" "}
+          {diagnostics.vectorDbConfigured ? "configured" : "not configured"} · embeddings{" "}
+          {diagnostics.embeddingConfigured ? "configured" : "not configured"}
+          {diagnostics.lastSyncAt && (
+            <>
+              {" "}
+              · last sync {new Date(diagnostics.lastSyncAt).toLocaleString()}
+              {diagnostics.lastSyncStatus ? ` (${diagnostics.lastSyncStatus})` : ""}
+            </>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        <button
+          type="button"
+          className="ide-btn"
+          data-testid="knowledge-sync-all"
+          disabled={syncing || syncingSourceId !== null}
+          onClick={() => syncAll(false)}
+        >
+          {syncing ? "Syncing…" : "Sync all"}
+        </button>
+        <button
+          type="button"
+          className="ide-btn"
+          data-testid="knowledge-sync-all-force"
+          disabled={syncing || syncingSourceId !== null}
+          onClick={() => syncAll(true)}
+        >
+          Force re-sync all
+        </button>
+      </div>
+
+      {error && (
+        <p data-testid="knowledge-sync-error" style={{ color: "#ef4444", fontSize: 13 }}>
+          {error}
+        </p>
+      )}
+
+      <div data-testid="knowledge-sources-list">
         {sources.length === 0 ? (
-          <p style={{ color: "var(--muted)", fontSize: 13 }}>No knowledge sources yet.</p>
+          <p style={{ color: "var(--muted)", fontSize: 13 }}>No knowledge sources configured.</p>
         ) : (
           sources.map((s) => (
-            <div key={s.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-              <strong>{s.name}</strong> · {s.type} ·{" "}
-              <span style={{ color: statusColor(s.status) }}>{s.status}</span>
-              {s.lastSyncedAt && (
-                <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>
-                  Last sync: {new Date(s.lastSyncedAt).toLocaleString()}
-                </span>
+            <div
+              key={s.id}
+              data-testid={`knowledge-source-${s.id}`}
+              style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <strong>{s.name}</strong> · {s.product} · {s.type}
+                  {!s.enabled && (
+                    <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>(disabled)</span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: statusColor(s.status), fontSize: 12 }}>{s.status}</span>
+                  <button
+                    type="button"
+                    className="ide-btn"
+                    data-testid={`knowledge-sync-${s.id}`}
+                    disabled={!s.enabled || syncing || syncingSourceId !== null}
+                    onClick={() => syncSource(s.id)}
+                  >
+                    {syncingSourceId === s.id ? "Syncing…" : "Sync"}
+                  </button>
+                </div>
+              </div>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--muted)" }}>
+                {s.chunkCount} chunks
+                {s.documentState?.lastIndexedAt &&
+                  ` · indexed ${new Date(s.documentState.lastIndexedAt).toLocaleString()}`}
+                {s.url && ` · ${s.url}`}
+              </p>
+              {s.error && (
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#ef4444" }}>{s.error}</p>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div data-testid="knowledge-sync-history" style={{ marginTop: 20 }}>
+        <strong style={{ fontSize: 13 }}>Recent sync runs</strong>
+        {recentRuns.length === 0 ? (
+          <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>No sync history yet.</p>
+        ) : (
+          recentRuns.map((run) => (
+            <div
+              key={run.id}
+              data-testid={`knowledge-run-${run.id}`}
+              style={{ padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: 13 }}
+            >
+              <span style={{ color: statusColor(run.status) }}>{run.status}</span>
+              {" · "}
+              {run.triggeredBy} · {new Date(run.startedAt).toLocaleString()}
+              {" · "}
+              {run.chunkCount} chunks, {run.skippedUnchangedCount} skipped, {run.failedCount} failed
+              {run.errorSummary && (
+                <p style={{ margin: "4px 0 0", color: "#ef4444", fontSize: 12 }}>{run.errorSummary}</p>
               )}
             </div>
           ))
@@ -236,6 +366,43 @@ export function KnowledgeSourcesPanel() {
       </div>
     </div>
   );
+}
+
+interface KnowledgeDiagnosticsView {
+  vectorDbConfigured: boolean;
+  embeddingConfigured: boolean;
+  sourceCount: number;
+  enabledSourceCount: number;
+  lastSyncStatus: string | null;
+  lastSyncAt: string | null;
+  indexedDocumentCount: number;
+  indexedChunkCount: number;
+  staleDocumentCount: number;
+  failedSourceCount: number;
+}
+
+interface KnowledgeSourceView {
+  id: string;
+  name: string;
+  product: string;
+  type: string;
+  url?: string;
+  enabled: boolean;
+  chunkCount: number;
+  status: string;
+  error?: string;
+  documentState?: { lastIndexedAt?: string };
+}
+
+interface KnowledgeSyncRunView {
+  id: string;
+  status: string;
+  triggeredBy: string;
+  startedAt: string;
+  chunkCount: number;
+  skippedUnchangedCount: number;
+  failedCount: number;
+  errorSummary?: string;
 }
 
 export function RetentionPanel() {
