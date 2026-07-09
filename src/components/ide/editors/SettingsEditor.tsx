@@ -43,6 +43,7 @@ export function SettingsEditor({ initialSection = "integrations" }: { initialSec
         minWidth: 0,
         maxWidth: "100%",
         overflowX: "hidden",
+        paddingBottom: 32,
       }}
     >
       <SettingsSidebar activeSection={section} onSectionChange={setSection} />

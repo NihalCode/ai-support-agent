@@ -48,6 +48,9 @@ test.describe("App shell", () => {
     await page.goto("/");
     await openDeveloperBottomPanel(page);
     await expect(page.getByTestId("bottom-tab-terminal")).toBeVisible();
+    await expect(page.getByTestId("bottom-panel-close")).toBeVisible();
+    await page.getByTestId("bottom-panel-close").click();
+    await expect(page.getByTestId("ide-bottom-panel")).toHaveCount(0);
   });
 
   test("switches sidebar via search activity", async ({ page }) => {

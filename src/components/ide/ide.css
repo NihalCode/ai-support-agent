@@ -101,8 +101,9 @@
 
 .ide-editor-grid {
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
+  height: 100%;
 }
 
 .ide-editor-grid.horizontal {
@@ -286,9 +287,36 @@
 
 .ide-bottom-tabs {
   display: flex;
+  align-items: stretch;
   gap: 0;
   border-bottom: 1px solid var(--border);
   height: 32px;
+  flex-shrink: 0;
+}
+
+.ide-bottom-tabs-scroll {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.ide-bottom-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ide-bottom-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .ide-bottom-tab {

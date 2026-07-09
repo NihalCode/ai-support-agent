@@ -70,7 +70,7 @@ export function ChatShell() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(139,92,246,0.18),transparent_32%),radial-gradient(circle_at_80%_0%,rgba(6,182,212,0.13),transparent_28%),linear-gradient(to_bottom,#07090d,#0b0f17_45%,#07090d)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:48px_48px] opacity-40" />
 
-      <div className="relative z-10 h-screen grid grid-rows-[64px_1fr] min-h-0">
+      <div className="relative z-10 h-screen grid grid-rows-[64px_minmax(0,1fr)_auto] min-h-0">
         <TopBar
           integrations={integrations}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
@@ -79,7 +79,7 @@ export function ChatShell() {
           chatOpen={chatDockOpen}
           onToggleChat={() => setLayoutSize({ chatVisible: !state.layout.chatVisible })}
         />
-        <div className="chat-main-grid relative z-0 grid grid-cols-[260px_minmax(0,1fr)_360px] min-h-0">
+        <div className="chat-main-grid relative z-0 grid grid-cols-[260px_minmax(0,1fr)_360px] min-h-0 overflow-hidden">
           <Sidebar
             connectedCount={countConnected(status)}
             pendingApprovals={pendingApprovals}
@@ -96,13 +96,13 @@ export function ChatShell() {
                     <PrimarySidebar />
                   </div>
                 )}
-                <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
                   <SplitEditorLayout />
                 </div>
               </div>
-              {!isClientMode && (
+              {!isClientMode && state.layout.bottomVisible && (
                 <div
-                  className="border-t border-white/10 bg-slate-950/60 max-h-[40vh] min-h-[120px] overflow-hidden flex flex-col"
+                  className="shrink-0 border-t border-white/10 bg-slate-950/60 max-h-[40vh] min-h-[120px] overflow-hidden flex flex-col"
                   data-testid="ide-bottom-panel"
                 >
                   <BottomPanelContainer />
@@ -123,9 +123,9 @@ export function ChatShell() {
             onClose={() => setContextOpen(false)}
           />
         </div>
+        <StatusBar />
       </div>
 
-      <StatusBar />
       {!isClientMode && <CommandPalette />}
     </div>
   );

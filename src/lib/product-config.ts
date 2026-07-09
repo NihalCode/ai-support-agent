@@ -40,6 +40,6 @@ export function developerLayoutDefaults() {
   return {
     sidebarVisible: true,
     chatVisible: true,
-    bottomVisible: true,
+    bottomVisible: false,
   };
 }
