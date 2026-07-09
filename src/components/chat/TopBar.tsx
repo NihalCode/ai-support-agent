@@ -28,7 +28,7 @@ export function TopBar({
   const { canUseDeveloperMode } = useAuth();
 
   return (
-    <header className="h-16 border-b border-white/10 bg-slate-950/60 backdrop-blur-xl flex items-center justify-between px-5 gap-4">
+    <header className="relative z-[60] shrink-0 overflow-visible h-16 border-b border-white/10 bg-slate-950/60 backdrop-blur-xl flex items-center justify-between px-5 gap-4">
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"

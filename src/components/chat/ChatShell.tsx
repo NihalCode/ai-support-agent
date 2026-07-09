@@ -79,7 +79,7 @@ export function ChatShell() {
           chatOpen={chatDockOpen}
           onToggleChat={() => setLayoutSize({ chatVisible: !state.layout.chatVisible })}
         />
-        <div className="chat-main-grid grid grid-cols-[260px_minmax(0,1fr)_360px] min-h-0">
+        <div className="chat-main-grid relative z-0 grid grid-cols-[260px_minmax(0,1fr)_360px] min-h-0">
           <Sidebar
             connectedCount={countConnected(status)}
             pendingApprovals={pendingApprovals}

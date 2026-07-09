@@ -146,11 +146,6 @@ html.pref-reduced-motion *::after {
 }
 
 .app-select-menu {
-  position: absolute;
-  z-index: 50;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
   margin: 0;
   padding: 4px;
   list-style: none;
@@ -158,8 +153,12 @@ html.pref-reduced-motion *::after {
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: #0f172a;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-  max-height: 240px;
   overflow-y: auto;
+}
+
+.app-select-menu--portal {
+  position: fixed;
+  z-index: 10000;
 }
 
 .app-select-option {

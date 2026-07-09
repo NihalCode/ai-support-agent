@@ -64,7 +64,7 @@ export function ContextPanel({
   return (
     <aside
       className={cn(
-        "chat-context-panel border-l border-white/10 bg-slate-950/45 backdrop-blur-xl p-4 min-h-0 overflow-y-auto flex flex-col gap-4",
+        "chat-context-panel relative z-0 border-l border-white/10 bg-slate-950/45 backdrop-blur-xl p-4 min-h-0 overflow-y-auto flex flex-col gap-4",
         open && "chat-context-panel--open"
       )}
       data-testid="chat-context-panel"

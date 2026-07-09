@@ -26,6 +26,26 @@ test.describe("Known issues fixes — full E2E", () => {
     await expect(page.getByTestId("product-mode-toggle-menu")).toContainText("Support Mode");
   });
 
+  test("product mode dropdown is not covered by context panel", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByTestId("product-mode-toggle-trigger").click();
+    const menu = page.getByTestId("product-mode-toggle-menu");
+    await expect(menu).toBeVisible();
+    const supportOption = menu.getByRole("option", { name: /Support Mode/i });
+    await expect(supportOption).toBeVisible();
+    const occluded = await supportOption.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const topEl = document.elementFromPoint(x, y);
+      return topEl !== el && !el.contains(topEl);
+    });
+    expect(occluded).toBe(false);
+    await supportOption.click();
+    await expect(page.locator('[data-product-mode="client"]')).toHaveAttribute("data-product-mode", "client");
+  });
+
   test("API Registry product dropdown is readable", async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
