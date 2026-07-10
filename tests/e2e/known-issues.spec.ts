@@ -34,6 +34,7 @@ test.describe("Known issues fixes — full E2E", () => {
     await expect(menu).toBeVisible();
     const supportOption = menu.getByRole("option", { name: /Support Mode/i });
     await expect(supportOption).toBeVisible();
+    await expect(supportOption).toHaveText(/Support Mode/i);
     const occluded = await supportOption.evaluate((el) => {
       const rect = el.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
@@ -114,6 +115,7 @@ test.describe("Known issues fixes — full E2E", () => {
     await selectAppSelectOption(page, "pref-contrast", /High Contrast/);
     await expect(page.locator("html.pref-high-contrast")).toBeVisible();
 
+    await closeChatDockIfOpen(page);
     await page.getByTestId("pref-zoom-in").click();
     await page.getByTestId("pref-zoom-in").click();
     const overflowAfterZoom = await page.evaluate(

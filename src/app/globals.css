@@ -158,7 +158,8 @@ html.pref-reduced-motion *::after {
 
 .app-select-menu--portal {
   position: fixed;
-  z-index: 10000;
+  z-index: 99999;
+  box-sizing: border-box;
 }
 
 .app-select-option {
@@ -167,6 +168,7 @@ html.pref-reduced-motion *::after {
   color: #e2e8f0;
   font-size: calc(12px * var(--app-font-scale));
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .app-select-option--highlight {

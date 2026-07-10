@@ -26,6 +26,30 @@ export interface AppSelectProps<T extends string = string> {
 }
 
 const MENU_MAX_HEIGHT = 240;
+const MENU_MIN_WIDTH = 200;
+
+function estimateMenuWidth(options: AppSelectOption[], triggerWidth: number): number {
+  const longest = options.reduce((max, opt) => Math.max(max, opt.label.length), 0);
+  const contentWidth = longest * 8 + 28;
+  return Math.max(triggerWidth, contentWidth, MENU_MIN_WIDTH);
+}
+
+function clampMenuPosition(
+  rect: DOMRect,
+  width: number
+): { left: number; width: number } {
+  const viewportPad = 8;
+  const maxWidth = window.innerWidth - viewportPad * 2;
+  const menuWidth = Math.min(width, maxWidth);
+  let left = rect.left;
+
+  if (left + menuWidth > window.innerWidth - viewportPad) {
+    left = rect.right - menuWidth;
+  }
+  left = Math.max(viewportPad, Math.min(left, window.innerWidth - menuWidth - viewportPad));
+
+  return { left, width: menuWidth };
+}
 
 /** Accessible custom select with dark-theme contrast (avoids native OS menu styling). */
 export function AppSelect<T extends string = string>({
@@ -77,11 +101,10 @@ export function AppSelect<T extends string = string>({
 
     setMenuPos({
       top,
-      left: rect.left,
-      width: Math.max(rect.width, 160),
+      ...clampMenuPosition(rect, estimateMenuWidth(options, rect.width)),
       maxHeight,
     });
-  }, []);
+  }, [options]);
 
   useEffect(() => {
     if (!open) {
