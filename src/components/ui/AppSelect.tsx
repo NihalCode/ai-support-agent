@@ -120,8 +120,13 @@ export function AppSelect<T extends string = string>({
     let maxHeight = MENU_MAX_HEIGHT;
 
     if (preferAbove) {
-      maxHeight = Math.min(MENU_MAX_HEIGHT, spaceAbove);
-      top = Math.max(8, rect.top - maxHeight - gap);
+      const estimatedHeight = Math.min(
+        MENU_MAX_HEIGHT,
+        options.length * 36 + 12,
+        spaceAbove
+      );
+      maxHeight = estimatedHeight;
+      top = Math.max(8, rect.top - estimatedHeight - gap);
     } else {
       maxHeight = Math.min(MENU_MAX_HEIGHT, Math.max(spaceBelow, 80));
     }
@@ -244,7 +249,12 @@ export function AppSelect<T extends string = string>({
   return (
     <div
       ref={rootRef}
-      className={cn("app-select", fitContent && "app-select--fit-content", className)}
+      className={cn(
+        "app-select",
+        fitContent && "app-select--fit-content",
+        open && "app-select--open",
+        className
+      )}
       data-testid={testId}
     >
       {label ? (

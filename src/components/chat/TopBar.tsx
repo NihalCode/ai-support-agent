@@ -7,7 +7,7 @@ import { IntegrationStatusChip, type IntegrationChipStatus } from "./Integration
 import { UserMenu } from "@/components/auth/UserMenu";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
-import { AppSelect } from "@/components/ui/AppSelect";
+import { ProductModeToggle } from "./ProductModeToggle";
 
 export function TopBar({
   integrations,
@@ -24,7 +24,7 @@ export function TopBar({
   chatOpen?: boolean;
   onToggleChat?: () => void;
 }) {
-  const { productMode, setProductMode, isClientMode, setCommandPalette } = useWorkspace();
+  const { isClientMode, setCommandPalette } = useWorkspace();
   const { canUseDeveloperMode } = useAuth();
 
   return (
@@ -55,7 +55,7 @@ export function TopBar({
         ))}
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 min-h-9">
         {showChatToggle && (
           <button
             type="button"
@@ -73,26 +73,9 @@ export function TopBar({
           </button>
         )}
 
-        <AppSelect
-          testId="product-mode-toggle"
-          value={productMode}
-          onChange={(v) => setProductMode(v as "client" | "developer")}
-          aria-label="Client or Developer mode"
-          fitContent
-          menuPlacement="above"
-          triggerClassName={cn(
-            "!rounded-full !px-2.5 !py-1 !text-xs",
-            isClientMode
-              ? "!border-emerald-400/20 !bg-emerald-500/10 !text-emerald-200"
-              : "!border-violet-400/25 !bg-violet-500/10 !text-violet-200"
-          )}
-          options={[
-            { value: "client", label: "Support Mode" },
-            ...(canUseDeveloperMode ? [{ value: "developer" as const, label: "Developer Mode" }] : []),
-          ]}
-        />
+        <ProductModeToggle />
 
-        {!isClientMode && (
+        {!isClientMode && canUseDeveloperMode && (
           <button
             type="button"
             onClick={() => setCommandPalette(true)}

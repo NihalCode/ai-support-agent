@@ -19,23 +19,28 @@ test.describe("Known issues fixes — full E2E", () => {
     await expect(page.getByTestId("chat-mode-select-menu")).toContainText("Deep");
   });
 
-  test("Developer/Admin product mode dropdown is readable", async ({ page }) => {
+  test("Developer/Admin product mode toggle is readable", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle-trigger").click();
-    await expectReadableAppSelectMenu(page, "product-mode-toggle-menu");
-    await expect(page.getByTestId("product-mode-toggle-menu")).toContainText("Support Mode");
+    const toggle = page.getByTestId("product-mode-toggle");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toContainText("Support Mode");
+    await expect(page.getByTestId("product-mode-toggle-client")).toBeVisible();
   });
 
-  test("product mode dropdown is not covered by context panel", async ({ page }) => {
+  test("product mode toggle is not covered by context panel", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
-    await page.getByTestId("product-mode-toggle-trigger").click();
-    const menu = page.getByTestId("product-mode-toggle-menu");
-    await expect(menu).toBeVisible();
-    const supportOption = menu.getByRole("option", { name: /Support Mode/i });
-    await expect(supportOption).toBeVisible();
-    await expect(supportOption).toHaveText(/Support Mode/i);
-    const occluded = await supportOption.evaluate((el) => {
+    const devBtn = page.getByTestId("product-mode-toggle-developer");
+    if (await devBtn.isVisible()) {
+      await devBtn.click();
+      await expect(page.locator('[data-product-mode="developer"]')).toHaveAttribute(
+        "data-product-mode",
+        "developer"
+      );
+    }
+    const supportBtn = page.getByTestId("product-mode-toggle-client");
+    await expect(supportBtn).toBeVisible();
+    const occluded = await supportBtn.evaluate((el) => {
       const rect = el.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
@@ -43,7 +48,7 @@ test.describe("Known issues fixes — full E2E", () => {
       return topEl !== el && !el.contains(topEl);
     });
     expect(occluded).toBe(false);
-    await supportOption.click();
+    await supportBtn.click();
     await expect(page.locator('[data-product-mode="client"]')).toHaveAttribute("data-product-mode", "client");
   });
 

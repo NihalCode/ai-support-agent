@@ -98,11 +98,13 @@ export function ChatComposer({
             {chatMode && onChatModeChange ? (
               <AppSelect
                 testId="chat-mode-select"
+                className="app-select--toolbar shrink-0"
                 value={chatMode}
                 onChange={(v) => onChatModeChange(v as ChatMode)}
                 title={CHAT_MODE_DESCRIPTIONS[chatMode]}
                 aria-label="Chat mode"
-                triggerClassName="!rounded-full !border-violet-400/25 !bg-violet-500/10 !text-violet-100 !text-[11px] !py-0.5 !px-2.5"
+                fitContent
+                triggerClassName="!rounded-full !border-violet-400/25 !bg-violet-500/10 !text-violet-100 !text-[11px] !py-1 !px-2.5 !bg-none"
                 options={(Object.keys(CHAT_MODE_LABELS) as ChatMode[])
                   .filter((m) => m !== "developer" || canUseDeveloperMode)
                   .map((m) => ({

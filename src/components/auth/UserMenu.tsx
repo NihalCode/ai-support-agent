@@ -40,16 +40,18 @@ export function UserMenu() {
   }
 
   return (
-    <div className="ide-user-menu" data-testid="user-menu" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 12, color: "var(--muted)" }} title={user.email}>
+    <div className="ide-user-menu flex items-center gap-2 min-w-0 max-w-[220px]" data-testid="user-menu">
+      <span
+        className="text-xs text-slate-400 truncate"
+        title={user.email}
+      >
         {user.name ?? user.email}
-        <span style={{ opacity: 0.7 }}> · {user.role}</span>
+        <span className="opacity-70"> · {user.role}</span>
       </span>
       <a
-        className="ide-tree-item"
+        className="ide-tree-item shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/5 no-underline"
         href={logoutUrl}
         data-testid="user-menu-logout"
-        style={{ width: "auto", padding: "4px 8px", fontSize: 12, textDecoration: "none" }}
       >
         Sign out
       </a>

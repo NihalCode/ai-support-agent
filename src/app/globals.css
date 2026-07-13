@@ -174,9 +174,21 @@ html.pref-reduced-motion *::after {
   max-width: none;
 }
 
-.app-select--fit-content .app-select-value {
+.app-select--toolbar .app-select-trigger {
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+  background-image: none;
+  box-shadow: none;
+}
+
+.app-select--toolbar .app-select-value {
   overflow: visible;
   text-overflow: clip;
+}
+
+.app-select--open .app-select-trigger {
+  z-index: 1;
 }
 
 .app-select-option {
