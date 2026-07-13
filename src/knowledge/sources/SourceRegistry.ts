@@ -56,6 +56,14 @@ export function listKnowledgeSources(): KnowledgeSourceConfig[] {
       enabled: process.env.KNOWLEDGE_SOURCE_CONFLUENCE_ENABLED !== "false",
       syncIntervalHours: DEFAULT_SYNC_HOURS,
     },
+    {
+      id: "zendesk-tickets",
+      name: "Zendesk support tickets",
+      product: "zendesk",
+      type: "zendesk",
+      enabled: process.env.KNOWLEDGE_SOURCE_ZENDESK_ENABLED !== "false",
+      syncIntervalHours: DEFAULT_SYNC_HOURS,
+    },
   ];
 
   const supportUrl = process.env.SUPPORT_DOCS_URL?.trim();

@@ -35,6 +35,7 @@ interface EnterpriseCardProps {
   onDisconnect: (id: EnterpriseId) => void;
   onTestSlack?: (channel: string) => void;
   onSyncConfluence?: () => void;
+  onSyncZendesk?: () => void;
 }
 
 function healthLabel(health: IntegrationRow["health"], configured: boolean, developerMode: boolean): string {
@@ -57,6 +58,7 @@ function EnterpriseCard({
   onDisconnect,
   onTestSlack,
   onSyncConfluence,
+  onSyncZendesk,
 }: EnterpriseCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -127,6 +129,8 @@ function EnterpriseCard({
           {developerMode && id === "zendesk" && (
             <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
               Search: GET /api/integrations/zendesk/tickets?q=…
+              <br />
+              Sync: POST /api/integrations/zendesk/sync
               <br />
               Actions: POST /api/integrations/zendesk/actions
             </div>
@@ -264,6 +268,18 @@ function EnterpriseCard({
                 Sync now
               </button>
             )}
+            {id === "zendesk" && onSyncZendesk && row.configured && (
+              <button
+                type="button"
+                className="ide-tree-item"
+                style={{ width: "auto", padding: "4px 12px" }}
+                disabled={busy}
+                onClick={onSyncZendesk}
+                data-testid="enterprise-zendesk-sync"
+              >
+                Sync now
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -392,6 +408,28 @@ export function EnterpriseIntegrationCards({
     });
   }
 
+  async function syncZendesk() {
+    await runGuarded("zendesk", async () => {
+      const res = await fetch("/api/integrations/zendesk/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        skipped?: boolean;
+        reason?: string;
+        result?: { ticketsStored?: number; upserted?: number };
+      };
+      if (!res.ok) setMessage(data.error ?? "Sync failed");
+      else if (data.skipped) setMessage(data.reason ?? "Sync already in progress.");
+      else
+        setMessage(
+          `Zendesk sync complete (${data.result?.ticketsStored ?? 0} tickets, ${data.result?.upserted ?? 0} chunks).`
+        );
+    });
+  }
+
   return (
     <div data-testid="enterprise-integration-cards" style={{ display: "grid", gap: 12, marginBottom: 24 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Slack, Confluence, Zendesk & Jira</h3>
@@ -414,6 +452,7 @@ export function EnterpriseIntegrationCards({
           onDisconnect={disconnect}
           onTestSlack={row.id === "slack" ? testSlack : undefined}
           onSyncConfluence={row.id === "confluence" ? syncConfluence : undefined}
+          onSyncZendesk={row.id === "zendesk" ? syncZendesk : undefined}
         />
       ))}
     </div>

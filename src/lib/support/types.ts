@@ -154,6 +154,11 @@ export interface TicketConnector {
   getIssue(ref: string): Promise<NormalizedIssue | null>;
   searchIssues(query: string, limit?: number): Promise<NormalizedIssue[]>;
   listRecentIssues?(limit?: number): Promise<NormalizedIssue[]>;
+  /** Bulk export for knowledge ingestion pipelines. */
+  listTicketsForSync?(
+    maxTickets: number,
+    startTimeUnix?: number
+  ): Promise<{ tickets: NormalizedIssue[]; endTime?: number }>;
   /**
    * Write a comment. MUST only be called after explicit user approval; the
    * route layer enforces this. Returns the created comment URL (or a mock id).

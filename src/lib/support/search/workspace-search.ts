@@ -6,6 +6,11 @@ import { retrieveAcross } from "@/lib/support/retrieve";
 import { getConfig, hasOpenAI, hasPinecone } from "@/lib/support/config";
 import { getConfluenceDocs, getJiraTickets, getZendeskTickets } from "@/lib/support/connectors";
 import { enterpriseKnowledgeNamespace } from "@/lib/support/enterprise/knowledge-ingest";
+import { zendeskTicketNamespace } from "@/lib/support/enterprise/zendesk-ticket-ingest";
+import {
+  countStoredZendeskTickets,
+  searchStoredZendeskTickets,
+} from "@/lib/support/enterprise/stores/zendesk-ticket-store";
 import { cqlNamespace } from "@/lib/support/cql/ingest-docs";
 import { listInvestigations } from "@/lib/support/investigation/object-store";
 import { isTestMode } from "@/lib/test-mode";
@@ -184,8 +189,22 @@ async function keywordSearch(query: string): Promise<WorkspaceSearchResult[]> {
   }
 
   try {
-    const zendesk = await getZendeskTickets();
-    const tickets = await zendesk.connector.searchIssues(query, 8).catch(() => []);
+    const storedCount = await countStoredZendeskTickets();
+    const tickets =
+      storedCount > 0
+        ? await searchStoredZendeskTickets(query, 8)
+        : await getZendeskTickets().then(({ connector }) =>
+            connector.searchIssues(query, 8).catch(() => [])
+          );
+    if (storedCount > 0 && tickets.length < 8) {
+      const live = await getZendeskTickets().then(({ connector }) =>
+        connector.searchIssues(query, 8).catch(() => [])
+      );
+      const seen = new Set(tickets.map((t) => t.id));
+      for (const t of live) {
+        if (!seen.has(t.id)) tickets.push(t);
+      }
+    }
     for (const t of tickets) {
       const key = t.key ?? t.id;
       results.push({
@@ -271,6 +290,9 @@ async function semanticSearch(query: string, topK: number): Promise<{
   const cfg = getConfig();
   const namespaces = listSpecs().map((s) => apiSpecNamespace(s.id));
   namespaces.push(cqlNamespace(), enterpriseKnowledgeNamespace());
+  if ((await countStoredZendeskTickets()) > 0) {
+    namespaces.push(zendeskTicketNamespace());
+  }
 
   if (namespaces.length === 0) {
     return {

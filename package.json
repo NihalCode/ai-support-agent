@@ -35,6 +35,7 @@
     "deploy:public": "node scripts/ensure-public-deploy.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "knowledge:sync": "tsx --conditions=react-server scripts/knowledge-sync.ts",
+    "zendesk:import": "tsx --conditions=react-server scripts/zendesk-import-folder.ts",
     "knowledge:diagnose": "tsx --conditions=react-server scripts/knowledge-diagnose.ts",
     "test:knowledge": "vitest run src/knowledge/__tests__",
     "test:metrics": "vitest run src/metrics/__tests__",

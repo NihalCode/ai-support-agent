@@ -1,6 +1,10 @@
 import "server-only";
 
 import { getJiraTickets, getZendeskTickets } from "../connectors";
+import {
+  getStoredZendeskTicket,
+  searchStoredZendeskTickets,
+} from "../enterprise/stores/zendesk-ticket-store";
 import type { NormalizedIssue } from "../types";
 import type { InvestigationContext, SupportQuery } from "./types";
 
@@ -149,9 +153,14 @@ export async function resolveTicketsFromContext(
   }
 
   if (zendeskTicketId) {
-    const { connector } = await getZendeskTickets();
-    const issue = await connector.getIssue(zendeskTicketId);
-    if (issue) zendeskTicketId = normalizeZendeskRef(issue);
+    const stored = await getStoredZendeskTicket(zendeskTicketId);
+    if (stored) {
+      zendeskTicketId = normalizeZendeskRef(stored);
+    } else {
+      const { connector } = await getZendeskTickets();
+      const issue = await connector.getIssue(zendeskTicketId);
+      if (issue) zendeskTicketId = normalizeZendeskRef(issue);
+    }
   }
 
   const searchQ = contextSearchQuery(q);
@@ -167,12 +176,19 @@ export async function resolveTicketsFromContext(
     }
 
     if (!zendeskTicketId) {
-      const { connector } = await getZendeskTickets();
-      const hits = await connector.searchIssues(searchQ, 10);
-      const best = pickBestTicket(hits, q, minScore);
-      if (best) {
-        zendeskTicketId = normalizeZendeskRef(best.issue);
+      const storedHits = await searchStoredZendeskTickets(searchQ, 10);
+      const bestStored = pickBestTicket(storedHits, q, minScore);
+      if (bestStored) {
+        zendeskTicketId = normalizeZendeskRef(bestStored.issue);
         autoLinkedZendesk = true;
+      } else {
+        const { connector } = await getZendeskTickets();
+        const hits = await connector.searchIssues(searchQ, 10);
+        const best = pickBestTicket(hits, q, minScore);
+        if (best) {
+          zendeskTicketId = normalizeZendeskRef(best.issue);
+          autoLinkedZendesk = true;
+        }
       }
     }
   }

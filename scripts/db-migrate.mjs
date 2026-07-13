@@ -408,4 +408,38 @@ await sql`
   ON context_usage_metrics (org_id, created_at DESC)
 `;
 
+await sql`
+  CREATE TABLE IF NOT EXISTS zendesk_tickets (
+    org_id TEXT NOT NULL DEFAULT 'default',
+    ticket_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'unknown',
+    priority TEXT,
+    tags JSONB NOT NULL DEFAULT '[]',
+    requester_id TEXT,
+    assignee_id TEXT,
+    comments_json JSONB NOT NULL DEFAULT '[]',
+    url TEXT,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (org_id, ticket_id)
+  )
+`;
+await sql`
+  CREATE INDEX IF NOT EXISTS idx_zendesk_tickets_org_updated
+  ON zendesk_tickets (org_id, updated_at DESC)
+`;
+
+await sql`
+  CREATE TABLE IF NOT EXISTS zendesk_sync_state (
+    org_id TEXT PRIMARY KEY DEFAULT 'default',
+    last_synced_at TIMESTAMPTZ,
+    last_start_time BIGINT,
+    ticket_count INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+
 console.log("Schema applied successfully.");

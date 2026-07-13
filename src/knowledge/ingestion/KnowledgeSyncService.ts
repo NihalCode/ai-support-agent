@@ -7,6 +7,11 @@ import { indexSpec } from "@/lib/support/api-specs/registry";
 import { ingestCqlDocs } from "@/lib/support/cql/ingest-docs";
 import { cqlNamespace } from "@/lib/support/cql/ingest-docs";
 import { ingestEnterpriseKnowledge, enterpriseKnowledgeNamespace } from "@/lib/support/enterprise/knowledge-ingest";
+import {
+  ingestZendeskTickets,
+  zendeskContentChecksum,
+  zendeskTicketNamespace,
+} from "@/lib/support/enterprise/zendesk-ticket-ingest";
 import { getVectorStore } from "@/lib/support/vector-store";
 import { safeFetch } from "@/lib/ssrf";
 import { htmlToText } from "@/lib/support/cql/ingest-docs";
@@ -235,6 +240,61 @@ async function syncConfluence(sourceId: string, force: boolean): Promise<Knowled
   }
 }
 
+async function syncZendesk(sourceId: string, force: boolean): Promise<KnowledgeSyncSourceResult> {
+  const warnings: string[] = [];
+  try {
+    const checksum = await zendeskContentChecksum();
+    const prev = await getKnowledgeDocumentState(sourceId);
+    if (!force && prev?.checksum === checksum && prev.chunkCount > 0) {
+      return {
+        sourceId,
+        ok: true,
+        skipped: true,
+        chunks: prev.chunkCount,
+        checksum,
+        namespace: zendeskTicketNamespace(),
+        warnings,
+      };
+    }
+
+    const store = getVectorStore();
+    if (force) await store.deleteNamespace(zendeskTicketNamespace());
+
+    const result = await ingestZendeskTickets({ force });
+    warnings.push(...result.warnings);
+
+    await upsertKnowledgeDocumentState({
+      sourceId,
+      url: "zendesk",
+      checksum: result.checksum,
+      vectorIds: [],
+      namespace: result.namespace,
+      lastIndexedAt: new Date().toISOString(),
+      status: "active",
+      chunkCount: result.upserted,
+    });
+
+    return {
+      sourceId,
+      ok: true,
+      skipped: result.skipped,
+      chunks: result.upserted,
+      checksum: result.checksum,
+      namespace: result.namespace,
+      warnings,
+    };
+  } catch (err) {
+    return {
+      sourceId,
+      ok: false,
+      skipped: false,
+      chunks: 0,
+      error: err instanceof Error ? err.message : String(err),
+      warnings,
+    };
+  }
+}
+
 async function syncSupportDocs(
   sourceId: string,
   url: string,
@@ -341,6 +401,8 @@ async function syncOneSource(
       return syncCql(sourceId, url, force);
     case "confluence":
       return syncConfluence(sourceId, force);
+    case "zendesk":
+      return syncZendesk(sourceId, force);
     case "support_docs":
       return syncSupportDocs(sourceId, url, force);
     default:

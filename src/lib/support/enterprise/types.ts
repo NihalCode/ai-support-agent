@@ -130,7 +130,8 @@ export type KnowledgeSourceType =
   | "api_doc"
   | "postman"
   | "openapi"
-  | "manual";
+  | "manual"
+  | "zendesk";
 
 export type KnowledgeSourceStatus = "indexed" | "syncing" | "failed" | "stale";
 

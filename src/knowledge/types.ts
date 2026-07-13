@@ -4,7 +4,8 @@ export type KnowledgeProduct =
   | CywareProductId
   | "cql"
   | "confluence"
-  | "support_docs";
+  | "support_docs"
+  | "zendesk";
 
 export type KnowledgeSourceType =
   | "url"
@@ -13,7 +14,8 @@ export type KnowledgeSourceType =
   | "markdown"
   | "confluence"
   | "github"
-  | "manual";
+  | "manual"
+  | "zendesk";
 
 export interface KnowledgeSourceConfig {
   id: string;

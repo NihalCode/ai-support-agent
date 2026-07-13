@@ -6,6 +6,7 @@ import { enqueueApproval } from "@/lib/support/approvals";
 import { audit } from "@/lib/support/enterprise/audit-log";
 import { upsertInvestigationLinks } from "@/lib/support/enterprise/stores/investigation-links-store";
 import { ingestEnterpriseKnowledge } from "@/lib/support/enterprise/knowledge-ingest";
+import { ingestZendeskTickets } from "@/lib/support/enterprise/zendesk-ticket-ingest";
 import {
   listKnowledgeSources,
   upsertKnowledgeSource,
@@ -14,10 +15,15 @@ import type { ApprovalAction } from "@/lib/support/types";
 import { isTestMode } from "@/lib/test-mode";
 import { searchConfluencePages, getConfluencePage } from "@/integrations/confluence/ConfluenceConnector";
 import { tryAcquireConfluenceSyncLock, releaseConfluenceSyncLock } from "@/integrations/confluence/sync-lock";
+import { tryAcquireZendeskSyncLock, releaseZendeskSyncLock } from "@/integrations/zendesk/sync-lock";
 import { searchJiraIssues, getJiraIssue } from "@/integrations/jira/JiraConnector";
 import { sendSlackTestMessage } from "@/integrations/slack/SlackConnector";
 import { searchZendeskTickets, getZendeskTicket } from "@/integrations/zendesk/ZendeskConnector";
 import { getJiraTickets, getZendeskTickets } from "@/lib/support/connectors";
+import {
+  getStoredZendeskTicket,
+  searchStoredZendeskTickets,
+} from "@/lib/support/enterprise/stores/zendesk-ticket-store";
 
 export async function handleSlackTestMessage(channel: string, text: string) {
   return sendSlackTestMessage(channel, text);
@@ -82,14 +88,70 @@ export async function handleConfluenceSources() {
   return { sources: sources.filter((s) => s.type === "confluence") };
 }
 
+export async function handleZendeskSync(userId: string) {
+  if (!tryAcquireZendeskSyncLock()) {
+    return { skipped: true, reason: "A Zendesk sync is already running." };
+  }
+
+  try {
+    const name = "Zendesk support tickets";
+    const source = await upsertKnowledgeSource({
+      type: "zendesk",
+      name,
+      status: "syncing",
+      createdByUserId: userId,
+    });
+
+    try {
+      const result = await ingestZendeskTickets({ force: true });
+      const updated = await upsertKnowledgeSource({
+        id: source.id,
+        type: "zendesk",
+        name,
+        status: result.upserted > 0 || result.ticketsStored > 0 ? "indexed" : "failed",
+        lastSyncedAt: new Date().toISOString(),
+      });
+      await audit({
+        action: "knowledge:sync",
+        target: source.id,
+        approved: true,
+        provider: "zendesk",
+        actorId: userId,
+        details: `stored ${result.ticketsStored} tickets, upserted ${result.upserted} chunks`,
+      });
+      return { source: updated, result };
+    } catch (err) {
+      await upsertKnowledgeSource({ id: source.id, type: "zendesk", name, status: "failed" });
+      throw err;
+    }
+  } finally {
+    releaseZendeskSyncLock();
+  }
+}
+
+export async function handleZendeskSources() {
+  const sources = await listKnowledgeSources();
+  return { sources: sources.filter((s) => s.type === "zendesk") };
+}
+
 export async function handleZendeskSearch(query: string, limit = 10) {
-  const tickets = await searchZendeskTickets(query, limit);
+  const stored = await searchStoredZendeskTickets(query, limit);
+  let tickets = stored;
+  if (stored.length < limit) {
+    const live = await searchZendeskTickets(query, limit);
+    const seen = new Set(stored.map((t) => t.id));
+    tickets = [...stored];
+    for (const t of live) {
+      if (!seen.has(t.id)) tickets.push(t);
+    }
+  }
   await audit({ action: "read:zendesk-search", approved: true, provider: "zendesk", details: query });
-  return { tickets };
+  return { tickets: tickets.slice(0, limit) };
 }
 
 export async function handleZendeskRead(ticketId: string) {
-  const ticket = await getZendeskTicket(ticketId);
+  const stored = await getStoredZendeskTicket(ticketId);
+  const ticket = stored ?? (await getZendeskTicket(ticketId));
   await audit({ action: "read:zendesk-ticket", target: ticketId, approved: true, provider: "zendesk" });
   return { ticket };
 }

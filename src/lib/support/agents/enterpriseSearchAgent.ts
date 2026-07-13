@@ -3,6 +3,8 @@ import "server-only";
 import type { AgentResult, DocsFinding, EvidenceItem, SupportQuery } from "../investigation/types";
 import { getConfluenceDocs, getZendeskTickets } from "../connectors";
 import { contextSearchQuery } from "../investigation/ticket-context";
+import { searchZendeskForAgent } from "../enterprise/zendesk-search";
+import { countStoredZendeskTickets } from "../enterprise/stores/zendesk-ticket-store";
 
 export async function runEnterpriseSearchAgent(
   q: SupportQuery
@@ -16,7 +18,15 @@ export async function runEnterpriseSearchAgent(
   const zendesk = await getZendeskTickets();
   mock ||= zendesk.mock;
   try {
-    const tickets = await zendesk.connector.searchIssues(terms, 6);
+    const { tickets, fromIndex } = await searchZendeskForAgent(
+      terms,
+      6,
+      async (query, limit) => zendesk.connector.searchIssues(query, limit)
+    );
+    if (fromIndex) {
+      const storedCount = await countStoredZendeskTickets();
+      warnings.push(`Zendesk: ${storedCount} ingested ticket(s) in local index.`);
+    }
     for (const ticket of tickets) {
       docs.push({
         id: `zendesk-${ticket.key ?? ticket.id}`,
@@ -24,7 +34,7 @@ export async function runEnterpriseSearchAgent(
         title: `${ticket.key ?? ticket.id}: ${ticket.title}`,
         summary: `${ticket.state} — ${(ticket.body || ticket.title).slice(0, 280)}`,
         url: ticket.url,
-        metadata: { state: ticket.state, priority: ticket.priority },
+        metadata: { state: ticket.state, priority: ticket.priority, fromIndex },
       });
     }
   } catch (err) {

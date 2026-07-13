@@ -133,6 +133,41 @@ export class ZendeskConnector implements TicketConnector {
     return (data.results ?? []).slice(0, limit).map((t) => this.normalize(t));
   }
 
+  /** Bulk fetch tickets for ingestion (incremental export API). */
+  async listTicketsForSync(maxTickets: number, startTimeUnix = 0): Promise<{
+    tickets: NormalizedIssue[];
+    endTime?: number;
+  }> {
+    const tickets: NormalizedIssue[] = [];
+    let url: string | null =
+      `${this.baseUrl}/api/v2/incremental/tickets.json?start_time=${Math.max(0, startTimeUnix)}`;
+    let endTime: number | undefined;
+
+    while (url && tickets.length < maxTickets) {
+      const res = await withRetry(() =>
+        safeFetch(url!, { headers: this.headers() }, { timeoutMs: 60_000 })
+      ).catch(() => null);
+      if (!res?.ok) break;
+
+      const data = JSON.parse(res.text) as {
+        tickets?: ZendeskTicket[];
+        end_time?: number;
+        next_page?: string | null;
+      };
+      endTime = data.end_time;
+
+      for (const raw of data.tickets ?? []) {
+        if (tickets.length >= maxTickets) break;
+        const full = await this.getIssue(String(raw.id));
+        if (full) tickets.push(full);
+      }
+
+      url = data.next_page && tickets.length < maxTickets ? data.next_page : null;
+    }
+
+    return { tickets, endTime };
+  }
+
   async addComment(ref: string, body: string, opts?: { public?: boolean }) {
     const id = ref.replace(/^ZD-/i, "").trim();
     if (!/^\d+$/.test(id)) throw new Error(`Invalid Zendesk ticket ref: ${ref}`);
@@ -240,6 +275,18 @@ export class MockZendeskTicketConnector implements TicketConnector {
 
   async listRecentIssues(limit = 8): Promise<NormalizedIssue[]> {
     return this.tickets.slice(0, limit);
+  }
+
+  async listTicketsForSync(maxTickets: number): Promise<{
+    tickets: NormalizedIssue[];
+    endTime?: number;
+  }> {
+    const tickets: NormalizedIssue[] = [];
+    for (const t of this.tickets.slice(0, maxTickets)) {
+      const full = await this.getIssue(t.id);
+      if (full) tickets.push(full);
+    }
+    return { tickets, endTime: Math.floor(Date.now() / 1000) };
   }
 
   async addComment(ref: string, _body: string) {
