@@ -83,11 +83,11 @@ export function MessageBubble({
         <Sparkles className="h-4 w-4 text-white" />
       </div>
       <div className="min-w-0 flex-1 space-y-3">
-        {message.meta?.intent && (
+        {developerMode && message.meta?.intent && (
           <IntentCard
             intent={sanitizeSupportText(message.meta.intent, developerMode)}
             confidence="High"
-            plan={developerMode ? undefined : ["Extract issue details", "Check connected support systems", "Search internal knowledge", "Prepare customer response"]}
+            plan={undefined}
           />
         )}
 

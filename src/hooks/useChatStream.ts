@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from "react";
 import type { ChatStreamEvent } from "@/lib/support/chat/stream-events";
+import { applyChatContentEvent } from "@/lib/support/chat/stream-content";
 import { shouldFallbackToInvestigate } from "@/lib/support/chat/stream-fallback";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -93,13 +94,12 @@ export function useChatStream() {
             const event = JSON.parse(line.slice(5).trim()) as ChatStreamEvent;
             if (event.type === "intent_classified") {
               streamHadProgress = true;
-              content = `${event.summary}\n\n`;
               messageMeta = { ...messageMeta, intent: event.summary };
               updateChatMessage(assistantId, { content, meta: messageMeta });
             }
             if (event.type === "token") {
               streamHadProgress = true;
-              content += event.text;
+              content = applyChatContentEvent(content, event);
               updateChatMessage(assistantId, { content, meta: messageMeta });
             }
             if (event.type === "session_created") {

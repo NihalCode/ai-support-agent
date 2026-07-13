@@ -9,6 +9,24 @@ import type {
 import { SLASH_INTENT_MAP, applyContextBoosts, scoreMessageRules } from "./rules";
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
+const ZENDESK_RE = /\bzendesk\b/i;
+const TICKET_RESEARCH_RE =
+  /\b(find|search|show|look\s*up|review|summar(?:ize|ise)|compare)\b.{0,80}\b(similar|related|previous|prior|historical|ticket|case|resolution|comment|incident)s?\b|\b(what did we do before|search ticket history|prior resolutions?|related customer cases?)\b/i;
+
+const SEARCH_STOP_WORDS = new Set([
+  "about", "after", "before", "customer", "find", "from", "have", "mentioned",
+  "please", "seeing", "similar", "started", "summarize", "that", "they", "ticket",
+  "tickets", "what", "with", "zendesk",
+]);
+
+function searchKeywords(message: string): string[] {
+  return [...new Set(
+    message
+      .toLowerCase()
+      .split(/[^a-z0-9_-]+/)
+      .filter((word) => word.length >= 3 && !SEARCH_STOP_WORDS.has(word))
+  )].slice(0, 12);
+}
 
 function detectTechnicalLevel(message: string): UserTechnicalLevel {
   const nonTechnical =
@@ -66,6 +84,8 @@ function extractEntities(message: string): IntentEntities {
     requestId,
     timestamp,
     apiProduct,
+    provider: ZENDESK_RE.test(message) ? "zendesk" : undefined,
+    keywords: searchKeywords(message),
     cqlQuery,
     deployTarget,
     requestedOutput,
@@ -81,6 +101,8 @@ function confidenceFromScore(top: number, second: number): IntentConfidence {
 
 function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): string {
   switch (intent) {
+    case "support.ticket_research":
+      return "Search Zendesk history, rank relevant resolved cases, and summarize grounded resolutions.";
     case "api_troubleshooting":
       return "Diagnose API endpoint, status code, and routing — check registry, gateway, and logs.";
     case "build_app":
@@ -120,6 +142,9 @@ function planSummaryFor(intent: UserIntent, _ctx: WorkspaceIntentContext): strin
 
 function recommendedRouteFor(intent: UserIntent): string {
   const routes: Partial<Record<UserIntent, string>> = {
+    "support.ticket_research": "zendesk:ticket-research",
+    "support.ticket_lookup": "zendesk:ticket-lookup",
+    "support.ticket_update": "zendesk:ticket-update",
     api_troubleshooting: "api:troubleshoot",
     build_app: "build_app:plan",
     unsupported_app_build_request: "build_app:plan",
@@ -214,6 +239,22 @@ export function classifyUserIntent(input: ClassifyIntentInput): IntentClassifica
 
   const entities = extractEntities(message);
   const userTechnicalLevel = detectTechnicalLevel(message);
+
+  // Explicit provider + read-only ticket research must not depend on a
+  // probabilistic classifier. This runs before all score-based rules.
+  if (ZENDESK_RE.test(message) && TICKET_RESEARCH_RE.test(message)) {
+    return {
+      primaryIntent: "support.ticket_research",
+      secondaryIntents: [],
+      confidence: "high",
+      userTechnicalLevel,
+      extractedEntities: { ...entities, provider: "zendesk" },
+      provider: "zendesk",
+      needsClarification: false,
+      recommendedRoute: "zendesk:ticket-research",
+      planSummary: planSummaryFor("support.ticket_research", ctx),
+    };
+  }
 
   if (forcedIntent) {
     return {

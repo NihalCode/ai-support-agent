@@ -16,6 +16,7 @@ import { runIntegrationHealthCheck } from "@/integrations/core/IntegrationHealth
 import type { IntegrationId } from "@/integrations/core/IntegrationTypes";
 import { isTestMode } from "@/lib/test-mode";
 import type { IntegrationHealthCard, IntegrationHealthStatus } from "./types";
+import { getZendeskConnectorStatus } from "./zendesk-readiness";
 
 const ENV_REQUIREMENTS: Record<string, string[]> = {
   auth0: ["AUTH0_DOMAIN", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_SECRET", "APP_BASE_URL"],
@@ -65,7 +66,8 @@ async function registryHealth(id: IntegrationId): Promise<{ ok: boolean; detail:
 
 /** Build normalized integration health cards for admin/support dashboards. */
 export async function buildIntegrationHealthCards(
-  developerMode = false
+  developerMode = false,
+  organizationId?: string
 ): Promise<IntegrationHealthCard[]> {
   const cfg = getConfig();
   const cards: IntegrationHealthCard[] = [];
@@ -152,23 +154,36 @@ export async function buildIntegrationHealthCards(
   );
 
   const zendeskConfigured = hasZendesk(cfg);
-  const zendeskHealth = zendeskConfigured ? await registryHealth("zendesk") : null;
+  const zendeskReadiness = await getZendeskConnectorStatus(organizationId);
+  const zendeskHealth =
+    zendeskConfigured && zendeskReadiness.ticketsStored === 0
+      ? await registryHealth("zendesk")
+      : null;
+  const zendeskStatus: IntegrationHealthStatus =
+    zendeskReadiness.syncState === "ready"
+      ? "connected"
+      : zendeskReadiness.syncState === "stale" ||
+          zendeskReadiness.syncState === "partial"
+        ? "degraded"
+        : zendeskReadiness.syncState === "failed"
+          ? "error"
+          : zendeskConfigured && zendeskHealth?.ok
+            ? "connected"
+            : isTestMode()
+              ? "mock"
+              : "not_configured";
   cards.push(
     card(
       "Zendesk",
-      !zendeskConfigured
-        ? isTestMode()
-          ? "mock"
-          : "not_configured"
-        : zendeskHealth?.ok
-          ? "connected"
-          : "error",
-      zendeskHealth?.detail ??
-        (zendeskConfigured
-          ? "Zendesk configured."
-          : isTestMode()
-            ? "Mock Zendesk (TEST_MODE)."
-            : "Zendesk not configured — draft responses only.")
+      zendeskStatus,
+      zendeskReadiness.ticketsStored > 0
+        ? `${zendeskReadiness.syncState}: ${zendeskReadiness.ticketsStored} tickets stored, ${zendeskReadiness.ticketsIndexed} searchable, ${zendeskReadiness.commentsIndexed} comments indexed.`
+        : zendeskHealth?.detail ??
+            (zendeskConfigured
+              ? "Zendesk configured; initial synchronization has not completed."
+              : isTestMode()
+                ? "Mock Zendesk (TEST_MODE)."
+                : "Zendesk is not connected and no imported ticket history is available.")
     )
   );
 

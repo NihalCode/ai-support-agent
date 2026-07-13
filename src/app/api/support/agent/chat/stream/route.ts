@@ -32,6 +32,10 @@ import {
   formatDeveloperHandoff,
   userExplicitlyAskedForCommits,
 } from "@/lib/support/developer-handoff";
+import {
+  formatZendeskResearchResponse,
+  researchZendeskTickets,
+} from "@/lib/support/enterprise/zendesk-ticket-research";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -122,6 +126,66 @@ export async function POST(req: Request) {
           for await (const chunk of simulateStream(fullText)) {
             send({ type: "token", messageId, text: chunk });
           }
+        } else if (
+          classification.primaryIntent === "support.ticket_research" &&
+          classification.provider === "zendesk"
+        ) {
+          const phases = [
+            ["zendesk_readiness", "Checking Zendesk connection"],
+            ["zendesk_search", "Searching historical tickets"],
+            ["zendesk_rerank", "Reviewing relevant cases"],
+            ["zendesk_summary", "Summarizing previous resolutions"],
+          ] as const;
+          const toolIds = phases.map(() => crypto.randomUUID());
+          phases.forEach(([name, summary], index) => {
+            send({
+              type: "tool_call_start",
+              toolCallId: toolIds[index],
+              agent: "zendesk",
+              name,
+              summary,
+            });
+          });
+
+          const result = await researchZendeskTickets(message, 5, auth.user.orgId);
+          phases.forEach(([, summary], index) => {
+            send({
+              type: "tool_call_result",
+              toolCallId: toolIds[index],
+              status:
+                index > 0 &&
+                (!result.status.connected ||
+                  result.status.syncState === "failed" ||
+                  result.status.syncState === "never_synced")
+                  ? "skipped"
+                  : "success",
+              summary,
+            });
+          });
+
+          fullText = formatZendeskResearchResponse(result);
+          for await (const chunk of simulateStream(fullText)) {
+            send({ type: "token", messageId, text: chunk });
+          }
+
+          void metrics.track({
+            eventType:
+              result.matches.length > 0
+                ? "zendesk.search.completed"
+                : "zendesk.search.zero_results",
+            category: "integration",
+            actorUserId: auth.user.id,
+            actorRole: auth.user.role,
+            durationMs: result.durationMs,
+            metadata: {
+              messageId,
+              traceId: result.traceId,
+              integrationId: result.status.integrationId,
+              organizationId: result.status.organizationId,
+              resultCount: result.matches.length,
+              syncState: result.status.syncState,
+            },
+          });
         } else if (route.kind === "api_troubleshooting") {
           const createToolId = crypto.randomUUID();
           send({

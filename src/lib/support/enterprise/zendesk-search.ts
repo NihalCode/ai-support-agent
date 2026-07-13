@@ -5,6 +5,7 @@ import { retrieveAcross } from "../retrieve";
 import { zendeskTicketNamespace } from "../enterprise/zendesk-ticket-ingest";
 import {
   countStoredZendeskTickets,
+  getStoredZendeskTicket,
   searchStoredZendeskTickets,
 } from "../enterprise/stores/zendesk-ticket-store";
 import type { NormalizedIssue } from "../types";
@@ -12,29 +13,43 @@ import type { NormalizedIssue } from "../types";
 export async function searchZendeskForAgent(
   query: string,
   limit = 6,
-  liveSearch?: (query: string, limit: number) => Promise<NormalizedIssue[]>
+  liveSearch?: (query: string, limit: number) => Promise<NormalizedIssue[]>,
+  organizationId?: string
 ): Promise<{ tickets: NormalizedIssue[]; fromIndex: boolean; fromLive: boolean }> {
-  const storedCount = await countStoredZendeskTickets();
-  const local = storedCount > 0 ? await searchStoredZendeskTickets(query, limit) : [];
+  const storedCount = await countStoredZendeskTickets(organizationId);
+  const local =
+    storedCount > 0
+      ? await searchStoredZendeskTickets(query, limit, organizationId)
+      : [];
   let semantic: NormalizedIssue[] = [];
 
   const cfg = getConfig();
   if (storedCount > 0 && hasOpenAI(cfg) && hasPinecone(cfg)) {
     try {
-      const { chunks } = await retrieveAcross([zendeskTicketNamespace()], query, limit);
-      semantic = chunks
-        .filter((c) => c.metadata.sourceType === "zendesk")
-        .map((c) => ({
-          id: String(c.metadata.filePath ?? c.id),
-          source: "zendesk" as const,
-          key: String(c.metadata.filePath ?? c.id),
-          title: String(c.metadata.title ?? c.text.split("\n")[0] ?? "Zendesk ticket"),
-          body: c.text,
-          state: "unknown",
-          labels: [],
-          comments: [],
-          url: c.metadata.url ?? "",
-        }));
+      const { chunks } = await retrieveAcross(
+        [zendeskTicketNamespace(organizationId)],
+        query,
+        limit
+      );
+      semantic = await Promise.all(
+        chunks
+          .filter((c) => c.metadata.sourceType === "zendesk")
+          .map(async (c) => {
+            const key = String(c.metadata.filePath ?? c.id);
+            const stored = await getStoredZendeskTicket(key, organizationId);
+            return stored ?? {
+              id: key,
+              source: "zendesk" as const,
+              key,
+              title: String(c.metadata.title ?? c.text.split("\n")[0] ?? "Zendesk ticket"),
+              body: c.text,
+              state: "unknown",
+              labels: [],
+              comments: [],
+              url: c.metadata.url ?? "",
+            };
+          })
+      );
     } catch {
       /* optional semantic path */
     }

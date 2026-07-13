@@ -56,6 +56,32 @@ describe("intent classification — natural language examples", () => {
 });
 
 describe("intent classification — specific scenarios", () => {
+  it("deterministically routes explicit Zendesk historical research", () => {
+    const message =
+      "A customer is seeing CTIX package list with no indicator count on export. " +
+      "They mentioned it started after a recent upgrade. " +
+      "Can you find similar Zendesk tickets and summarize what we did before?";
+    const result = classifyUserIntent({ message });
+
+    expect(result.primaryIntent).toBe("support.ticket_research");
+    expect(result.provider).toBe("zendesk");
+    expect(result.confidence).toBe("high");
+    expect(result.needsClarification).toBe(false);
+    expect(result.extractedEntities.apiProduct).toBe("CTIX");
+    expect(result.extractedEntities.keywords).toContain("indicator");
+  });
+
+  it.each([
+    "Search Zendesk ticket history for package export failures",
+    "Find previous Zendesk tickets and summarize prior resolutions",
+    "Review related customer cases in Zendesk and tell me what we did before",
+  ])("explicit Zendesk research never returns unknown: %s", (message) => {
+    const result = classifyUserIntent({ message });
+    expect(result.primaryIntent).toBe("support.ticket_research");
+    expect(result.primaryIntent).not.toBe("unknown");
+    expect(result.needsClarification).toBe(false);
+  });
+
   it("build app from non-keyword text", () => {
     const r = classifyUserIntent({
       message:
@@ -151,6 +177,14 @@ describe("intent classification — specific scenarios", () => {
 });
 
 describe("intent routing", () => {
+  it("routes Zendesk ticket research directly without clarification", () => {
+    const message = "Find similar Zendesk tickets and summarize what we did before";
+    const classification = classifyUserIntent({ message });
+    expect(classification.recommendedRoute).toBe("zendesk:ticket-research");
+    expect(classification.provider).toBe("zendesk");
+    expect(classification.needsClarification).toBe(false);
+  });
+
   it("routes active app vague UI to unsupported app build", () => {
     const classification = classifyUserIntent({
       message: "Make this client-ready.",

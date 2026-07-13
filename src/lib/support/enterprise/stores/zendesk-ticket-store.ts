@@ -81,9 +81,12 @@ export function storedTicketToNormalized(t: StoredZendeskTicket): NormalizedIssu
   };
 }
 
-export async function upsertZendeskTickets(tickets: NormalizedIssue[]): Promise<number> {
+export async function upsertZendeskTickets(
+  tickets: NormalizedIssue[],
+  organizationId = defaultOrgId()
+): Promise<number> {
   if (tickets.length === 0) return 0;
-  const orgId = defaultOrgId();
+  const orgId = organizationId;
   const now = new Date().toISOString();
 
   if (isPostgresConfigured()) {
@@ -126,6 +129,9 @@ export async function upsertZendeskTickets(tickets: NormalizedIssue[]): Promise<
     return tickets.length;
   }
 
+  if (orgId !== defaultOrgId()) {
+    throw new Error("Durable tenant-scoped Zendesk storage is required");
+  }
   const existing = readJsonArrayFile<StoredZendeskTicket>(ticketsFile());
   const byId = new Map(existing.map((t) => [t.ticketId, t]));
   for (const ticket of tickets) {
@@ -150,8 +156,11 @@ export async function upsertZendeskTickets(tickets: NormalizedIssue[]): Promise<
   return tickets.length;
 }
 
-export async function listStoredZendeskTickets(limit = 500): Promise<StoredZendeskTicket[]> {
-  const orgId = defaultOrgId();
+export async function listStoredZendeskTickets(
+  limit = 500,
+  organizationId = defaultOrgId()
+): Promise<StoredZendeskTicket[]> {
+  const orgId = organizationId;
   if (isPostgresConfigured()) {
     const rows = await pgQuery`
       SELECT * FROM zendesk_tickets
@@ -161,24 +170,38 @@ export async function listStoredZendeskTickets(limit = 500): Promise<StoredZende
     `;
     return rows.map((r) => rowToTicket(r as Record<string, unknown>));
   }
+  if (orgId !== defaultOrgId()) return [];
   return readJsonArrayFile<StoredZendeskTicket>(ticketsFile()).slice(0, limit);
 }
 
 export async function searchStoredZendeskTickets(
   query: string,
-  limit = 10
+  limit = 10,
+  organizationId = defaultOrgId()
 ): Promise<NormalizedIssue[]> {
-  const terms = query
+  const terms = [...new Set(query
     .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 2);
+    .split(/[^a-z0-9_-]+/)
+    .filter((t) => t.length > 2))];
   const direct = query.match(/ZD-(\d+)/i)?.[1];
-  const all = await listStoredZendeskTickets(2000);
+  // Do not silently exclude older history. The current production export is
+  // larger than 2,000 records, and historical research must scan all mirrored
+  // tickets until native Postgres FTS is introduced.
+  const all = await listStoredZendeskTickets(50_000, organizationId);
   const scored = all
     .map((ticket) => {
       if (direct && ticket.ticketId === direct) return { ticket, score: 100 };
-      const hay = `${ticket.subject} ${ticket.description} ${ticket.tags.join(" ")}`.toLowerCase();
-      const score = terms.reduce((s, term) => (hay.includes(term) ? s + 1 : s), 0);
+      const subject = ticket.subject.toLowerCase();
+      const description = ticket.description.toLowerCase();
+      const tags = ticket.tags.join(" ").toLowerCase();
+      const comments = ticket.comments.map((comment) => comment.body).join(" ").toLowerCase();
+      const score = terms.reduce((total, term) => {
+        if (subject.includes(term)) total += 6;
+        if (tags.includes(term)) total += 4;
+        if (description.includes(term)) total += 2;
+        if (comments.includes(term)) total += 1;
+        return total;
+      }, 0);
       return { ticket, score };
     })
     .filter((x) => x.score > 0)
@@ -186,9 +209,12 @@ export async function searchStoredZendeskTickets(
   return scored.slice(0, limit).map((x) => storedTicketToNormalized(x.ticket));
 }
 
-export async function getStoredZendeskTicket(ticketId: string): Promise<NormalizedIssue | null> {
+export async function getStoredZendeskTicket(
+  ticketId: string,
+  organizationId = defaultOrgId()
+): Promise<NormalizedIssue | null> {
   const id = ticketId.replace(/^ZD-/i, "");
-  const orgId = defaultOrgId();
+  const orgId = organizationId;
   if (isPostgresConfigured()) {
     const rows = await pgQuery`
       SELECT * FROM zendesk_tickets
@@ -197,12 +223,15 @@ export async function getStoredZendeskTicket(ticketId: string): Promise<Normaliz
     `;
     return rows[0] ? storedTicketToNormalized(rowToTicket(rows[0] as Record<string, unknown>)) : null;
   }
+  if (orgId !== defaultOrgId()) return null;
   const found = readJsonArrayFile<StoredZendeskTicket>(ticketsFile()).find((t) => t.ticketId === id);
   return found ? storedTicketToNormalized(found) : null;
 }
 
-export async function getZendeskSyncState(): Promise<ZendeskSyncState | null> {
-  const orgId = defaultOrgId();
+export async function getZendeskSyncState(
+  organizationId = defaultOrgId()
+): Promise<ZendeskSyncState | null> {
+  const orgId = organizationId;
   if (isPostgresConfigured()) {
     const rows = await pgQuery`
       SELECT * FROM zendesk_sync_state WHERE org_id = ${orgId} LIMIT 1
@@ -218,13 +247,17 @@ export async function getZendeskSyncState(): Promise<ZendeskSyncState | null> {
       updatedAt: new Date(String(row.updated_at)).toISOString(),
     };
   }
+  if (orgId !== defaultOrgId()) return null;
   return readJsonFile<ZendeskSyncState | null>(syncStateFile(), null);
 }
 
-export async function upsertZendeskSyncState(state: Partial<ZendeskSyncState>): Promise<ZendeskSyncState> {
-  const orgId = defaultOrgId();
+export async function upsertZendeskSyncState(
+  state: Partial<ZendeskSyncState>,
+  organizationId = defaultOrgId()
+): Promise<ZendeskSyncState> {
+  const orgId = organizationId;
   const now = new Date().toISOString();
-  const prev = (await getZendeskSyncState()) ?? {
+  const prev = (await getZendeskSyncState(orgId)) ?? {
     ticketCount: 0,
     updatedAt: now,
   };
@@ -254,18 +287,24 @@ export async function upsertZendeskSyncState(state: Partial<ZendeskSyncState>): 
     return next;
   }
 
+  if (orgId !== defaultOrgId()) {
+    throw new Error("Durable tenant-scoped Zendesk storage is required");
+  }
   writeJsonFile(syncStateFile(), next);
   return next;
 }
 
-export async function countStoredZendeskTickets(): Promise<number> {
-  const orgId = defaultOrgId();
+export async function countStoredZendeskTickets(
+  organizationId = defaultOrgId()
+): Promise<number> {
+  const orgId = organizationId;
   if (isPostgresConfigured()) {
     const rows = await pgQuery`
       SELECT COUNT(*)::int AS c FROM zendesk_tickets WHERE org_id = ${orgId}
     `;
     return Number((rows[0] as { c?: number })?.c ?? 0);
   }
+  if (orgId !== defaultOrgId()) return 0;
   return readJsonArrayFile<StoredZendeskTicket>(ticketsFile()).length;
 }
 

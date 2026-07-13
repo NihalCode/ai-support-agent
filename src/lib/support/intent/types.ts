@@ -1,6 +1,9 @@
 /** Natural-language intent classification for unified chat routing. */
 
 export type UserIntent =
+  | "support.ticket_research"
+  | "support.ticket_lookup"
+  | "support.ticket_update"
   | "build_app"
   | "edit_app"
   | "explain_app"
@@ -46,6 +49,8 @@ export interface IntentEntities {
   requestId?: string;
   timestamp?: string;
   apiProduct?: string;
+  provider?: "zendesk" | "jira" | "confluence" | "slack" | "internal";
+  keywords?: string[];
   cqlQuery?: string;
   deployTarget?: "preview" | "production";
   requestedOutput?: "plain_english" | "technical" | "customer_response" | "developer_handoff";
@@ -74,6 +79,7 @@ export interface IntentClassification {
   recommendedRoute: string;
   planSummary?: string;
   forcedBySlash?: string;
+  provider?: IntentEntities["provider"];
 }
 
 export interface IntentScore {

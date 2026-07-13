@@ -13,10 +13,15 @@ import {
   upsertZendeskSyncState,
   upsertZendeskTickets,
 } from "./stores/zendesk-ticket-store";
+import { defaultOrgId } from "./file-store";
 
-export function zendeskTicketNamespace(): string {
+export function zendeskTicketNamespace(organizationId = defaultOrgId()): string {
   const base = getConfig().pinecone.namespace;
-  return (base ? `${base}__` : "") + "zendesk";
+  const orgSuffix =
+    organizationId === defaultOrgId()
+      ? ""
+      : `__${organizationId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  return (base ? `${base}__` : "") + `zendesk${orgSuffix}`;
 }
 
 export interface ZendeskTicketIngestResult {
@@ -36,23 +41,27 @@ function defaultRepoRef() {
   return { owner: "zendesk", name: "tickets", branch: "synced" };
 }
 
-export async function zendeskContentChecksum(): Promise<string> {
-  const count = await countStoredZendeskTickets();
-  const state = await getZendeskSyncState();
+export async function zendeskContentChecksum(
+  organizationId = defaultOrgId()
+): Promise<string> {
+  const count = await countStoredZendeskTickets(organizationId);
+  const state = await getZendeskSyncState(organizationId);
   return checksumForContent(`${count}:${state?.lastSyncedAt ?? ""}:${state?.lastStartTime ?? 0}`);
 }
 
 export async function ingestZendeskTickets(input?: {
   force?: boolean;
   maxTickets?: number;
+  organizationId?: string;
 }): Promise<ZendeskTicketIngestResult> {
   const warnings: string[] = [];
   const maxTickets = input?.maxTickets ?? Number.parseInt(process.env.ZENDESK_SYNC_MAX_TICKETS?.trim() || "500", 10);
   const force = Boolean(input?.force);
-  const namespace = zendeskTicketNamespace();
+  const organizationId = input?.organizationId ?? defaultOrgId();
+  const namespace = zendeskTicketNamespace(organizationId);
 
   const { connector, mock } = await getZendeskTickets();
-  const syncState = await getZendeskSyncState();
+  const syncState = await getZendeskSyncState(organizationId);
   const startTime = force ? 0 : syncState?.lastStartTime ?? 0;
 
   let tickets = [];
@@ -75,7 +84,7 @@ export async function ingestZendeskTickets(input?: {
     warnings.push("Zendesk mock mode — set ZENDESK_* env vars for live company tickets.");
   }
 
-  const stored = await upsertZendeskTickets(tickets);
+  const stored = await upsertZendeskTickets(tickets, organizationId);
   const ref = defaultRepoRef();
   const chunks: SupportChunk[] = tickets.map((t) => chunkIssue(t, ref));
 
@@ -97,8 +106,8 @@ export async function ingestZendeskTickets(input?: {
   await upsertZendeskSyncState({
     lastSyncedAt: syncedAt,
     lastStartTime: endTime ?? syncState?.lastStartTime,
-    ticketCount: await countStoredZendeskTickets(),
-  });
+    ticketCount: await countStoredZendeskTickets(organizationId),
+  }, organizationId);
 
   const checksum = checksumForContent(
     tickets.map((t) => `${t.id}:${t.updatedAt}:${t.title}`).join("\n")

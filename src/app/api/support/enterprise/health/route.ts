@@ -7,6 +7,7 @@ import {
 } from "@/lib/support/enterprise/degraded-mode";
 import { listSystemHealthEvents, resolveSystemHealthEvent } from "@/lib/support/enterprise/stores/system-health-store";
 import { audit } from "@/lib/support/enterprise/audit-log";
+import { roleHasPermission } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 
@@ -15,8 +16,12 @@ export async function GET(req: Request) {
   if (auth instanceof NextResponse) return auth;
 
   const url = new URL(req.url);
-  const developerMode = url.searchParams.get("developer") === "true";
-  const cards = sanitizeHealthForSupportMode(await buildIntegrationHealthCards(developerMode));
+  const developerMode =
+    url.searchParams.get("developer") === "true" &&
+    roleHasPermission(auth.user.role, "developer:mode");
+  const cards = sanitizeHealthForSupportMode(
+    await buildIntegrationHealthCards(developerMode, auth.user.orgId)
+  );
   const events = await listSystemHealthEvents("open");
 
   return NextResponse.json({
