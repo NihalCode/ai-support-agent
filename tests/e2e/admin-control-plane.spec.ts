@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("protected support-agent control plane", () => {
+test.describe("protected admin control plane", () => {
   test("admin dashboard is noindex and exposes semantic keyboard navigation", async ({
     page,
   }) => {
@@ -14,10 +14,10 @@ test.describe("protected support-agent control plane", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Support Agent APIs" })
     ).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Dashboard sections" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Zendesk diagnostics" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "API credentials" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Immutable audit timeline" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Administration" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "API and configuration resources" })
+    ).toBeVisible();
 
     await page.keyboard.press("Tab");
     const focused = page.locator(":focus");
@@ -35,7 +35,25 @@ test.describe("protected support-agent control plane", () => {
     const environment = page.getByLabel("Environment").first();
     await expect(environment.locator('option[value="production"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Issue one-time secret" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Run incremental sync" })).toHaveCount(0);
+  });
+
+  test("admin shell navigation reaches shared config pages", async ({ page }) => {
+    await page.setExtraHTTPHeaders({
+      "x-test-role": "admin",
+      "x-test-mfa": "true",
+    });
+    await page.goto("/admin");
+    await expect(page.getByRole("heading", { level: 1, name: "Administration" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Change requests" }).click();
+    await expect(page).toHaveURL(/\/admin\/change-requests/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Change requests" })
+    ).toBeVisible();
+
+    await page.getByRole("link", { name: "Audit logs" }).click();
+    await expect(page).toHaveURL(/\/admin\/audit-logs/);
+    await expect(page.getByRole("heading", { level: 1, name: "Audit logs" })).toBeVisible();
   });
 
   test("regular users receive API 403 without protected content", async ({ request }) => {
