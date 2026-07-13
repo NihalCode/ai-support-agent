@@ -442,4 +442,43 @@ await sql`
   )
 `;
 
+const enterpriseMigration = readFileSync(
+  path.join(process.cwd(), "migrations", "20260713_enterprise_control_plane.sql"),
+  "utf8"
+);
+function splitSqlStatements(source) {
+  const statements = [];
+  let current = "";
+  let singleQuoted = false;
+  let dollarQuoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const pair = source.slice(index, index + 2);
+    if (!singleQuoted && pair === "$$") {
+      dollarQuoted = !dollarQuoted;
+      current += pair;
+      index += 1;
+      continue;
+    }
+    const char = source[index];
+    if (!dollarQuoted && char === "'" && source[index - 1] !== "\\") {
+      singleQuoted = !singleQuoted;
+    }
+    if (char === ";" && !singleQuoted && !dollarQuoted) {
+      const statement = current.trim();
+      if (statement && statement !== "BEGIN" && statement !== "COMMIT") {
+        statements.push(statement);
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+const enterpriseStatements = splitSqlStatements(enterpriseMigration);
+await sql.transaction(
+  enterpriseStatements.map((statement) => sql.query(statement))
+);
+
 console.log("Schema applied successfully.");

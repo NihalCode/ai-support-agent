@@ -3,6 +3,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getAppSessionResult, sessionToJson } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/roles";
 import { isAuthConfigured } from "@/lib/auth/config";
+import { hasPrivilegedMfa } from "@/lib/enterprise/auth-assurance";
+import { enterpriseCapabilities } from "@/lib/enterprise/policy";
 
 export const runtime = "nodejs";
 
@@ -18,13 +20,30 @@ export async function GET(request: NextRequest) {
       accessDenied: result.accessDenied ?? null,
       user: null,
       permissions: [],
+      enterpriseCapabilities: [],
+      enterpriseAssurance: {
+        mfaVerified: false,
+        authTimeAvailable: false,
+      },
     });
   }
+  const principal = {
+    userId: result.session.user.id,
+    organizationId: result.session.user.orgId,
+    role: result.session.user.role,
+    status: result.session.user.status,
+  };
   return NextResponse.json({
     ...sessionToJson(result.session),
     authConfigured: isAuthConfigured(),
     auth0Authenticated: true,
     accessDenied: null,
     permissions: [...permissionsForRole(result.session.user.role)],
+    enterpriseCapabilities: enterpriseCapabilities(principal),
+    enterpriseAssurance: {
+      mfaVerified: hasPrivilegedMfa(result.session),
+      authTimeAvailable:
+        typeof result.session.assurance?.authTime === "number",
+    },
   });
 }

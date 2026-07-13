@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import type { Permission, UserRole } from "@/lib/auth/roles";
 import { canUseDeveloperMode } from "@/lib/auth/roles";
+import type { EnterprisePermission } from "@/lib/enterprise/types";
 
 export interface AuthUser {
   id: string;
@@ -41,6 +42,11 @@ export interface AuthState {
   accessDenied: { reason: AccessDeniedReason; invitedEmail?: string } | null;
   user: AuthUser | null;
   permissions: Permission[];
+  enterpriseCapabilities: EnterprisePermission[];
+  enterpriseAssurance: {
+    mfaVerified: boolean;
+    authTimeAvailable: boolean;
+  };
 }
 
 interface AuthContextValue extends AuthState {
@@ -62,6 +68,11 @@ const defaultState: AuthState = {
   accessDenied: null,
   user: null,
   permissions: [],
+  enterpriseCapabilities: [],
+  enterpriseAssurance: {
+    mfaVerified: false,
+    authTimeAvailable: false,
+  },
 };
 
 const PUBLIC_PATHS = ["/login", "/access-denied", "/invite", "/auth"];
@@ -88,6 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           accessDenied: null,
           user: null,
           permissions: [],
+          enterpriseCapabilities: [],
+          enterpriseAssurance: {
+            mfaVerified: false,
+            authTimeAvailable: false,
+          },
         });
         return;
       }
@@ -105,6 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessDenied: data.accessDenied ?? null,
         user: data.user,
         permissions: data.permissions ?? [],
+        enterpriseCapabilities: data.enterpriseCapabilities ?? [],
+        enterpriseAssurance: data.enterpriseAssurance ?? {
+          mfaVerified: false,
+          authTimeAvailable: false,
+        },
       });
     } catch {
       setState({ ...defaultState, loading: false });

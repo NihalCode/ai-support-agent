@@ -37,6 +37,11 @@ export interface AppSessionUser {
 export interface AppSession {
   user: AppSessionUser;
   authProvider: "auth0" | "test" | "disabled";
+  assurance?: {
+    amr?: string[];
+    acr?: string;
+    authTime?: number;
+  };
 }
 
 export interface AppSessionResult {
@@ -64,8 +69,16 @@ function testRoleFromRequest(request?: NextRequest): UserRole {
 
 function mockSession(request?: NextRequest): AppSession {
   const role = testRoleFromRequest(request);
+  const testMfa = isTestMode() && request?.headers.get("x-test-mfa") === "true";
   return {
     authProvider: isTestMode() ? "test" : "disabled",
+    assurance: testMfa
+      ? {
+          amr: ["pwd", "mfa"],
+          acr: "urn:test:mfa",
+          authTime: Math.floor(Date.now() / 1000),
+        }
+      : undefined,
     user: {
       id: isTestMode() ? `test-user-${role}` : "local-dev-user",
       email: isTestMode() ? `${role}@test.local` : "dev@localhost",
@@ -84,11 +97,21 @@ async function resolveAuth0User(request?: NextRequest) {
     : await auth0.getSession();
   const authUser = authSession?.user;
   if (!authUser?.sub || !authUser.email) return null;
+  const claims = authUser as Record<string, unknown>;
+  const amr = Array.isArray(claims.amr)
+    ? claims.amr.filter((value): value is string => typeof value === "string")
+    : undefined;
   return {
     sub: authUser.sub,
     email: normalizeEmail(authUser.email),
     name: authUser.name ?? authUser.nickname ?? null,
     picture: authUser.picture ?? null,
+    assurance: {
+      amr,
+      acr: typeof claims.acr === "string" ? claims.acr : undefined,
+      authTime:
+        typeof claims.auth_time === "number" ? claims.auth_time : undefined,
+    },
   };
 }
 
@@ -100,9 +123,10 @@ function toAppSession(stored: {
   orgId: string;
   status: "active" | "disabled";
   picture?: string | null;
-}): AppSession {
+}, assurance?: AppSession["assurance"]): AppSession {
   return {
     authProvider: "auth0",
+    assurance,
     user: {
       id: stored.id,
       email: stored.email,
@@ -211,7 +235,10 @@ export async function getAppSessionResult(
       actorUserId: sessionUser.id,
       actorRole: sessionUser.role,
     });
-    return { session: toAppSession(sessionUser), auth0Authenticated: true };
+    return {
+      session: toAppSession(sessionUser, authUser.assurance),
+      auth0Authenticated: true,
+    };
   }
 
   if (existingByEmail && existingByEmail.id !== authUser.sub) {
@@ -243,7 +270,7 @@ export async function getAppSessionResult(
       };
     }
 
-    let sessionUser = await applyPendingInviteIfAny(relinked, authUser.email, orgId);
+    const sessionUser = await applyPendingInviteIfAny(relinked, authUser.email, orgId);
 
     await logAuthEvent({
       action: "auth.auth_subject_relinked",
@@ -257,7 +284,10 @@ export async function getAppSessionResult(
       actorEmail: sessionUser.email,
       metadata: { connection: "auth0", relinked: true },
     });
-    return { session: toAppSession(sessionUser), auth0Authenticated: true };
+    return {
+      session: toAppSession(sessionUser, authUser.assurance),
+      auth0Authenticated: true,
+    };
   }
 
   const access = await checkEmailAccess(authUser.email, orgId);
@@ -330,7 +360,10 @@ export async function getAppSessionResult(
     metadata: { firstLogin: true },
   });
 
-  return { session: toAppSession(created), auth0Authenticated: true };
+  return {
+    session: toAppSession(created, authUser.assurance),
+    auth0Authenticated: true,
+  };
 }
 
 export async function getAppSession(request?: NextRequest): Promise<AppSession | null> {
