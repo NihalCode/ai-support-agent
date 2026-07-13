@@ -78,6 +78,8 @@ export function TopBar({
           value={productMode}
           onChange={(v) => setProductMode(v as "client" | "developer")}
           aria-label="Client or Developer mode"
+          fitContent
+          menuPlacement="above"
           triggerClassName={cn(
             "!rounded-full !px-2.5 !py-1 !text-xs",
             isClientMode

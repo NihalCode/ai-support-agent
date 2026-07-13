@@ -23,10 +23,32 @@ export interface AppSelectProps<T extends string = string> {
   triggerClassName?: string;
   testId?: string;
   title?: string;
+  /** Keep trigger wide enough for the longest option label (avoids "Developer Moc" clipping). */
+  fitContent?: boolean;
+  /** Prefer opening above the trigger (e.g. top bar near right edge). */
+  menuPlacement?: "auto" | "above" | "below";
 }
 
 const MENU_MAX_HEIGHT = 240;
 const MENU_MIN_WIDTH = 200;
+
+const PORTAL_ROOT_ID = "app-select-portal-root";
+
+function getPortalRoot(): HTMLElement {
+  if (typeof document === "undefined") {
+    return null as unknown as HTMLElement;
+  }
+  let root = document.getElementById(PORTAL_ROOT_ID);
+  if (!root) {
+    root = document.createElement("div");
+    root.id = PORTAL_ROOT_ID;
+    root.setAttribute("data-testid", PORTAL_ROOT_ID);
+    root.style.cssText =
+      "position:fixed;inset:0;z-index:100000;pointer-events:none;overflow:visible;";
+    document.body.appendChild(root);
+  }
+  return root;
+}
 
 function estimateMenuWidth(options: AppSelectOption[], triggerWidth: number): number {
   const longest = options.reduce((max, opt) => Math.max(max, opt.label.length), 0);
@@ -64,6 +86,8 @@ export function AppSelect<T extends string = string>({
   triggerClassName,
   testId,
   title,
+  fitContent = false,
+  menuPlacement = "auto",
 }: AppSelectProps<T>) {
   const autoId = useId();
   const id = idProp ?? autoId;
@@ -89,10 +113,13 @@ export function AppSelect<T extends string = string>({
     const gap = 4;
     const spaceBelow = window.innerHeight - rect.bottom - gap;
     const spaceAbove = rect.top - gap;
+    const preferAbove =
+      menuPlacement === "above" ||
+      (menuPlacement === "auto" && spaceBelow < 120 && spaceAbove > spaceBelow);
     let top = rect.bottom + gap;
     let maxHeight = MENU_MAX_HEIGHT;
 
-    if (spaceBelow < 120 && spaceAbove > spaceBelow) {
+    if (preferAbove) {
       maxHeight = Math.min(MENU_MAX_HEIGHT, spaceAbove);
       top = Math.max(8, rect.top - maxHeight - gap);
     } else {
@@ -104,7 +131,7 @@ export function AppSelect<T extends string = string>({
       ...clampMenuPosition(rect, estimateMenuWidth(options, rect.width)),
       maxHeight,
     });
-  }, [options]);
+  }, [options, menuPlacement]);
 
   useEffect(() => {
     if (!open) {
@@ -190,6 +217,7 @@ export function AppSelect<T extends string = string>({
           left: menuPos.left,
           width: menuPos.width,
           maxHeight: menuPos.maxHeight,
+          pointerEvents: "auto",
         }}
       >
         {options.map((opt, i) => (
@@ -214,7 +242,11 @@ export function AppSelect<T extends string = string>({
     ) : null;
 
   return (
-    <div ref={rootRef} className={cn("app-select", className)} data-testid={testId}>
+    <div
+      ref={rootRef}
+      className={cn("app-select", fitContent && "app-select--fit-content", className)}
+      data-testid={testId}
+    >
       {label ? (
         <label htmlFor={`${id}-trigger`} className="app-select-label">
           {label}
@@ -238,7 +270,9 @@ export function AppSelect<T extends string = string>({
         <span className="app-select-value">{selected?.label ?? value}</span>
         <ChevronDown className="app-select-chevron" aria-hidden />
       </button>
-      {typeof document !== "undefined" && menu ? createPortal(menu, document.body) : null}
+      {typeof document !== "undefined" && menu
+        ? createPortal(menu, getPortalRoot())
+        : null}
     </div>
   );
 }

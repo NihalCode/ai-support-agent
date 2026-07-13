@@ -158,8 +158,25 @@ html.pref-reduced-motion *::after {
 
 .app-select-menu--portal {
   position: fixed;
-  z-index: 99999;
+  z-index: 100001;
   box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.app-select--fit-content {
+  width: auto;
+  max-width: none;
+}
+
+.app-select--fit-content .app-select-trigger {
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+}
+
+.app-select--fit-content .app-select-value {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .app-select-option {
