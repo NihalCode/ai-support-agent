@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useWorkspace } from "./WorkspaceProvider";
 import { SLASH_COMMANDS } from "./types";
 
-const COMMANDS = [
+const BASE_COMMANDS = [
   { id: "import-api", label: "Import API source" },
   { id: "import-api", label: "Import Postman collection" },
   { id: "import-api", label: "Import OpenAPI spec" },
@@ -30,17 +32,26 @@ const COMMANDS = [
   ...SLASH_COMMANDS.map((s) => ({ id: s.action, label: `${s.cmd} — ${s.label}` })),
 ];
 
+const ADMIN_COMMAND = { id: "administration", label: "Open Administration" };
+
 export function CommandPalette() {
   const { state, setCommandPalette, runCommand } = useWorkspace();
+  const { canAccessAdminDashboard } = useAuth();
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const wasOpenRef = useRef(false);
 
+  const commands = useMemo(
+    () => (canAccessAdminDashboard ? [...BASE_COMMANDS, ADMIN_COMMAND] : BASE_COMMANDS),
+    [canAccessAdminDashboard]
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return COMMANDS;
-    return COMMANDS.filter((c) => c.label.toLowerCase().includes(q));
-  }, [query]);
+    if (!q) return commands;
+    return commands.filter((c) => c.label.toLowerCase().includes(q));
+  }, [query, commands]);
 
   useEffect(() => {
     if (state.commandPaletteOpen && !wasOpenRef.current) {
@@ -56,6 +67,15 @@ export function CommandPalette() {
     setCommandPalette(false);
     setQuery("");
     setSelected(0);
+  }
+
+  function executeCommand(commandId: string) {
+    closePalette();
+    if (commandId === "administration") {
+      router.push("/admin");
+      return;
+    }
+    runCommand(commandId);
   }
 
   if (!state.commandPaletteOpen) return null;
@@ -83,7 +103,7 @@ export function CommandPalette() {
             if (e.key === "ArrowDown") setSelected((s) => Math.min(s + 1, filtered.length - 1));
             if (e.key === "ArrowUp") setSelected((s) => Math.max(s - 1, 0));
             if (e.key === "Enter" && filtered[selected]) {
-              runCommand(filtered[selected].id);
+              executeCommand(filtered[selected].id);
             }
           }}
         />
@@ -93,7 +113,7 @@ export function CommandPalette() {
               key={`${cmd.id}-${cmd.label}-${i}`}
               type="button"
               className={`ide-command-item ${i === selected ? "selected" : ""}`}
-              onClick={() => runCommand(cmd.id)}
+              onClick={() => executeCommand(cmd.id)}
             >
               {cmd.label}
             </button>

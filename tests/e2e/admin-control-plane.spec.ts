@@ -66,4 +66,25 @@ test.describe("protected admin control plane", () => {
     expect(JSON.stringify(body)).not.toContain("csrfToken");
     expect(JSON.stringify(body)).not.toContain("organization");
   });
+
+  test("workspace sidebar links to administration for privileged roles", async ({ page }) => {
+    await page.setExtraHTTPHeaders({
+      "x-test-role": "admin",
+      "x-test-mfa": "true",
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("activity-administration")).toBeVisible();
+    await page.getByTestId("activity-administration").click();
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Administration" })).toBeVisible();
+    await page.getByTestId("admin-back-to-workspace").click();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByTestId("ide-root")).toBeVisible();
+  });
+
+  test("viewer does not see administration in workspace sidebar", async ({ page }) => {
+    await page.setExtraHTTPHeaders({ "x-test-role": "viewer" });
+    await page.goto("/");
+    await expect(page.getByTestId("activity-administration")).toHaveCount(0);
+  });
 });

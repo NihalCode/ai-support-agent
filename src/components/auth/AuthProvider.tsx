@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import type { Permission, UserRole } from "@/lib/auth/roles";
 import { canUseDeveloperMode } from "@/lib/auth/roles";
+import { canAccessAdminDashboard } from "@/lib/admin/navigation";
 import type { EnterprisePermission } from "@/lib/enterprise/types";
 
 export interface AuthUser {
@@ -52,7 +53,9 @@ export interface AuthState {
 interface AuthContextValue extends AuthState {
   refresh: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
+  hasEnterpriseCapability: (permission: EnterprisePermission) => boolean;
   canUseDeveloperMode: boolean;
+  canAccessAdminDashboard: boolean;
   loginUrl: string;
   logoutUrl: string;
 }
@@ -174,16 +177,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state.permissions]
   );
 
+  const hasEnterpriseCapability = useCallback(
+    (permission: EnterprisePermission) =>
+      state.enterpriseCapabilities.includes(permission),
+    [state.enterpriseCapabilities]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
       refresh,
       hasPermission,
+      hasEnterpriseCapability,
       canUseDeveloperMode: state.user ? canUseDeveloperMode(state.user.role) : true,
+      canAccessAdminDashboard: canAccessAdminDashboard(state.enterpriseCapabilities),
       loginUrl: "/auth/login",
       logoutUrl: "/auth/logout",
     }),
-    [state, refresh, hasPermission]
+    [state, refresh, hasPermission, hasEnterpriseCapability]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

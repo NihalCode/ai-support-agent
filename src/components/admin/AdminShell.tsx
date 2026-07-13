@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ArrowLeft,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   Shield,
   Settings2,
   LifeBuoy,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -24,6 +26,7 @@ import {
   adminShellBg,
 } from "@/components/admin/tokens";
 import { filterNavGroups, type AdminNavGroup } from "@/lib/admin/navigation";
+import { productConfig } from "@/lib/product-config";
 
 const GROUP_ICONS: Record<string, ReactNode> = {
   overview: <LayoutDashboard className="h-4 w-4 shrink-0 opacity-80" aria-hidden />,
@@ -99,13 +102,29 @@ function AdminShellInner({
       aria-label="Admin sidebar"
     >
       <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-4">
-        {!collapsed && (
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-300">
-              Cyware
-            </p>
-            <p className="text-sm font-medium text-slate-200">Administration</p>
-          </div>
+        {!collapsed ? (
+          <Link
+            href="/"
+            className="min-w-0 flex items-center gap-3 rounded-lg outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-violet-400/40"
+            data-testid="admin-back-to-workspace"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-[0_0_24px_rgba(139,92,246,0.28)]">
+              <Sparkles className="h-4 w-4 text-white" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{productConfig.appName}</p>
+              <p className="text-xs text-slate-400">Administration</p>
+            </div>
+          </Link>
+        ) : (
+          <Link
+            href="/"
+            className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400"
+            aria-label={`Back to ${productConfig.appName}`}
+            data-testid="admin-back-to-workspace"
+          >
+            <Sparkles className="h-4 w-4 text-white" aria-hidden />
+          </Link>
         )}
         <button
           type="button"
@@ -124,6 +143,16 @@ function AdminShellInner({
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {!collapsed && (
+        <Link
+          href="/"
+          className="mx-4 mt-3 flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Back to workspace
+        </Link>
+      )}
 
       <div className={`flex-1 overflow-y-auto py-4 ${collapsed ? "hidden" : "block"}`}>
         <NavGroups groups={navGroups} onNavigate={() => setMobileOpen(false)} />

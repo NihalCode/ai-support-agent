@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { filterNavGroups, ADMIN_NAV_GROUPS } from "@/lib/admin/navigation";
+import {
+  canAccessAdminDashboard,
+  filterNavGroups,
+  ADMIN_NAV_GROUPS,
+} from "@/lib/admin/navigation";
 
 describe("admin navigation", () => {
+  it("detects dashboard access from capabilities", () => {
+    expect(canAccessAdminDashboard(["admin_dashboard.access"])).toBe(true);
+    expect(canAccessAdminDashboard(["audit.read"])).toBe(false);
+  });
+
   it("shows all groups for owner capabilities", () => {
     const groups = filterNavGroups([
       "admin_dashboard.access",

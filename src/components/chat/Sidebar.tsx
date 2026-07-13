@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   Activity,
   BookOpen,
   Bot,
   ChevronDown,
+  LayoutDashboard,
   MessageSquare,
   Plug,
   ScrollText,
@@ -18,6 +20,7 @@ import {
 import type { ActivityId, BottomPanelTab } from "@/components/ide/types";
 import { cn } from "@/lib/cn";
 import { useWorkspace } from "@/components/ide/WorkspaceProvider";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 type NavItem = {
   label: string;
@@ -36,8 +39,15 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Approvals", icon: ShieldCheck, activity: "settings", testId: "activity-approvals", integrationsTab: "approvals" },
   { label: "Audit Logs", icon: ScrollText, activity: "logs", testId: "activity-logs" },
   { label: "System Health", icon: Activity, activity: "settings", testId: "activity-health", settingsSection: "health" },
-  { label: "Settings", icon: Settings, activity: "settings", testId: "activity-settings", settingsSection: "credentials" },
 ];
+
+const SETTINGS_NAV_ITEM: NavItem = {
+  label: "Settings",
+  icon: Settings,
+  activity: "settings",
+  testId: "activity-settings",
+  settingsSection: "credentials",
+};
 
 const DEV_EXTRA_ITEMS: NavItem[] = [
   { label: "Explorer", icon: Bot, activity: "explorer", testId: "activity-explorer" },
@@ -66,6 +76,7 @@ export function Sidebar({
   onClose?: () => void;
 }) {
   const { state, setActivity, openTab, setBottomTab, toggleBottom, isClientMode } = useWorkspace();
+  const { canAccessAdminDashboard } = useAuth();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   function navigate(item: NavItem) {
@@ -103,6 +114,28 @@ export function Sidebar({
     onClose?.();
   }
 
+  function renderNavItem(item: NavItem) {
+    const Icon = item.icon;
+    const active = state.sidebarNavId === item.testId;
+    return (
+      <button
+        key={item.testId}
+        type="button"
+        data-testid={item.testId}
+        onClick={() => navigate(item)}
+        className={cn(
+          "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200",
+          active
+            ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+            : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100"
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span>{item.label}</span>
+      </button>
+    );
+  }
+
   return (
     <aside
       className={cn(
@@ -112,27 +145,24 @@ export function Sidebar({
       data-testid="activity-bar"
     >
       <nav className="flex flex-col gap-1 overflow-y-auto min-h-0 flex-1">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const active = state.sidebarNavId === item.testId;
-          return (
-            <button
-              key={item.testId}
-              type="button"
-              data-testid={item.testId}
-              onClick={() => navigate(item)}
-              className={cn(
-                "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200",
-                active
-                  ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        {NAV_ITEMS.map(renderNavItem)}
+
+        {canAccessAdminDashboard && (
+          <Link
+            href="/admin"
+            data-testid="activity-administration"
+            onClick={() => onClose?.()}
+            className={cn(
+              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200",
+              "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40"
+            )}
+          >
+            <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden />
+            <span>Administration</span>
+          </Link>
+        )}
+
+        {renderNavItem(SETTINGS_NAV_ITEM)}
 
         {!isClientMode && (
           <>

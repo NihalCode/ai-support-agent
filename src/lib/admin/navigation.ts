@@ -1,5 +1,13 @@
 import type { EnterprisePermission } from "@/lib/enterprise/types";
 
+export const ADMIN_DASHBOARD_PERMISSION = "admin_dashboard.access" as const;
+
+export function canAccessAdminDashboard(
+  capabilities: readonly EnterprisePermission[] | readonly string[]
+): boolean {
+  return capabilities.includes(ADMIN_DASHBOARD_PERMISSION);
+}
+
 export interface AdminNavItem {
   href: string;
   label: string;
